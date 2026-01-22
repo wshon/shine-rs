@@ -6,7 +6,7 @@
 
 ## 任务
 
-- [ ] 1. 项目结构和基础设施搭建
+- [x] 1. 项目结构和基础设施搭建
   - 创建 Rust 项目结构和 Cargo.toml
   - 设置模块层次结构 (config, tables, bitstream, subband, mdct, quantization, huffman, encoder)
   - 配置测试框架 (proptest, criterion)

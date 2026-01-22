@@ -1,0 +1,32 @@
+[package]
+name = "rust-mp3-encoder"
+version = "0.1.0"
+edition = "2021"
+authors = ["MP3 Encoder Team"]
+description = "A pure Rust MP3 encoder based on the shine library"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/example/rust-mp3-encoder"
+keywords = ["mp3", "audio", "encoder", "codec"]
+categories = ["multimedia::audio", "encoding"]
+
+[dependencies]
+thiserror = "1.0"
+
+[dev-dependencies]
+proptest = "1.4"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "encoder_benchmark"
+harness = false
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1
