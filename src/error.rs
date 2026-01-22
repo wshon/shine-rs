@@ -96,6 +96,14 @@ pub enum EncodingError {
     #[error("Subband filter error: {0}")]
     SubbandError(String),
     
+    /// Invalid input length for processing
+    #[error("Invalid input length: expected {expected} samples, got {actual}")]
+    InvalidInputLength { expected: usize, actual: usize },
+    
+    /// Invalid channel index
+    #[error("Invalid channel index {channel}: maximum supported channels is {max_channels}")]
+    InvalidChannelIndex { channel: usize, max_channels: usize },
+    
     /// Bit reservoir overflow
     #[error("Bit reservoir overflow: attempted to use {requested} bits, only {available} available")]
     BitReservoirOverflow { requested: usize, available: usize },
