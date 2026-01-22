@@ -73,7 +73,7 @@ fn test_debug_quantization_output() {
     let mut side_info = GranuleInfo::default();
     let mut quantized = [0i32; 576];
     
-    let result = quantizer.quantize_and_encode(&mdct_coeffs, max_bits, &mut side_info, &mut quantized);
+    let result = quantizer.quantize_and_encode(&mdct_coeffs, max_bits, &mut side_info, &mut quantized, 44100);
     
     match result {
         Ok(bits_used) => {

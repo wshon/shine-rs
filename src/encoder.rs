@@ -482,7 +482,8 @@ impl Mp3Encoder {
             &mdct_coeffs, 
             max_bits, 
             granule_info, 
-            &mut quantized_coeffs
+            &mut quantized_coeffs,
+            self.config.wave.sample_rate
         )?;
         
         // Step 6: Huffman encoding (write directly to bitstream)

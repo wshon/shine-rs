@@ -39,7 +39,7 @@ fn test_quantization_trace_all_zeros() {
     
     let max_bits = 1000;
     
-    match quantizer.quantize_and_encode(&mdct_coeffs, max_bits, &mut granule_info, &mut quantized_output) {
+    match quantizer.quantize_and_encode(&mdct_coeffs, max_bits, &mut granule_info, &mut quantized_output, 44100) {
         Ok(bits_used) => {
             println!("Quantization succeeded: {} bits used", bits_used);
             
@@ -157,7 +157,7 @@ fn test_quantization_trace_small_values() {
     
     let max_bits = 1000;
     
-    match quantizer.quantize_and_encode(&mdct_coeffs, max_bits, &mut granule_info, &mut quantized_output) {
+    match quantizer.quantize_and_encode(&mdct_coeffs, max_bits, &mut granule_info, &mut quantized_output, 44100) {
         Ok(bits_used) => {
             println!("Quantization succeeded: {} bits used", bits_used);
             

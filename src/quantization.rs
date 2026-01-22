@@ -238,10 +238,11 @@ impl QuantizationLoop {
         mdct_coeffs: &[i32; GRANULE_SIZE],
         max_bits: usize,
         side_info: &mut GranuleInfo,
-        output: &mut [i32; GRANULE_SIZE]
+        output: &mut [i32; GRANULE_SIZE],
+        sample_rate: u32
     ) -> EncodingResult<usize> {
         // Use outer loop to find optimal quantization and encoding
-        let total_bits = self.outer_loop(mdct_coeffs, max_bits, side_info);
+        let total_bits = self.outer_loop(mdct_coeffs, max_bits, side_info, sample_rate);
         
         // Quantize coefficients with the selected step size
         let max_quantized = self.quantize(mdct_coeffs, side_info.quantizer_step_size, output);
@@ -303,7 +304,7 @@ impl QuantizationLoop {
     
     /// Inner loop: find optimal Huffman table selection
     /// Returns the number of bits needed for encoding
-    fn inner_loop(&self, coeffs: &mut [i32; GRANULE_SIZE], max_bits: usize, info: &mut GranuleInfo) -> usize {
+    fn inner_loop(&self, coeffs: &mut [i32; GRANULE_SIZE], max_bits: usize, info: &mut GranuleInfo, sample_rate: u32) -> usize {
         let mut bits;
         
         // Ensure quantized values are within table range
@@ -320,7 +321,7 @@ impl QuantizationLoop {
         bits = c1bits;
         
         // Subdivide big values region
-        self.subdivide_big_values(info);
+        self.subdivide_big_values(info, sample_rate);
         
         // Select optimal Huffman tables for big values
         self.select_big_values_tables(coeffs, info);
@@ -340,7 +341,7 @@ impl QuantizationLoop {
             
             self.calculate_run_length(coeffs, info);
             bits = self.count1_bitcount(coeffs, info);
-            self.subdivide_big_values(info);
+            self.subdivide_big_values(info, sample_rate);
             self.select_big_values_tables(coeffs, info);
             bits += self.big_values_bitcount(coeffs, info);
         }
@@ -350,9 +351,9 @@ impl QuantizationLoop {
     
     /// Outer loop: adjust quantization step size for optimal quality
     /// Returns the total number of bits used
-    fn outer_loop(&self, mdct_coeffs: &[i32; GRANULE_SIZE], max_bits: usize, info: &mut GranuleInfo) -> usize {
+    fn outer_loop(&self, mdct_coeffs: &[i32; GRANULE_SIZE], max_bits: usize, info: &mut GranuleInfo, sample_rate: u32) -> usize {
         // Binary search for optimal quantization step size
-        info.quantizer_step_size = self.binary_search_step_size(mdct_coeffs, max_bits, info);
+        info.quantizer_step_size = self.binary_search_step_size(mdct_coeffs, max_bits, info, sample_rate);
         
         // Calculate part2 length (scale factors)
         info.part2_length = self.calculate_part2_length(info);
@@ -365,7 +366,7 @@ impl QuantizationLoop {
         self.quantize(mdct_coeffs, info.quantizer_step_size, &mut quantized);
         
         // Run inner loop to optimize Huffman coding
-        let bits = self.inner_loop(&mut quantized, huffman_bits, info);
+        let bits = self.inner_loop(&mut quantized, huffman_bits, info, sample_rate);
         
         // Set total part2_3 length
         info.part2_3_length = info.part2_length + bits as u32;
@@ -374,7 +375,7 @@ impl QuantizationLoop {
     }
     
     /// Binary search for optimal quantization step size
-    fn binary_search_step_size(&self, mdct_coeffs: &[i32; GRANULE_SIZE], desired_rate: usize, info: &mut GranuleInfo) -> i32 {
+    fn binary_search_step_size(&self, mdct_coeffs: &[i32; GRANULE_SIZE], desired_rate: usize, info: &mut GranuleInfo, sample_rate: u32) -> i32 {
         let mut low = -120;
         let mut high = 120;
         let mut best_step = 0;
@@ -394,7 +395,7 @@ impl QuantizationLoop {
                 
                 self.calculate_run_length(&temp_coeffs, &mut temp_info);
                 let c1bits = self.count1_bitcount(&temp_coeffs, &temp_info);
-                self.subdivide_big_values(&mut temp_info);
+                self.subdivide_big_values(&mut temp_info, sample_rate);
                 self.select_big_values_tables(&temp_coeffs, &mut temp_info);
                 let bvbits = self.big_values_bitcount(&temp_coeffs, &temp_info);
                 let total_bits = c1bits + bvbits;
@@ -474,7 +475,7 @@ impl QuantizationLoop {
     }
     
     /// Subdivide big values region into sub-regions (following shine's subdivide function exactly)
-    fn subdivide_big_values(&self, info: &mut GranuleInfo) {
+    fn subdivide_big_values(&self, info: &mut GranuleInfo, sample_rate: u32) {
         use crate::tables::SCALE_FACT_BAND_INDEX;
         
         // Subdivision table from shine (matches subdv_table in l3loop.c)
@@ -514,9 +515,19 @@ impl QuantizationLoop {
             return;
         }
         
-        // Following shine's logic exactly
-        // For now, assume 44.1kHz (samplerate_index = 0) - this should be passed from config
-        let samplerate_index = 0; // TODO: get from config
+        // Following shine's logic exactly - get correct samplerate_index
+        let samplerate_index = match sample_rate {
+            44100 => 0,
+            48000 => 1, 
+            32000 => 2,
+            22050 => 3,
+            24000 => 4,
+            16000 => 5,
+            11025 => 6,
+            12000 => 7,
+            8000 => 8,
+            _ => 0, // Default fallback
+        };
         let scalefac_band_long = &SCALE_FACT_BAND_INDEX[samplerate_index];
         
         let bigvalues_region = (info.big_values * 2) as i32;
@@ -757,7 +768,7 @@ mod tests {
             let mut side_info = GranuleInfo::default();
             
             // Test quantization process
-            let result = quantizer.quantize_and_encode(&mdct_coeffs, target_bits, &mut side_info, &mut output);
+            let result = quantizer.quantize_and_encode(&mdct_coeffs, target_bits, &mut side_info, &mut output, 44100);
             
             // Property 1: Quantization should succeed for valid inputs
             prop_assert!(result.is_ok(), "Quantization should succeed");
