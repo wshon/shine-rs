@@ -3,7 +3,7 @@
 //! These tests verify the overall functionality of the encoder
 //! with various configurations and input data.
 
-use rust_mp3_encoder::{Mp3Encoder, Config, WaveConfig, MpegConfig, Channels, StereoMode, Emphasis};
+use rust_mp3_encoder::{Mp3Encoder, Config};
 
 #[test]
 fn test_encoder_creation() {

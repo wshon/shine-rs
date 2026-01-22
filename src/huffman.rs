@@ -5,9 +5,10 @@
 
 use crate::bitstream::BitstreamWriter;
 use crate::quantization::GranuleInfo;
-use crate::error::{EncodingError, EncodingResult};
+use crate::error::EncodingResult;
 
 /// Huffman encoder for quantized coefficients
+#[allow(dead_code)]
 pub struct HuffmanEncoder {
     /// Standard Huffman tables (0-31)
     tables: &'static [HuffmanTable; 32],
@@ -38,9 +39,9 @@ impl HuffmanEncoder {
     /// Encode big values using Huffman tables
     pub fn encode_big_values(
         &self,
-        quantized: &[i32; 576],
-        info: &GranuleInfo,
-        output: &mut BitstreamWriter
+        _quantized: &[i32; 576],
+        _info: &GranuleInfo,
+        _output: &mut BitstreamWriter
     ) -> EncodingResult<usize> {
         // Implementation will be added in later tasks
         todo!("Big values Huffman encoding implementation")
@@ -49,22 +50,24 @@ impl HuffmanEncoder {
     /// Encode count1 region using count1 tables
     pub fn encode_count1(
         &self,
-        quantized: &[i32; 576],
-        info: &GranuleInfo,
-        output: &mut BitstreamWriter
+        _quantized: &[i32; 576],
+        _info: &GranuleInfo,
+        _output: &mut BitstreamWriter
     ) -> EncodingResult<usize> {
         // Implementation will be added in later tasks
         todo!("Count1 Huffman encoding implementation")
     }
     
     /// Select optimal Huffman table for a region
-    fn select_table(&self, values: &[i32], start: usize, end: usize) -> usize {
+    #[allow(dead_code)]
+    fn select_table(&self, _values: &[i32], _start: usize, _end: usize) -> usize {
         // Implementation will be added in later tasks
         todo!("Huffman table selection implementation")
     }
     
     /// Calculate bits required for encoding with a specific table
-    fn calculate_bits(&self, values: &[i32], start: usize, end: usize, table_index: usize) -> usize {
+    #[allow(dead_code)]
+    fn calculate_bits(&self, _values: &[i32], _start: usize, _end: usize, _table_index: usize) -> usize {
         // Implementation will be added in later tasks
         todo!("Bit calculation implementation")
     }

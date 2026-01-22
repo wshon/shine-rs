@@ -3,16 +3,17 @@
 //! This module provides the main Mp3Encoder struct that coordinates
 //! all the encoding stages from PCM input to MP3 output.
 
-use crate::config::{Config, Channels};
+use crate::config::Config;
 use crate::subband::SubbandFilter;
 use crate::mdct::MdctTransform;
 use crate::quantization::QuantizationLoop;
 use crate::huffman::HuffmanEncoder;
 use crate::bitstream::BitstreamWriter;
-use crate::error::{EncoderError, InputDataError, EncodingResult};
+use crate::error::{EncoderError, InputDataError};
 use crate::Result;
 
 /// Main MP3 encoder structure
+#[allow(dead_code)]
 pub struct Mp3Encoder {
     /// Encoder configuration
     config: Config,

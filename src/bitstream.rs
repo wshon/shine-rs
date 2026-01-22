@@ -4,7 +4,6 @@
 //! including frame headers, side information, and encoded audio data.
 
 use crate::config::Config;
-use crate::error::{EncodingError, EncodingResult};
 
 /// Bitstream writer for MP3 frame data
 pub struct BitstreamWriter {
@@ -30,19 +29,19 @@ impl BitstreamWriter {
     }
     
     /// Write bits to the bitstream
-    pub fn write_bits(&mut self, value: u32, bits: u8) {
+    pub fn write_bits(&mut self, _value: u32, _bits: u8) {
         // Implementation will be added in later tasks
         todo!("Bitstream writing implementation")
     }
     
     /// Write MP3 frame header
-    pub fn write_frame_header(&mut self, config: &Config, padding: bool) {
+    pub fn write_frame_header(&mut self, _config: &Config, _padding: bool) {
         // Implementation will be added in later tasks
         todo!("Frame header writing implementation")
     }
     
     /// Write side information
-    pub fn write_side_info(&mut self, side_info: &SideInfo, config: &Config) {
+    pub fn write_side_info(&mut self, _side_info: &SideInfo, _config: &Config) {
         // Implementation will be added in later tasks
         todo!("Side info writing implementation")
     }

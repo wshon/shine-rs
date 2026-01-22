@@ -7,6 +7,7 @@
 use crate::error::{EncodingError, EncodingResult};
 
 /// Quantization loop for rate control and quality management
+#[allow(dead_code)]
 pub struct QuantizationLoop {
     /// Quantization step table
     step_table: [f32; 128],
@@ -20,6 +21,7 @@ pub struct QuantizationLoop {
 
 /// Granule information structure
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct GranuleInfo {
     /// Length of part2_3 data in bits
     pub part2_3_length: u32,
@@ -67,23 +69,25 @@ impl QuantizationLoop {
     /// Quantize MDCT coefficients and encode them
     pub fn quantize_and_encode(
         &mut self,
-        mdct_coeffs: &[i32; 576],
-        max_bits: usize,
-        side_info: &mut GranuleInfo,
-        output: &mut [i32; 576]
+        _mdct_coeffs: &[i32; 576],
+        _max_bits: usize,
+        _side_info: &mut GranuleInfo,
+        _output: &mut [i32; 576]
     ) -> EncodingResult<usize> {
         // Implementation will be added in later tasks
         todo!("Quantization and encoding implementation")
     }
     
     /// Inner loop: find optimal Huffman table selection
-    fn inner_loop(&self, coeffs: &mut [i32; 576], max_bits: usize, info: &mut GranuleInfo) -> usize {
+    #[allow(dead_code)]
+    fn inner_loop(&self, _coeffs: &mut [i32; 576], _max_bits: usize, _info: &mut GranuleInfo) -> usize {
         // Implementation will be added in later tasks
         todo!("Inner loop implementation")
     }
     
     /// Outer loop: adjust quantization step size
-    fn outer_loop(&self, coeffs: &mut [i32; 576], max_bits: usize, info: &mut GranuleInfo) -> usize {
+    #[allow(dead_code)]
+    fn outer_loop(&self, _coeffs: &mut [i32; 576], _max_bits: usize, _info: &mut GranuleInfo) -> usize {
         // Implementation will be added in later tasks
         todo!("Outer loop implementation")
     }
@@ -136,23 +140,5 @@ impl BitReservoir {
 impl Default for QuantizationLoop {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-impl Default for GranuleInfo {
-    fn default() -> Self {
-        Self {
-            part2_3_length: 0,
-            big_values: 0,
-            global_gain: 0,
-            scalefac_compress: 0,
-            table_select: [0; 3],
-            region0_count: 0,
-            region1_count: 0,
-            preflag: false,
-            scalefac_scale: false,
-            count1table_select: false,
-            quantizer_step_size: 0,
-        }
     }
 }

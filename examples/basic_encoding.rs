@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     
     // Create encoder
-    let mut encoder = Mp3Encoder::new(config)?;
+    let encoder = Mp3Encoder::new(config)?;
     
     println!("Created MP3 encoder:");
     println!("  Sample rate: {} Hz", encoder.config().wave.sample_rate);

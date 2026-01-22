@@ -63,9 +63,6 @@ pub const SCALE_FACT_BAND_INDEX: [[i32; 23]; 9] = [
 /// Scale factor length tables (matches shine_slen1_tab and shine_slen2_tab)
 pub const SLEN1_TAB: [i32; 16] = [0, 0, 0, 0, 3, 1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4];
 pub const SLEN2_TAB: [i32; 16] = [0, 1, 2, 3, 0, 1, 2, 3, 1, 2, 3, 1, 2, 3, 2, 3];
-/// Subband filter window coefficients (matches shine_enwindow)
-/// These are the analysis window coefficients for the polyphase filterbank
-/// Scaled and converted to fixed point (i32) from the original floating point values
 
 /// Subband filter window coefficients (matches shine_enwindow)
 /// These are the analysis window coefficients for the polyphase filterbank
@@ -235,6 +232,7 @@ pub const ENWINDOW: [i32; 512] = [
 ];
 /// MDCT cosine tables for different block types
 /// These are precomputed cosine values for the MDCT transform
+#[allow(clippy::excessive_precision)]
 pub const MDCT_COS_TABLE: [[f32; 36]; 18] = [
     // Block type 0 (long blocks)
     [
@@ -259,13 +257,14 @@ pub const MDCT_COS_TABLE: [[f32; 36]; 18] = [
 
 /// Quantization step size table
 /// These are the quantization step sizes for different global gain values
+#[allow(clippy::excessive_precision)]
 pub const QUANTIZATION_STEP_TABLE: [f32; 120] = [
     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
     0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
     1.0, 1.0905077326652577, 1.1892071150027210, 1.2968395546510096,
-    1.4142135623730951, 1.5422108254079408, 1.6817928305074290, 1.8340080864093424,
+    std::f32::consts::SQRT_2, 1.542_210_8, 1.681_792_9, 1.834_008_1,
     2.0, 2.1810154653305155, 2.3784142300054421, 2.5936791093020192,
     2.8284271247461903, 3.0844216508158816, 3.3635856610148581, 3.6680161728186848,
     4.0, 4.3620309306610311, 4.7568284600108841, 5.1873582186040384,
@@ -416,8 +415,8 @@ pub fn select_huffman_table(values: &[i32], start: usize, end: usize) -> usize {
 /// Helper function to get the number of bits required to encode a value with a given table
 pub fn get_huffman_bits(table_index: usize, x: i32, y: i32) -> Option<u32> {
     if let Some(Some(table)) = HUFFMAN_TABLES.get(table_index) {
-        let abs_x = x.abs() as usize;
-        let abs_y = y.abs() as usize;
+        let abs_x = x.unsigned_abs() as usize;
+        let abs_y = y.unsigned_abs() as usize;
         
         if abs_x < table.xlen as usize && abs_y < table.ylen as usize {
             let index = abs_y * table.xlen as usize + abs_x;

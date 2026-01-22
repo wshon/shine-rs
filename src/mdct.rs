@@ -3,9 +3,10 @@
 //! This module implements the MDCT transform that converts subband samples
 //! into frequency domain coefficients for quantization and encoding.
 
-use crate::error::{EncodingError, EncodingResult};
+use crate::error::EncodingResult;
 
 /// MDCT transform for converting subband samples to frequency coefficients
+#[allow(dead_code)]
 pub struct MdctTransform {
     /// Precomputed cosine table for MDCT
     cos_table: [[i32; 36]; 18],
@@ -23,13 +24,13 @@ impl MdctTransform {
     }
     
     /// Perform MDCT transform on subband samples
-    pub fn transform(&self, subband_samples: &[[i32; 32]; 36], output: &mut [i32; 576]) -> EncodingResult<()> {
+    pub fn transform(&self, _subband_samples: &[[i32; 32]; 36], _output: &mut [i32; 576]) -> EncodingResult<()> {
         // Implementation will be added in later tasks
         todo!("MDCT transform implementation")
     }
     
     /// Apply aliasing reduction to MDCT coefficients
-    pub fn apply_aliasing_reduction(&self, coeffs: &mut [i32; 576]) -> EncodingResult<()> {
+    pub fn apply_aliasing_reduction(&self, _coeffs: &mut [i32; 576]) -> EncodingResult<()> {
         // Implementation will be added in later tasks
         todo!("Aliasing reduction implementation")
     }

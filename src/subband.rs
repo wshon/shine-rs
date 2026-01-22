@@ -3,9 +3,10 @@
 //! This module implements the polyphase subband filter that decomposes
 //! PCM audio into 32 frequency subbands for further processing.
 
-use crate::error::{EncodingError, EncodingResult};
+use crate::error::EncodingResult;
 
 /// Subband filter for decomposing PCM audio into frequency bands
+#[allow(dead_code)]
 pub struct SubbandFilter {
     /// Filter bank coefficients
     filter_bank: [i32; 512],
@@ -26,7 +27,7 @@ impl SubbandFilter {
     }
     
     /// Filter PCM samples into subband samples
-    pub fn filter(&mut self, pcm_samples: &[i16], output: &mut [i32; 32], channel: usize) -> EncodingResult<()> {
+    pub fn filter(&mut self, _pcm_samples: &[i16], _output: &mut [i32; 32], _channel: usize) -> EncodingResult<()> {
         // Implementation will be added in later tasks
         todo!("Subband filtering implementation")
     }
