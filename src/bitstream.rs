@@ -309,9 +309,10 @@ impl BitstreamWriter {
         let mut crc: u16 = 0xFFFF;
         let polynomial: u16 = 0x8005; // CRC-16 polynomial
         
-        let end_byte = start_byte + (length_bits + 7) / 8;
+        let end_byte = start_byte + length_bits.div_ceil(8);
         let end_byte = std::cmp::min(end_byte, data.len());
         
+        #[allow(clippy::needless_range_loop)]
         for byte_idx in start_byte..end_byte {
             let mut byte = data[byte_idx];
             
@@ -404,7 +405,7 @@ impl BitstreamWriter {
 /// Contains encoding parameters for each granule and channel,
 /// including quantization settings, Huffman table selections,
 /// and scale factor information.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SideInfo {
     /// Private bits for encoder use
     pub private_bits: u32,
@@ -415,7 +416,7 @@ pub struct SideInfo {
 }
 
 /// Information for a single granule
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GranuleInfo {
     /// Length of part 2 + part 3 in bits
     pub part2_3_length: u32,
@@ -437,33 +438,6 @@ pub struct GranuleInfo {
     pub scalefac_scale: bool,
     /// Count1 table selection
     pub count1table_select: bool,
-}
-
-impl Default for SideInfo {
-    fn default() -> Self {
-        Self {
-            private_bits: 0,
-            scfsi: [[false; 4]; 2],
-            granules: Vec::new(),
-        }
-    }
-}
-
-impl Default for GranuleInfo {
-    fn default() -> Self {
-        Self {
-            part2_3_length: 0,
-            big_values: 0,
-            global_gain: 0,
-            scalefac_compress: 0,
-            table_select: [0; 3],
-            region0_count: 0,
-            region1_count: 0,
-            preflag: false,
-            scalefac_scale: false,
-            count1table_select: false,
-        }
-    }
 }
 
 impl Default for BitstreamWriter {
@@ -806,22 +780,28 @@ mod tests {
         };
         
         let mut side_info = SideInfo::default();
-        side_info.private_bits = 5;
-        side_info.scfsi = [[true, false, true, false], [false, true, false, true]];
+        #[allow(clippy::field_reassign_with_default)]
+        {
+            side_info.private_bits = 5;
+            side_info.scfsi = [[true, false, true, false], [false, true, false, true]];
+        }
         
         // Add granule info for MPEG-1 stereo (2 granules * 2 channels = 4 granules)
         for _ in 0..4 {
             let mut gi = GranuleInfo::default();
-            gi.part2_3_length = 100;
-            gi.big_values = 50;
-            gi.global_gain = 200;
-            gi.scalefac_compress = 10;
-            gi.table_select = [1, 2, 3];
-            gi.region0_count = 7;
-            gi.region1_count = 5;
-            gi.preflag = true;
-            gi.scalefac_scale = false;
-            gi.count1table_select = true;
+            #[allow(clippy::field_reassign_with_default)]
+            {
+                gi.part2_3_length = 100;
+                gi.big_values = 50;
+                gi.global_gain = 200;
+                gi.scalefac_compress = 10;
+                gi.table_select = [1, 2, 3];
+                gi.region0_count = 7;
+                gi.region1_count = 5;
+                gi.preflag = true;
+                gi.scalefac_scale = false;
+                gi.count1table_select = true;
+            }
             side_info.granules.push(gi);
         }
         
@@ -829,7 +809,7 @@ mod tests {
         let result = writer.flush();
         
         // Side info should have written some data
-        assert!(result.len() > 0);
+        assert!(!result.is_empty());
         
         // For MPEG-1 stereo, side info should be 32 bytes
         // (9 + 3 + 8 + 4*59) bits = 256 bits = 32 bytes
@@ -845,7 +825,7 @@ mod tests {
         
         // CRC should be calculated correctly (exact value depends on implementation)
         // This is mainly testing that the function doesn't panic
-        assert!(crc != 0 || crc == 0); // Always true, just to use the result
+        let _ = crc; // Just to use the result
     }
 
     #[test]
@@ -1132,7 +1112,7 @@ mod tests {
             
             // Calculate expected side info length based on MPEG version and channels
             // Based on ISO/IEC 11172-3 standard
-            let expected_bits = match (config.mpeg_version(), channels) {
+            let expected_bits: usize = match (config.mpeg_version(), channels) {
                 (MpegVersion::Mpeg1, 1) => {
                     // MPEG-1 mono: main_data_begin(9) + private_bits(5) + scfsi(4) + granule_info(2*59)
                     9 + 5 + 4 + 2 * 59
@@ -1143,7 +1123,7 @@ mod tests {
                 },
                 (MpegVersion::Mpeg2, 1) | (MpegVersion::Mpeg25, 1) => {
                     // MPEG-2/2.5 mono: main_data_begin(8) + private_bits(1) + granule_info(1*51)
-                    8 + 1 + 1 * 51
+                    8 + 1 + 51
                 },
                 (MpegVersion::Mpeg2, 2) | (MpegVersion::Mpeg25, 2) => {
                     // MPEG-2/2.5 stereo: main_data_begin(8) + private_bits(2) + granule_info(2*51)
@@ -1151,7 +1131,7 @@ mod tests {
                 },
                 _ => 0,
             };
-            let expected_bytes: usize = (expected_bits + 7) / 8;
+            let expected_bytes: usize = expected_bits.div_ceil(8);
             
             // Allow some tolerance for implementation differences
             let actual_bytes = result.len();
@@ -1184,7 +1164,7 @@ mod tests {
             prop_assert_eq!(actual_bits, expected_bits, "Total bits written must match sum of individual writes");
             
             // Result should contain the right number of bytes (rounded up)
-            let expected_bytes = (expected_bits + 7) / 8;
+            let expected_bytes = expected_bits.div_ceil(8);
             prop_assert_eq!(result.len(), expected_bytes, "Buffer length must match expected bytes");
         }
 
