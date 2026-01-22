@@ -33,6 +33,12 @@ pub struct Mp3Encoder {
     frame_buffer: Vec<u8>,
     /// Samples accumulated in buffer
     samples_in_buffer: usize,
+    /// Whole slots per frame (for frame size calculation)
+    whole_slots_per_frame: usize,
+    /// Fractional slots per frame (for padding calculation)
+    frac_slots_per_frame: f64,
+    /// Slot lag for padding calculation
+    slot_lag: f64,
 }
 
 impl Mp3Encoder {
@@ -44,6 +50,18 @@ impl Mp3Encoder {
         let channels = config.wave.channels as usize;
         let samples_per_frame = config.samples_per_frame();
         
+        // Calculate frame size parameters (following shine's logic)
+        let bitrate = config.mpeg.bitrate * 1000; // Convert to bps
+        let sample_rate = config.wave.sample_rate;
+        
+        // Calculate average slots per frame
+        let avg_slots_per_frame = (bitrate as f64 * samples_per_frame as f64) / 
+                                 (sample_rate as f64 * 8.0);
+        
+        let whole_slots_per_frame = avg_slots_per_frame as usize;
+        let frac_slots_per_frame = avg_slots_per_frame - whole_slots_per_frame as f64;
+        let slot_lag = -frac_slots_per_frame;
+        
         Ok(Self {
             subband: SubbandFilter::new(channels),
             mdct: MdctTransform::new(),
@@ -53,6 +71,9 @@ impl Mp3Encoder {
             buffer: vec![Vec::with_capacity(samples_per_frame); channels],
             frame_buffer: Vec::with_capacity(2048),
             samples_in_buffer: 0,
+            whole_slots_per_frame,
+            frac_slots_per_frame,
+            slot_lag,
             config,
         })
     }
@@ -293,22 +314,49 @@ impl Mp3Encoder {
     
     /// Main encoding pipeline that processes PCM data through all stages
     fn encode_frame_pipeline(&mut self, channels: usize, samples_per_frame: usize) -> Result<&[u8]> {
-        // Step 1: Write MP3 frame header
-        self.bitstream.write_frame_header(&self.config, false); // No padding for now
+        // Step 1: Calculate padding bit for this frame
+        let padding = if self.frac_slots_per_frame > 0.0 {
+            let should_pad = self.slot_lag <= (self.frac_slots_per_frame - 1.0);
+            self.slot_lag += if should_pad { 1.0 } else { 0.0 } - self.frac_slots_per_frame;
+            should_pad
+        } else {
+            false
+        };
         
-        // Step 2: Prepare side information structure
+        // Step 2: Calculate target frame size in bits
+        let target_frame_size_bytes = self.whole_slots_per_frame + if padding { 1 } else { 0 };
+        let target_frame_size_bits = target_frame_size_bytes * 8;
+        
+        // Step 3: Write MP3 frame header
+        self.bitstream.write_frame_header(&self.config, padding);
+        
+        // Step 4: Prepare side information structure
         let mut side_info = SideInfo::default();
         self.prepare_side_info(&mut side_info, channels);
         
-        // Step 3: Process each channel through the encoding pipeline
+        // Step 5: Process each channel through the encoding pipeline
         for ch in 0..channels {
             self.encode_channel(ch, samples_per_frame, &mut side_info)?;
         }
         
-        // Step 4: Write side information
+        // Step 6: Write side information
         self.bitstream.write_side_info(&side_info, &self.config);
         
-        // Step 5: Flush bitstream and copy to frame buffer
+        // Step 7: Pad to target frame size if necessary
+        let current_bits = self.bitstream.bits_written();
+        if current_bits < target_frame_size_bits {
+            let padding_bits = target_frame_size_bits - current_bits;
+            // Add padding bits (zeros)
+            for _ in 0..(padding_bits / 8) {
+                self.bitstream.write_bits(0, 8);
+            }
+            let remaining_bits = padding_bits % 8;
+            if remaining_bits > 0 {
+                self.bitstream.write_bits(0, remaining_bits as u8);
+            }
+        }
+        
+        // Step 8: Flush bitstream and copy to frame buffer
         let encoded_data = self.bitstream.flush();
         self.frame_buffer.clear();
         self.frame_buffer.extend_from_slice(encoded_data);
