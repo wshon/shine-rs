@@ -334,9 +334,9 @@ impl Mp3Encoder {
     }
     
     /// Main encoding pipeline that processes PCM data through all stages
-    /// Following shine's encode_buffer_internal logic
+    /// Following shine's encode_buffer_internal logic exactly
     fn encode_frame_pipeline(&mut self, channels: usize, samples_per_frame: usize) -> Result<&[u8]> {
-        // Step 1: Calculate padding bit for this frame (following shine's logic)
+        // Step 1: Calculate padding bit for this frame (following shine's logic exactly)
         let padding = if self.frac_slots_per_frame > 0.0 {
             let should_pad = self.slot_lag <= (self.frac_slots_per_frame - 1.0);
             self.slot_lag += if should_pad { 1.0 } else { 0.0 } - self.frac_slots_per_frame;
@@ -345,29 +345,45 @@ impl Mp3Encoder {
             false
         };
         
-        // Step 2: Calculate target frame size in bits (following shine's bits_per_frame calculation)
+        // Step 2: Calculate bits_per_frame exactly like shine (this is the key fix!)
+        // config->mpeg.bits_per_frame = 8 * (config->mpeg.whole_slots_per_frame + config->mpeg.padding);
+        let bits_per_frame = 8 * (self.whole_slots_per_frame + if padding { 1 } else { 0 });
         let target_frame_size_bytes = self.whole_slots_per_frame + if padding { 1 } else { 0 };
-        let target_frame_size_bits = target_frame_size_bytes * 8;
         
-        // Step 3: Write MP3 frame header (following shine's encodeSideInfo)
+        // Step 3: Calculate sideinfo_len exactly like shine
+        let sideinfo_len = if self.config.mpeg_version() == crate::config::MpegVersion::Mpeg1 {
+            8 * if channels == 1 { 4 + 17 } else { 4 + 32 }
+        } else {
+            8 * if channels == 1 { 4 + 9 } else { 4 + 17 }
+        };
+        
+        // Step 4: Calculate mean_bits exactly like shine
+        // config->mean_bits = (config->mpeg.bits_per_frame - config->sideinfo_len) / config->mpeg.granules_per_frame;
+        let granules_per_frame = match self.config.mpeg_version() {
+            crate::config::MpegVersion::Mpeg1 => 2,
+            crate::config::MpegVersion::Mpeg2 | crate::config::MpegVersion::Mpeg25 => 1,
+        };
+        let mean_bits = (bits_per_frame - sideinfo_len) / granules_per_frame;
+        
+        // Step 5: Write MP3 frame header
         self.bitstream.write_frame_header(&self.config, padding);
         
-        // Step 4: Prepare side information structure
+        // Step 6: Prepare side information structure
         let mut side_info = SideInfo::default();
         self.prepare_side_info(&mut side_info, channels);
         
-        // Step 5: Process each channel through the encoding pipeline
+        // Step 7: Process each channel through the encoding pipeline with correct bit allocation
         for ch in 0..channels {
-            self.encode_channel(ch, samples_per_frame, &mut side_info)?;
+            self.encode_channel(ch, samples_per_frame, &mut side_info, mean_bits)?;
         }
         
-        // Step 6: Write side information (following shine's encodeSideInfo)
+        // Step 8: Write side information
         self.bitstream.write_side_info(&side_info, &self.config);
         
-        // Step 7: Ensure frame is exactly the target size (following shine's approach)
+        // Step 9: Ensure frame is exactly the target size (critical for MP3 format compliance)
         let current_bits = self.bitstream.bits_written();
-        if current_bits < target_frame_size_bits {
-            let padding_bits = target_frame_size_bits - current_bits;
+        if current_bits < bits_per_frame {
+            let padding_bits = bits_per_frame - current_bits;
             // Add padding bits (zeros) to reach exact frame size
             for _ in 0..(padding_bits / 8) {
                 self.bitstream.write_bits(0, 8);
@@ -376,33 +392,30 @@ impl Mp3Encoder {
             if remaining_bits > 0 {
                 self.bitstream.write_bits(0, remaining_bits as u8);
             }
-        } else if current_bits > target_frame_size_bits {
-            // This should not happen in a correct implementation
-            // But if it does, we need to truncate (this is an error condition)
-            eprintln!("Warning: Frame size exceeded target ({} > {})", current_bits, target_frame_size_bits);
-            // In this case, we should still flush what we have, but the frame will be oversized
+        } else if current_bits > bits_per_frame {
+            // This should not happen with correct bit allocation, but handle it gracefully
+            eprintln!("Warning: Frame size exceeded target ({} > {} bits)", current_bits, bits_per_frame);
         }
         
-        // Step 8: Flush bitstream to get the complete frame data
+        // Step 10: Flush bitstream to get the complete frame data
         let encoded_data = self.bitstream.flush();
         
-        // Step 9: Copy to frame buffer and ensure it's exactly the target size
+        // Step 11: Ensure frame is exactly the target size in bytes
         self.frame_buffer.clear();
         if encoded_data.len() <= target_frame_size_bytes {
             // Frame is correct size or smaller, copy it
             self.frame_buffer.extend_from_slice(encoded_data);
-            // Pad with zeros if needed
+            // Pad with zeros if needed to reach exact target size
             while self.frame_buffer.len() < target_frame_size_bytes {
                 self.frame_buffer.push(0);
             }
         } else {
-            // Frame is too large, truncate to target size
+            // Frame is too large, truncate to target size (should not happen with correct implementation)
             eprintln!("Warning: Truncating oversized frame ({} > {} bytes)", encoded_data.len(), target_frame_size_bytes);
             self.frame_buffer.extend_from_slice(&encoded_data[..target_frame_size_bytes]);
         }
         
-        // Step 10: Reset bitstream for next frame (following shine's data_position = 0)
-        // This ensures each frame is independent and starts with a fresh bitstream
+        // Step 12: Reset bitstream for next frame
         self.bitstream.reset();
         
         Ok(&self.frame_buffer)
@@ -448,7 +461,7 @@ impl Mp3Encoder {
     }
     
     /// Encode a single channel through the complete pipeline
-    fn encode_channel(&mut self, channel: usize, samples_per_frame: usize, side_info: &mut SideInfo) -> Result<()> {
+    fn encode_channel(&mut self, channel: usize, samples_per_frame: usize, side_info: &mut SideInfo, mean_bits: usize) -> Result<()> {
         use crate::config::MpegVersion;
         
         // Determine number of granules based on MPEG version
@@ -465,7 +478,7 @@ impl Mp3Encoder {
             
             if granule_index < side_info.granules.len() {
                 self.encode_granule(channel, granule, samples_per_granule, 
-                                  &mut side_info.granules[granule_index])?;
+                                  &mut side_info.granules[granule_index], mean_bits)?;
             }
         }
         
@@ -474,7 +487,7 @@ impl Mp3Encoder {
     
     /// Encode a single granule (portion of a channel's data)
     fn encode_granule(&mut self, channel: usize, granule: usize, samples_per_granule: usize, 
-                     granule_info: &mut GranuleInfo) -> Result<()> {
+                     granule_info: &mut GranuleInfo, mean_bits: usize) -> Result<()> {
         // Step 1: Extract PCM samples for this granule
         let granule_start = granule * samples_per_granule;
         let granule_end = granule_start + samples_per_granule;
@@ -518,50 +531,32 @@ impl Mp3Encoder {
         // Step 4: Apply aliasing reduction
         self.mdct.apply_aliasing_reduction(&mut mdct_coeffs)?;
         
-        // Step 5: Calculate available bits for this granule (following shine's logic)
-        // We need to calculate this based on the encoder's configuration
+        // Step 5: Calculate max_bits per granule following shine's logic exactly
+        // In shine: max_bits = shine_max_reservoir_bits(&config->pe[ch][gr], config);
+        // For now, use mean_bits per channel as a simple approximation
         let channels = self.config.wave.channels as usize;
-        let bitrate_bps = self.config.mpeg.bitrate * 1000;
-        let sample_rate = self.config.wave.sample_rate;
-        let samples_per_frame = self.config.samples_per_frame();
+        let max_bits = mean_bits / channels;
         
-        // Calculate average slots per frame (following shine's logic)
-        let avg_slots_per_frame = (bitrate_bps as f64 * samples_per_frame as f64) / 
-                                 (sample_rate as f64 * 8.0);
-        let whole_slots_per_frame = avg_slots_per_frame as usize;
-        let bits_per_frame = whole_slots_per_frame * 8;
-        
-        let sideinfo_len = if self.config.mpeg_version() == crate::config::MpegVersion::Mpeg1 {
-            8 * if channels == 1 { 4 + 17 } else { 4 + 32 }
-        } else {
-            8 * if channels == 1 { 4 + 9 } else { 4 + 17 }
-        };
-        
-        let granules_per_frame = if self.config.mpeg_version() == crate::config::MpegVersion::Mpeg1 { 2 } else { 1 };
-        let mean_bits = (bits_per_frame - sideinfo_len) / granules_per_frame;
-        
-        // Calculate max_bits using proper reservoir logic (following shine_max_reservoir_bits)
-        let _mean_bits_per_granule = mean_bits / granules_per_frame;
-        
-        // Calculate max_bits per channel - following shine's reservoir logic exactly
-        // Use psychoacoustic model for perceptual entropy calculation
+        // Calculate perceptual entropy for bit allocation (simplified)
         let perceptual_entropy = self.calculate_perceptual_entropy(&mdct_coeffs);
-        let max_bits = self.reservoir.max_reservoir_bits(perceptual_entropy, channels as u8);
+        let adjusted_max_bits = self.reservoir.max_reservoir_bits(perceptual_entropy, channels as u8);
+        let final_max_bits = std::cmp::min(max_bits, adjusted_max_bits as usize);
         
         let mut quantized_coeffs = [0i32; 576];
         
+        // Step 6: Quantization and encoding with correct bit budget
         let bits_used = self.quantizer.quantize_and_encode(
             &mdct_coeffs, 
-            max_bits as usize, 
+            final_max_bits, 
             granule_info, 
             &mut quantized_coeffs,
             self.config.wave.sample_rate
         )?;
         
-        // Adjust bit reservoir after quantization
+        // Step 7: Adjust bit reservoir after quantization
         self.reservoir.adjust_reservoir(bits_used as i32, channels as u8);
         
-        // Step 6: Huffman encoding (write directly to bitstream)
+        // Step 8: Huffman encoding (write directly to bitstream)
         let _big_values_bits = self.huffman.encode_big_values(
             &mdct_coeffs,
             &quantized_coeffs, 
