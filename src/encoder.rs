@@ -997,5 +997,149 @@ mod tests {
             prop_assert_eq!(sync1, 0x7FF, "First frame should have valid sync");
             prop_assert_eq!(sync2, 0x7FF, "Second frame should have valid sync");
         }
+
+        // Feature: rust-mp3-encoder, Property 2: 刷新和完整性
+        #[test]
+        fn test_flush_and_completeness(
+            config in compatible_config(),
+            partial_samples_count in 1usize..1000,
+        ) {
+            setup_clean_errors();
+            
+            let mut encoder = Mp3Encoder::new(config.clone()).unwrap();
+            
+            let samples_per_frame = config.samples_per_frame();
+            let channels = config.wave.channels as usize;
+            
+            // Ensure partial_samples_count is less than samples_per_frame to create partial data
+            let partial_count = partial_samples_count % samples_per_frame;
+            if partial_count == 0 {
+                return Ok(()); // Skip if no partial data
+            }
+            
+            // Generate partial PCM data (less than a complete frame)
+            let partial_pcm: Vec<i16> = (0..partial_count * channels)
+                .map(|i| ((i % 1000) as i16) * 20)
+                .collect();
+            
+            // Add partial samples using encode_samples
+            let partial_result = encoder.encode_samples(&partial_pcm);
+            prop_assert!(partial_result.is_ok(), "Partial sample encoding should succeed");
+            
+            // Should return None since we don't have a complete frame yet
+            let partial_output = partial_result.unwrap();
+            prop_assert!(partial_output.is_none(), "Partial samples should not produce output");
+            
+            // Now flush should return all remaining encoded data
+            let flush_result = encoder.flush();
+            prop_assert!(flush_result.is_ok(), "Flush should succeed");
+            
+            let flushed_data = flush_result.unwrap();
+            
+            // For any encoding session, calling flush should return all remaining encoded data
+            // ensuring no data loss
+            prop_assert!(!flushed_data.is_empty(), "Flush should return encoded data for buffered samples");
+            
+            // Verify the flushed data is a valid MP3 frame
+            prop_assert!(flushed_data.len() >= 4, "Flushed frame should be at least 4 bytes");
+            let sync = ((flushed_data[0] as u16) << 3) | ((flushed_data[1] as u16) >> 5);
+            prop_assert_eq!(sync, 0x7FF, "Flushed frame should start with MP3 sync word");
+            
+            // After flush, subsequent flush should return empty (no data loss means no duplicate data)
+            let second_flush = encoder.flush();
+            prop_assert!(second_flush.is_ok(), "Second flush should succeed");
+            let second_flushed = second_flush.unwrap();
+            prop_assert!(second_flushed.is_empty(), "Second flush should return empty data");
+            
+            // Verify encoder state is clean after flush
+            // Should be able to encode new data after flush
+            let new_pcm = vec![500i16; samples_per_frame * channels];
+            let new_encode_result = encoder.encode_frame(&new_pcm);
+            prop_assert!(new_encode_result.is_ok(), "Should be able to encode after flush");
+            
+            let new_frame = new_encode_result.unwrap();
+            prop_assert!(!new_frame.is_empty(), "New frame after flush should not be empty");
+            let new_sync = ((new_frame[0] as u16) << 3) | ((new_frame[1] as u16) >> 5);
+            prop_assert_eq!(new_sync, 0x7FF, "New frame should have valid sync word");
+        }
+
+        #[test]
+        fn test_flush_completeness_with_multiple_partial_chunks(
+            config in compatible_config(),
+            chunk_sizes in prop::collection::vec(1usize..500, 2..5),
+        ) {
+            setup_clean_errors();
+            
+            let mut encoder = Mp3Encoder::new(config.clone()).unwrap();
+            
+            let samples_per_frame = config.samples_per_frame();
+            let channels = config.wave.channels as usize;
+            
+            // Calculate total partial samples from all chunks
+            let total_partial_samples: usize = chunk_sizes.iter().sum();
+            let total_partial_samples = total_partial_samples % samples_per_frame;
+            
+            if total_partial_samples == 0 {
+                return Ok(()); // Skip if no partial data
+            }
+            
+            // Add multiple chunks of partial data
+            let mut total_added = 0;
+            for &chunk_size in &chunk_sizes {
+                if total_added >= total_partial_samples {
+                    break;
+                }
+                
+                let actual_chunk_size = std::cmp::min(chunk_size, total_partial_samples - total_added);
+                let chunk_pcm: Vec<i16> = (0..actual_chunk_size * channels)
+                    .map(|i| ((i + total_added) % 2000) as i16)
+                    .collect();
+                
+                let chunk_result = encoder.encode_samples(&chunk_pcm);
+                prop_assert!(chunk_result.is_ok(), "Chunk encoding should succeed");
+                
+                let chunk_output = chunk_result.unwrap();
+                prop_assert!(chunk_output.is_none(), "Partial chunks should not produce output");
+                
+                total_added += actual_chunk_size;
+            }
+            
+            // Flush should return all accumulated data as a complete frame
+            let flush_result = encoder.flush();
+            prop_assert!(flush_result.is_ok(), "Flush should succeed");
+            
+            let flushed_data = flush_result.unwrap();
+            prop_assert!(!flushed_data.is_empty(), "Flush should return data for accumulated samples");
+            
+            // Verify completeness - flushed data should be a valid MP3 frame
+            let sync = ((flushed_data[0] as u16) << 3) | ((flushed_data[1] as u16) >> 5);
+            prop_assert_eq!(sync, 0x7FF, "Flushed frame should have valid sync word");
+            
+            // Verify no data remains after flush
+            let second_flush = encoder.flush();
+            prop_assert!(second_flush.is_ok(), "Second flush should succeed");
+            prop_assert!(second_flush.unwrap().is_empty(), "No data should remain after flush");
+        }
+
+        #[test]
+        fn test_flush_with_no_buffered_data(config in compatible_config()) {
+            setup_clean_errors();
+            
+            let mut encoder = Mp3Encoder::new(config).unwrap();
+            
+            // Flush with no buffered data should return empty
+            let flush_result = encoder.flush();
+            prop_assert!(flush_result.is_ok(), "Flush should succeed even with no data");
+            
+            let flushed_data = flush_result.unwrap();
+            prop_assert!(flushed_data.is_empty(), "Flush should return empty when no buffered data");
+            
+            // Multiple flushes should all return empty
+            for _ in 0..3 {
+                let flush_result = encoder.flush();
+                prop_assert!(flush_result.is_ok(), "Multiple flushes should succeed");
+                prop_assert!(flush_result.unwrap().is_empty(), "Multiple flushes should return empty");
+            }
+        }
     }
 }
