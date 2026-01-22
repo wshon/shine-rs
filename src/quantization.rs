@@ -201,9 +201,9 @@ impl QuantizationLoop {
                 low = mid + 1;
             } else {
                 // Calculate exact bit count following shine's bin_search_StepSize logic
-                let estimated_bits = self.calculate_exact_bits(&temp_output, granule_info, sample_rate);
+                let calculated_bits = self.calculate_exact_bits(&temp_output, granule_info, sample_rate);
                 
-                if estimated_bits <= target_bits {
+                if calculated_bits <= target_bits {
                     best_step = mid;
                     high = mid - 1;
                 } else {

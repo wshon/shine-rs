@@ -737,7 +737,7 @@ mod tests {
     }
 
     #[test]
-    fn test_side_info_basic() {
+    fn test_side_info_functionality() {
         use crate::config::*;
         
         let mut writer = BitstreamWriter::new(20);

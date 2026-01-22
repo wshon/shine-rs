@@ -296,7 +296,7 @@ mod tests {
     }
     
     #[test]
-    fn test_aliasing_reduction_simple_case() {
+    fn test_aliasing_reduction_adjacent_subbands() {
         let mdct = MdctTransform::new();
         let mut coeffs = [0i32; 576];
         

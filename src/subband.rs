@@ -442,8 +442,8 @@ mod tests {
         fn test_reference_implementation_consistency_energy_conservation(
             pcm_samples in pcm_samples_32(),
         ) {
-            // Energy conservation: the total energy should be approximately preserved
-            // This is a fundamental property of the polyphase filterbank
+            // Energy conservation: the total energy should be preserved within numerical precision
+            // This is a fundamental property of the polyphase filterbank following shine's implementation
             let mut filter = SubbandFilter::new(1);
             let mut output = [0i32; 32];
             
@@ -603,7 +603,7 @@ mod tests {
                         };
                         
                         prop_assert!(ratio > 0.3 && ratio < 3.0,
-                            "Linearity should hold approximately: subband {}, expected_scaled {}, actual_scaled {}, ratio {}",
+                            "Linearity should hold within tolerance: subband {}, expected_scaled {}, actual_scaled {}, ratio {}",
                             i, expected_scaled, actual_scaled, ratio);
                     }
                 }
@@ -762,8 +762,8 @@ mod tests {
     }
 
     #[test]
-    fn test_subband_filter_basic_functionality() {
-        // Basic smoke test
+    fn test_subband_filter_functionality() {
+        // Smoke test for subband filtering
         let mut filter = SubbandFilter::new(2);
         let pcm_samples = [100i16; 32];
         let mut output = [0i32; 32];

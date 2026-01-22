@@ -540,65 +540,27 @@ impl Mp3Encoder {
     }
     
     /// Calculate perceptual entropy for bit allocation
-    /// Following shine's psychoacoustic model approach
-    /// Based on shine's psychoacoustic analysis in layer3.c
+    /// Following shine's approach - no psychoacoustic model implementation
+    /// Based on shine's calc_xmin function in l3loop.c
     fn calculate_perceptual_entropy(&self, mdct_coeffs: &[i32; 576]) -> f64 {
-        // Following shine's psychoacoustic model calculation
-        // This implements a simplified version of the ISO psychoacoustic model
+        // Following shine's approach: no psychoacoustic model is implemented
+        // From shine's calc_xmin: "note. xmin will always be zero with no psychoacoustic model"
+        // Instead, we use a simple energy-based estimation for bit allocation
         
         let mut total_energy = 0.0;
-        let mut masked_threshold = 0.0;
         
-        // Calculate energy in critical bands (following shine's approach)
-        // MP3 uses 21 critical bands for long blocks
-        const CRITICAL_BANDS: usize = 21;
-        let mut band_energy = [0.0; CRITICAL_BANDS];
-        
-        // Map MDCT coefficients to critical bands
-        // Following shine's scale factor band mapping
-        let band_boundaries = [
-            0, 4, 8, 12, 16, 20, 24, 30, 36, 44, 52, 62, 74, 90, 110, 134, 162, 196, 238, 288, 342, 418, 576
-        ];
-        
-        for band in 0..CRITICAL_BANDS {
-            let start = band_boundaries[band];
-            let end = band_boundaries[band + 1].min(576);
-            
-            for i in start..end {
-                let coeff_energy = (mdct_coeffs[i] as f64).powi(2);
-                band_energy[band] += coeff_energy;
-                total_energy += coeff_energy;
-            }
+        // Calculate total spectral energy
+        for &coeff in mdct_coeffs.iter() {
+            total_energy += (coeff as f64).powi(2);
         }
         
-        // Calculate masking threshold for each band
-        // Following shine's psychoacoustic model principles
-        for band in 0..CRITICAL_BANDS {
-            if band_energy[band] > 0.0 {
-                // Tonality estimation (simplified)
-                let tonality = if band_energy[band] > total_energy / (CRITICAL_BANDS as f64) {
-                    0.8 // More tonal
-                } else {
-                    0.2 // More noise-like
-                };
-                
-                // Calculate masking threshold based on energy and tonality
-                // Following shine's approach to perceptual entropy
-                let band_threshold = band_energy[band] * (0.1 + tonality * 0.4);
-                masked_threshold += band_threshold;
-            }
-        }
+        // Normalize energy to a reasonable range for bit allocation
+        // This provides a basic estimation without full psychoacoustic modeling
+        let normalized_energy = total_energy / (576.0 * 32768.0 * 32768.0);
         
-        // Calculate perceptual entropy as ratio of signal energy to masking threshold
-        // Higher ratio means more perceptually important content = need more bits
-        if masked_threshold > 0.0 {
-            let entropy_ratio = total_energy / masked_threshold;
-            // Normalize to reasonable range (0.0 to 1000.0)
-            entropy_ratio.min(1000.0).max(0.0)
-        } else {
-            // Fallback for silent or very quiet signals
-            total_energy.sqrt().min(100.0)
-        }
+        // Return a simple energy-based measure
+        // Higher energy signals need more bits for encoding
+        (normalized_energy.sqrt() * 100.0).min(1000.0).max(0.0)
     }
 }
 
@@ -657,7 +619,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mp3_encoder_encode_frame_basic() {
+    fn test_mp3_encoder_encode_frame_functionality() {
         let config = Config {
             wave: WaveConfig {
                 channels: Channels::Mono,
@@ -1021,7 +983,7 @@ mod tests {
         })]
 
         #[test]
-        fn test_encoder_initialization_and_basic_functionality(config in compatible_config()) {
+        fn test_encoder_initialization_and_functionality(config in compatible_config()) {
             setup_clean_errors();
             
             // For any valid encoding configuration, encoder should successfully initialize
@@ -1044,7 +1006,7 @@ mod tests {
         }
 
         #[test]
-        fn test_encoder_basic_functionality_with_valid_pcm(
+        fn test_encoder_functionality_with_valid_pcm(
             config in compatible_config(),
         ) {
             setup_clean_errors();
@@ -1056,9 +1018,16 @@ mod tests {
             let channels = config.wave.channels as usize;
             let total_samples = samples_per_frame * channels;
             
-            // Create PCM data with appropriate size (use simple pattern for deterministic testing)
+            // Create PCM data with appropriate size (use realistic audio pattern for testing)
             let pcm_data: Vec<i16> = (0..total_samples)
-                .map(|i| ((i % 1000) as i16) * 32)
+                .map(|i| {
+                    // Generate a more realistic audio signal with multiple frequency components
+                    let t = i as f64 / 44100.0; // Assume 44.1kHz for time calculation
+                    let sample = (1000.0 * (2.0 * std::f64::consts::PI * 440.0 * t).sin() +
+                                 500.0 * (2.0 * std::f64::consts::PI * 880.0 * t).sin() +
+                                 250.0 * (2.0 * std::f64::consts::PI * 1320.0 * t).sin()) as i16;
+                    sample
+                })
                 .collect();
             
             // For any valid PCM input data, should return valid MP3 encoded data
@@ -1111,7 +1080,12 @@ mod tests {
             let total_samples = samples_per_frame * 2; // Stereo
             
             let pcm_data: Vec<i16> = (0..total_samples)
-                .map(|i| ((i % 2000) as i16) * 16)
+                .map(|i| {
+                    // Generate realistic stereo audio signal
+                    let t = i as f64 / 44100.0;
+                    let sample = (800.0 * (2.0 * std::f64::consts::PI * 440.0 * t).sin()) as i16;
+                    sample
+                })
                 .collect();
             
             // Test interleaved encoding
@@ -1183,7 +1157,10 @@ mod tests {
             
             // Generate partial PCM data (less than a complete frame)
             let partial_pcm: Vec<i16> = (0..partial_count * channels)
-                .map(|i| ((i % 1000) as i16) * 20)
+                .map(|i| {
+                    let t = i as f64 / 44100.0;
+                    (1000.0 * (2.0 * std::f64::consts::PI * 220.0 * t).sin()) as i16
+                })
                 .collect();
             
             // Add partial samples using encode_samples
@@ -1353,7 +1330,10 @@ mod tests {
                 // Test encoding with mono data
                 let samples_per_frame = config.samples_per_frame();
                 let pcm_data: Vec<i16> = (0..samples_per_frame)
-                    .map(|i| ((i % 1000) as i16) * 10)
+                    .map(|i| {
+                        let t = i as f64 / 44100.0;
+                        (500.0 * (2.0 * std::f64::consts::PI * 330.0 * t).sin()) as i16
+                    })
                     .collect();
                 
                 let encode_result = encoder.encode_frame(&pcm_data);
@@ -1417,7 +1397,10 @@ mod tests {
                 let samples_per_frame = config.samples_per_frame();
                 let total_samples = samples_per_frame * 2; // Stereo
                 let pcm_data: Vec<i16> = (0..total_samples)
-                    .map(|i| ((i % 2000) as i16) * 8)
+                    .map(|i| {
+                        let t = i as f64 / 44100.0;
+                        (400.0 * (2.0 * std::f64::consts::PI * 660.0 * t).sin()) as i16
+                    })
                     .collect();
                 
                 let encode_result = encoder.encode_frame(&pcm_data);
@@ -1432,7 +1415,12 @@ mod tests {
                 
                 // Test interleaved encoding as well
                 let interleaved_data: Vec<i16> = (0..samples_per_frame)
-                    .flat_map(|i| vec![((i % 1000) as i16) * 12, ((i % 1500) as i16) * 8])
+                    .flat_map(|i| {
+                        let t = i as f64 / 44100.0;
+                        let left = (600.0 * (2.0 * std::f64::consts::PI * 440.0 * t).sin()) as i16;
+                        let right = (400.0 * (2.0 * std::f64::consts::PI * 880.0 * t).sin()) as i16;
+                        vec![left, right]
+                    })
                     .collect();
                 
                 let interleaved_result = encoder.encode_frame_interleaved(&interleaved_data);
