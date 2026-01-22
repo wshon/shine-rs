@@ -9,7 +9,7 @@ use crate::mdct::MdctTransform;
 use crate::quantization::{QuantizationLoop, GranuleInfo};
 use crate::huffman::HuffmanEncoder;
 use crate::bitstream::{BitstreamWriter, SideInfo};
-use crate::error::{EncoderError, InputDataError};
+use crate::error::{EncoderError, InputDataError, ConfigError};
 use crate::Result;
 
 /// Main MP3 encoder structure
@@ -799,8 +799,24 @@ mod tests {
     }
 
     prop_compose! {
+        fn valid_bitrate()(rate in prop::sample::select(&[
+            8u32, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 192, 224, 256, 320
+        ])) -> u32 {
+            rate
+        }
+    }
+
+    prop_compose! {
         fn valid_channels()(channels in prop::sample::select(&[Channels::Mono, Channels::Stereo])) -> Channels {
             channels
+        }
+    }
+
+    prop_compose! {
+        fn valid_stereo_mode()(mode in prop::sample::select(&[
+            StereoMode::Stereo, StereoMode::JointStereo, StereoMode::DualChannel, StereoMode::Mono
+        ])) -> StereoMode {
+            mode
         }
     }
 
@@ -1139,6 +1155,243 @@ mod tests {
                 let flush_result = encoder.flush();
                 prop_assert!(flush_result.is_ok(), "Multiple flushes should succeed");
                 prop_assert!(flush_result.unwrap().is_empty(), "Multiple flushes should return empty");
+            }
+        }
+
+        // Feature: rust-mp3-encoder, Property 3: 音频格式支持
+        #[test]
+        fn test_audio_format_support_mono_configurations(
+            sample_rate in valid_sample_rate(),
+            emphasis in valid_emphasis(),
+            copyright in any::<bool>(),
+            original in any::<bool>(),
+        ) {
+            setup_clean_errors();
+            
+            // Generate compatible bitrate for the sample rate
+            let valid_bitrates = match sample_rate {
+                44100 | 48000 | 32000 => vec![32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],
+                22050 | 24000 | 16000 => vec![8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160],
+                11025 | 12000 | 8000 => vec![8, 16, 24, 32, 40, 48, 56, 64],
+                _ => vec![128],
+            };
+            
+            for &bitrate in &valid_bitrates {
+                let config = Config {
+                    wave: WaveConfig {
+                        channels: Channels::Mono,
+                        sample_rate,
+                    },
+                    mpeg: MpegConfig {
+                        mode: StereoMode::Mono,
+                        bitrate,
+                        emphasis,
+                        copyright,
+                        original,
+                    },
+                };
+                
+                // For any standard audio format configuration (mono), encoder should handle correctly
+                let encoder_result = Mp3Encoder::new(config.clone());
+                prop_assert!(encoder_result.is_ok(), "Mono encoder creation should succeed for sample_rate={}, bitrate={}", sample_rate, bitrate);
+                
+                let mut encoder = encoder_result.unwrap();
+                
+                // Verify configuration is correctly applied
+                prop_assert_eq!(encoder.config().wave.channels, Channels::Mono, "Channel configuration should be mono");
+                prop_assert_eq!(encoder.config().wave.sample_rate, sample_rate, "Sample rate should match");
+                prop_assert_eq!(encoder.config().mpeg.bitrate, bitrate, "Bitrate should match");
+                
+                // Test encoding with mono data
+                let samples_per_frame = config.samples_per_frame();
+                let pcm_data: Vec<i16> = (0..samples_per_frame)
+                    .map(|i| ((i % 1000) as i16) * 10)
+                    .collect();
+                
+                let encode_result = encoder.encode_frame(&pcm_data);
+                prop_assert!(encode_result.is_ok(), "Mono frame encoding should succeed for sample_rate={}, bitrate={}", sample_rate, bitrate);
+                
+                let encoded_frame = encode_result.unwrap();
+                prop_assert!(!encoded_frame.is_empty(), "Encoded mono frame should not be empty");
+                
+                // Verify MP3 frame structure
+                let sync = ((encoded_frame[0] as u16) << 3) | ((encoded_frame[1] as u16) >> 5);
+                prop_assert_eq!(sync, 0x7FF, "Mono frame should have valid sync word");
+            }
+        }
+
+        #[test]
+        fn test_audio_format_support_stereo_configurations(
+            sample_rate in valid_sample_rate(),
+            stereo_mode in prop::sample::select(&[StereoMode::Stereo, StereoMode::JointStereo, StereoMode::DualChannel]),
+            emphasis in valid_emphasis(),
+            copyright in any::<bool>(),
+            original in any::<bool>(),
+        ) {
+            setup_clean_errors();
+            
+            // Generate compatible bitrate for the sample rate
+            let valid_bitrates = match sample_rate {
+                44100 | 48000 | 32000 => vec![32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320],
+                22050 | 24000 | 16000 => vec![8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160],
+                11025 | 12000 | 8000 => vec![8, 16, 24, 32, 40, 48, 56, 64],
+                _ => vec![128],
+            };
+            
+            for &bitrate in &valid_bitrates {
+                let config = Config {
+                    wave: WaveConfig {
+                        channels: Channels::Stereo,
+                        sample_rate,
+                    },
+                    mpeg: MpegConfig {
+                        mode: stereo_mode,
+                        bitrate,
+                        emphasis,
+                        copyright,
+                        original,
+                    },
+                };
+                
+                // For any standard audio format configuration (stereo), encoder should handle correctly
+                let encoder_result = Mp3Encoder::new(config.clone());
+                prop_assert!(encoder_result.is_ok(), "Stereo encoder creation should succeed for sample_rate={}, bitrate={}, mode={:?}", sample_rate, bitrate, stereo_mode);
+                
+                let mut encoder = encoder_result.unwrap();
+                
+                // Verify configuration is correctly applied
+                prop_assert_eq!(encoder.config().wave.channels, Channels::Stereo, "Channel configuration should be stereo");
+                prop_assert_eq!(encoder.config().wave.sample_rate, sample_rate, "Sample rate should match");
+                prop_assert_eq!(encoder.config().mpeg.bitrate, bitrate, "Bitrate should match");
+                prop_assert_eq!(encoder.config().mpeg.mode, stereo_mode, "Stereo mode should match");
+                
+                // Test encoding with stereo data (non-interleaved)
+                let samples_per_frame = config.samples_per_frame();
+                let total_samples = samples_per_frame * 2; // Stereo
+                let pcm_data: Vec<i16> = (0..total_samples)
+                    .map(|i| ((i % 2000) as i16) * 8)
+                    .collect();
+                
+                let encode_result = encoder.encode_frame(&pcm_data);
+                prop_assert!(encode_result.is_ok(), "Stereo frame encoding should succeed for sample_rate={}, bitrate={}, mode={:?}", sample_rate, bitrate, stereo_mode);
+                
+                let encoded_frame = encode_result.unwrap();
+                prop_assert!(!encoded_frame.is_empty(), "Encoded stereo frame should not be empty");
+                
+                // Verify MP3 frame structure
+                let sync = ((encoded_frame[0] as u16) << 3) | ((encoded_frame[1] as u16) >> 5);
+                prop_assert_eq!(sync, 0x7FF, "Stereo frame should have valid sync word");
+                
+                // Test interleaved encoding as well
+                let interleaved_data: Vec<i16> = (0..samples_per_frame)
+                    .flat_map(|i| vec![((i % 1000) as i16) * 12, ((i % 1500) as i16) * 8])
+                    .collect();
+                
+                let interleaved_result = encoder.encode_frame_interleaved(&interleaved_data);
+                prop_assert!(interleaved_result.is_ok(), "Interleaved stereo encoding should succeed for sample_rate={}, bitrate={}, mode={:?}", sample_rate, bitrate, stereo_mode);
+                
+                let interleaved_frame = interleaved_result.unwrap();
+                prop_assert!(!interleaved_frame.is_empty(), "Encoded interleaved frame should not be empty");
+                
+                let interleaved_sync = ((interleaved_frame[0] as u16) << 3) | ((interleaved_frame[1] as u16) >> 5);
+                prop_assert_eq!(interleaved_sync, 0x7FF, "Interleaved frame should have valid sync word");
+            }
+        }
+
+        #[test]
+        fn test_audio_format_support_invalid_configurations(
+            invalid_sample_rate in prop::num::u32::ANY.prop_filter("Must be invalid", |&rate| {
+                !matches!(rate, 44100 | 48000 | 32000 | 22050 | 24000 | 16000 | 11025 | 12000 | 8000)
+            }),
+            channels in valid_channels(),
+            bitrate in valid_bitrate(),
+            mode in valid_stereo_mode(),
+            emphasis in valid_emphasis(),
+            copyright in any::<bool>(),
+            original in any::<bool>(),
+        ) {
+            setup_clean_errors();
+            
+            let config = Config {
+                wave: WaveConfig {
+                    channels,
+                    sample_rate: invalid_sample_rate,
+                },
+                mpeg: MpegConfig {
+                    mode,
+                    bitrate,
+                    emphasis,
+                    copyright,
+                    original,
+                },
+            };
+            
+            // For any invalid audio format configuration, encoder should reject with appropriate error
+            let encoder_result = Mp3Encoder::new(config);
+            prop_assert!(encoder_result.is_err(), "Invalid sample rate should be rejected");
+            
+            if let Err(EncoderError::Config(config_err)) = encoder_result {
+                match config_err {
+                    ConfigError::UnsupportedSampleRate(rate) => {
+                        prop_assert_eq!(rate, invalid_sample_rate, "Error should contain invalid sample rate");
+                    },
+                    ConfigError::IncompatibleRateCombination { sample_rate, .. } => {
+                        prop_assert_eq!(sample_rate, invalid_sample_rate, "Error should contain invalid sample rate");
+                    },
+                    _ => prop_assert!(false, "Should get sample rate related error"),
+                }
+            } else {
+                prop_assert!(false, "Should get config error");
+            }
+        }
+
+        #[test]
+        fn test_audio_format_support_input_validation(
+            config in compatible_config(),
+            wrong_sample_count in 1usize..2000,
+        ) {
+            setup_clean_errors();
+            
+            let mut encoder = Mp3Encoder::new(config.clone()).unwrap();
+            
+            let samples_per_frame = config.samples_per_frame();
+            let channels = config.wave.channels as usize;
+            let expected_total = samples_per_frame * channels;
+            
+            // Ensure wrong_sample_count is different from expected
+            let wrong_count = if wrong_sample_count == expected_total {
+                wrong_sample_count + 1
+            } else {
+                wrong_sample_count
+            };
+            
+            let wrong_pcm_data = vec![100i16; wrong_count];
+            
+            // For any audio format configuration, encoder should validate input data correctly
+            let encode_result = encoder.encode_frame(&wrong_pcm_data);
+            prop_assert!(encode_result.is_err(), "Wrong input length should be rejected");
+            
+            match encode_result.unwrap_err() {
+                EncoderError::InputData(InputDataError::InvalidLength { expected, actual }) => {
+                    prop_assert_eq!(expected, expected_total, "Error should show expected sample count");
+                    prop_assert_eq!(actual, wrong_count, "Error should show actual sample count");
+                },
+                _ => prop_assert!(false, "Should get InvalidLength error"),
+            }
+            
+            // Test channel alignment validation for encode_samples
+            if channels > 1 {
+                let misaligned_data = vec![200i16; channels + 1]; // Not divisible by channel count
+                let samples_result = encoder.encode_samples(&misaligned_data);
+                prop_assert!(samples_result.is_err(), "Misaligned channel data should be rejected");
+                
+                match samples_result.unwrap_err() {
+                    EncoderError::InputData(InputDataError::InvalidChannelCount { expected, actual }) => {
+                        prop_assert_eq!(expected, channels, "Error should show expected channel count");
+                        prop_assert_eq!(actual, 1, "Error should show misalignment");
+                    },
+                    _ => prop_assert!(false, "Should get InvalidChannelCount error"),
+                }
             }
         }
     }
