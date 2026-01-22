@@ -80,16 +80,19 @@ impl HuffmanEncoder {
         let mut bits_written = 0;
         let big_values_end = std::cmp::min((info.big_values as usize) * 2, 576);
         
-        // Count1 region starts after big values and goes to the end
-        let count1_start = big_values_end;
+        // CRITICAL FIX: Follow shine's exact logic
+        // count1End = bigvalues + (gi->count1 << 2);
+        // for (i = bigvalues; i < count1End; i += 4)
+        let count1_end = big_values_end + ((info.count1 as usize) << 2);
         
         // Select count1 table (A or B)
         let table_index = if info.count1table_select { 1 } else { 0 };
         let table = self.count1_tables[table_index];
         
         // Process count1 region in groups of 4 coefficients
-        let mut pos = count1_start;
-        while pos + 3 < 576 {
+        // Following shine's exact loop structure
+        let mut pos = big_values_end;
+        while pos < count1_end && pos + 3 < 576 {
             let v = [
                 quantized[pos],
                 quantized[pos + 1], 
@@ -97,13 +100,7 @@ impl HuffmanEncoder {
                 quantized[pos + 3]
             ];
             
-            // Check if all values are in count1 range (0, ±1)
-            let all_count1 = v.iter().all(|&x| x.abs() <= 1);
-            if !all_count1 {
-                break; // End of count1 region
-            }
-            
-            // Encode the quadruple
+            // Encode the quadruple (no need to check range - count1 already validated this)
             bits_written += self.encode_count1_quadruple(&v, table, output)?;
             pos += 4;
         }

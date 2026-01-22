@@ -284,8 +284,11 @@ impl QuantizationLoop {
         //     break;
         side_info.count1 = 0;
         while i > 3 {
-            if quantized[i - 1].abs() <= 1 && quantized[i - 2].abs() <= 1 &&
-               quantized[i - 3].abs() <= 1 && quantized[i - 4].abs() <= 1 {
+            // CRITICAL FIX: Follow shine's exact logic
+            // In shine, quantized coefficients are non-negative (ix cannot be negative)
+            // So we check if values are <= 1, which means 0 or 1 only
+            if quantized[i - 1] <= 1 && quantized[i - 2] <= 1 &&
+               quantized[i - 3] <= 1 && quantized[i - 4] <= 1 {
                 side_info.count1 += 1;
                 i -= 4;
             } else {
