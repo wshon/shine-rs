@@ -358,6 +358,21 @@ impl Mp3Encoder {
 mod tests {
     use super::*;
     use crate::config::{Config, WaveConfig, MpegConfig, Channels, StereoMode, Emphasis};
+    use proptest::prelude::*;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    fn setup_clean_errors() {
+        INIT.call_once(|| {
+            std::panic::set_hook(Box::new(|info| {
+                if let Some(s) = info.payload().downcast_ref::<String>() {
+                    let msg = if s.len() > 200 { &s[..197] } else { s };
+                    eprintln!("Test failed: {}", msg.trim());
+                }
+            }));
+        });
+    }
 
     #[test]
     fn test_mp3_encoder_creation() {
@@ -533,5 +548,217 @@ mod tests {
         let pcm_data = vec![1i16; 1152];
         let result = encoder.encode_frame(&pcm_data);
         assert!(result.is_ok(), "Small constant frame encoding should succeed: {:?}", result.err());
+    }
+
+    // Property test generators
+    prop_compose! {
+        fn valid_sample_rate()(rate in prop::sample::select(&[
+            44100u32, 48000, 32000,  // MPEG-1
+            22050, 24000, 16000,     // MPEG-2
+            11025, 12000, 8000,      // MPEG-2.5
+        ])) -> u32 {
+            rate
+        }
+    }
+
+    prop_compose! {
+        fn valid_channels()(channels in prop::sample::select(&[Channels::Mono, Channels::Stereo])) -> Channels {
+            channels
+        }
+    }
+
+    prop_compose! {
+        fn valid_emphasis()(emphasis in prop::sample::select(&[
+            Emphasis::None, Emphasis::Emphasis50_15, Emphasis::CcittJ17
+        ])) -> Emphasis {
+            emphasis
+        }
+    }
+
+    fn compatible_config() -> impl Strategy<Value = Config> {
+        (valid_sample_rate(), valid_channels(), valid_emphasis(), any::<bool>(), any::<bool>())
+            .prop_flat_map(|(sample_rate, channels, emphasis, copyright, original)| {
+                let bitrate_strategy = match sample_rate {
+                    44100 | 48000 | 32000 => prop::sample::select(vec![32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]),
+                    22050 | 24000 | 16000 => prop::sample::select(vec![8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]),
+                    11025 | 12000 | 8000 => prop::sample::select(vec![8, 16, 24, 32, 40, 48, 56, 64]),
+                    _ => prop::sample::select(vec![128]), // fallback
+                };
+                
+                let mode_strategy = match channels {
+                    Channels::Mono => prop::sample::select(vec![StereoMode::Mono]),
+                    Channels::Stereo => prop::sample::select(vec![StereoMode::Stereo, StereoMode::JointStereo, StereoMode::DualChannel]),
+                };
+                
+                (Just(sample_rate), Just(channels), bitrate_strategy, mode_strategy, Just(emphasis), Just(copyright), Just(original))
+            })
+            .prop_map(|(sample_rate, channels, bitrate, mode, emphasis, copyright, original)| {
+                Config {
+                    wave: WaveConfig {
+                        channels,
+                        sample_rate,
+                    },
+                    mpeg: MpegConfig {
+                        mode,
+                        bitrate,
+                        emphasis,
+                        copyright,
+                        original,
+                    },
+                }
+            })
+    }
+
+    // Feature: rust-mp3-encoder, Property 1: 编码器初始化和基本功能
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 100,
+            verbose: 0,
+            max_shrink_iters: 0,
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        })]
+
+        #[test]
+        fn test_encoder_initialization_and_basic_functionality(config in compatible_config()) {
+            setup_clean_errors();
+            
+            // For any valid encoding configuration, encoder should successfully initialize
+            let encoder_result = Mp3Encoder::new(config.clone());
+            prop_assert!(encoder_result.is_ok(), "Encoder initialization failed");
+            
+            let encoder = encoder_result.unwrap();
+            
+            // Verify encoder properties match configuration
+            prop_assert_eq!(encoder.config().wave.channels, config.wave.channels, "Channel configuration mismatch");
+            prop_assert_eq!(encoder.config().wave.sample_rate, config.wave.sample_rate, "Sample rate mismatch");
+            prop_assert_eq!(encoder.config().mpeg.bitrate, config.mpeg.bitrate, "Bitrate mismatch");
+            
+            // Verify samples per frame calculation
+            let expected_samples = match config.mpeg_version() {
+                crate::config::MpegVersion::Mpeg1 => 1152,
+                crate::config::MpegVersion::Mpeg2 | crate::config::MpegVersion::Mpeg25 => 576,
+            };
+            prop_assert_eq!(encoder.samples_per_frame(), expected_samples, "Samples per frame mismatch");
+        }
+
+        #[test]
+        fn test_encoder_basic_functionality_with_valid_pcm(
+            config in compatible_config(),
+        ) {
+            setup_clean_errors();
+            
+            let mut encoder = Mp3Encoder::new(config.clone()).unwrap();
+            
+            // Generate valid PCM data for this configuration
+            let samples_per_frame = config.samples_per_frame();
+            let channels = config.wave.channels as usize;
+            let total_samples = samples_per_frame * channels;
+            
+            // Create PCM data with appropriate size (use simple pattern for deterministic testing)
+            let pcm_data: Vec<i16> = (0..total_samples)
+                .map(|i| ((i % 1000) as i16) * 32)
+                .collect();
+            
+            // For any valid PCM input data, should return valid MP3 encoded data
+            let encode_result = encoder.encode_frame(&pcm_data);
+            prop_assert!(encode_result.is_ok(), "Frame encoding failed");
+            
+            let encoded_frame = encode_result.unwrap();
+            prop_assert!(!encoded_frame.is_empty(), "Encoded frame should not be empty");
+            
+            // Verify MP3 frame structure - should start with sync word
+            prop_assert!(encoded_frame.len() >= 4, "Frame should be at least 4 bytes");
+            let sync = ((encoded_frame[0] as u16) << 3) | ((encoded_frame[1] as u16) >> 5);
+            prop_assert_eq!(sync, 0x7FF, "Frame should start with MP3 sync word");
+            
+            // Verify frame header contains correct information
+            let header = ((encoded_frame[0] as u32) << 24) | 
+                        ((encoded_frame[1] as u32) << 16) | 
+                        ((encoded_frame[2] as u32) << 8) | 
+                        (encoded_frame[3] as u32);
+            
+            // Check MPEG version bits (bits 19-20)
+            let mpeg_version_bits = (header >> 19) & 0x3;
+            let expected_version_bits = match config.mpeg_version() {
+                crate::config::MpegVersion::Mpeg1 => 0x3,
+                crate::config::MpegVersion::Mpeg2 => 0x2,
+                crate::config::MpegVersion::Mpeg25 => 0x0,
+            };
+            prop_assert_eq!(mpeg_version_bits, expected_version_bits, "MPEG version bits incorrect");
+            
+            // Check layer bits (bits 17-18) - should be 01 for Layer III
+            let layer_bits = (header >> 17) & 0x3;
+            prop_assert_eq!(layer_bits, 0x1, "Layer bits should indicate Layer III");
+        }
+
+        #[test]
+        fn test_encoder_interleaved_functionality(
+            config in compatible_config(),
+        ) {
+            setup_clean_errors();
+            
+            // Only test stereo configurations for interleaved encoding
+            if config.wave.channels != Channels::Stereo {
+                return Ok(());
+            }
+            
+            let mut encoder = Mp3Encoder::new(config.clone()).unwrap();
+            
+            // Generate interleaved PCM data
+            let samples_per_frame = config.samples_per_frame();
+            let total_samples = samples_per_frame * 2; // Stereo
+            
+            let pcm_data: Vec<i16> = (0..total_samples)
+                .map(|i| ((i % 2000) as i16) * 16)
+                .collect();
+            
+            // Test interleaved encoding
+            let encode_result = encoder.encode_frame_interleaved(&pcm_data);
+            prop_assert!(encode_result.is_ok(), "Interleaved frame encoding failed");
+            
+            let encoded_frame = encode_result.unwrap();
+            prop_assert!(!encoded_frame.is_empty(), "Encoded frame should not be empty");
+            
+            // Should produce valid MP3 frame
+            let sync = ((encoded_frame[0] as u16) << 3) | ((encoded_frame[1] as u16) >> 5);
+            prop_assert_eq!(sync, 0x7FF, "Interleaved frame should start with MP3 sync word");
+        }
+
+        #[test]
+        fn test_encoder_reset_functionality(config in compatible_config()) {
+            setup_clean_errors();
+            
+            let mut encoder = Mp3Encoder::new(config.clone()).unwrap();
+            
+            // Generate some PCM data
+            let samples_per_frame = config.samples_per_frame();
+            let channels = config.wave.channels as usize;
+            let total_samples = samples_per_frame * channels;
+            let pcm_data = vec![1000i16; total_samples];
+            
+            // Encode a frame and immediately extract the result
+            let first_result = encoder.encode_frame(&pcm_data);
+            prop_assert!(first_result.is_ok(), "First encoding should succeed");
+            let first_frame = first_result.unwrap().to_vec(); // Copy the data
+            
+            // Reset encoder
+            encoder.reset();
+            
+            // Should be able to encode again after reset
+            let second_result = encoder.encode_frame(&pcm_data);
+            prop_assert!(second_result.is_ok(), "Encoding after reset should succeed");
+            let second_frame = second_result.unwrap().to_vec(); // Copy the data
+            
+            // Both results should be valid MP3 frames
+            prop_assert!(!first_frame.is_empty(), "First frame should not be empty");
+            prop_assert!(!second_frame.is_empty(), "Second frame should not be empty");
+            
+            // Both should have valid sync words
+            let sync1 = ((first_frame[0] as u16) << 3) | ((first_frame[1] as u16) >> 5);
+            let sync2 = ((second_frame[0] as u16) << 3) | ((second_frame[1] as u16) >> 5);
+            prop_assert_eq!(sync1, 0x7FF, "First frame should have valid sync");
+            prop_assert_eq!(sync2, 0x7FF, "Second frame should have valid sync");
+        }
     }
 }
