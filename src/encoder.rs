@@ -474,8 +474,38 @@ impl Mp3Encoder {
         // Step 4: Apply aliasing reduction
         self.mdct.apply_aliasing_reduction(&mut mdct_coeffs)?;
         
-        // Step 5: Quantization and rate control
-        let max_bits = 1000; // Simplified bit allocation for now
+        // Step 5: Calculate available bits for this granule (following shine's logic)
+        // We need to calculate this based on the encoder's configuration
+        let channels = self.config.wave.channels as usize;
+        let bitrate_bps = self.config.mpeg.bitrate * 1000;
+        let sample_rate = self.config.wave.sample_rate;
+        let samples_per_frame = self.config.samples_per_frame();
+        
+        // Calculate average slots per frame (following shine's logic)
+        let avg_slots_per_frame = (bitrate_bps as f64 * samples_per_frame as f64) / 
+                                 (sample_rate as f64 * 8.0);
+        let whole_slots_per_frame = avg_slots_per_frame as usize;
+        let bits_per_frame = whole_slots_per_frame * 8;
+        
+        let sideinfo_len = if self.config.mpeg_version() == crate::config::MpegVersion::Mpeg1 {
+            8 * if channels == 1 { 4 + 17 } else { 4 + 32 }
+        } else {
+            8 * if channels == 1 { 4 + 9 } else { 4 + 17 }
+        };
+        
+        let granules_per_frame = if self.config.mpeg_version() == crate::config::MpegVersion::Mpeg1 { 2 } else { 1 };
+        let mean_bits = (bits_per_frame - sideinfo_len) / granules_per_frame;
+        
+        // Calculate max_bits using reservoir logic (simplified version of shine_max_reservoir_bits)
+        let max_bits = {
+            let mut max_bits = mean_bits / channels;
+            if max_bits > 4095 {
+                max_bits = 4095;
+            }
+            // For now, no reservoir - just use mean_bits per channel
+            max_bits as usize
+        };
+        
         let mut quantized_coeffs = [0i32; 576];
         
         let _bits_used = self.quantizer.quantize_and_encode(

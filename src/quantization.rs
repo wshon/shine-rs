@@ -211,21 +211,24 @@ impl QuantizationLoop {
     }
     
     /// Estimate the number of bits needed for quantized coefficients
-    /// This is a simplified estimation for the binary search
+    /// Following shine's bit counting logic more closely
     fn estimate_bits(&self, quantized: &[i32; GRANULE_SIZE]) -> usize {
         let mut bits = 0;
         
-        // Count non-zero coefficients and estimate bits
+        // Estimate based on coefficient distribution
+        // This is still simplified but more realistic than the original
         for &coeff in quantized.iter() {
-            if coeff != 0 {
-                let abs_val = coeff.abs();
-                if abs_val == 1 {
-                    bits += 2; // Rough estimate for small values
-                } else if abs_val <= 15 {
-                    bits += 4; // Rough estimate for medium values
-                } else {
-                    bits += 8; // Rough estimate for large values
-                }
+            let abs_val = coeff.abs();
+            if abs_val == 0 {
+                bits += 1; // Huffman codes for zero are typically short
+            } else if abs_val == 1 {
+                bits += 3; // Small values need ~3 bits including sign
+            } else if abs_val <= 7 {
+                bits += 5; // Medium values
+            } else if abs_val <= 15 {
+                bits += 7; // Large values without escape
+            } else {
+                bits += 12; // Values requiring escape sequences
             }
         }
         
@@ -464,13 +467,32 @@ impl QuantizationLoop {
         bits
     }
     
-    /// Estimate bits needed for a quadruple pattern
+    /// Estimate bits needed for a quadruple pattern (following shine's count1_bitcount logic)
     fn estimate_quadruple_bits(&self, pattern: i32) -> usize {
-        // Simplified estimation - in practice would use actual Huffman tables
-        match pattern {
-            0 => 1,      // All zeros
-            1..=7 => 3,  // Simple patterns
-            _ => 5,      // Complex patterns
+        // Following shine's count1_bitcount more closely
+        // This uses the actual count1 Huffman table structure
+        use crate::tables::COUNT1_TABLES;
+        
+        let table_a = COUNT1_TABLES[0]; // Table A
+        let table_b = COUNT1_TABLES[1]; // Table B
+        
+        if (pattern as usize) < table_a.codes.len() {
+            let bits_a = table_a.lengths[pattern as usize] as usize;
+            let bits_b = if (pattern as usize) < table_b.codes.len() {
+                table_b.lengths[pattern as usize] as usize
+            } else {
+                bits_a
+            };
+            
+            // Return the minimum (shine chooses the better table)
+            bits_a.min(bits_b)
+        } else {
+            // Fallback for invalid patterns
+            match pattern {
+                0 => 1,      // All zeros
+                1..=7 => 3,  // Simple patterns
+                _ => 5,      // Complex patterns
+            }
         }
     }
     
@@ -478,7 +500,7 @@ impl QuantizationLoop {
     fn subdivide_big_values(&self, info: &mut GranuleInfo, sample_rate: u32) {
         use crate::tables::SCALE_FACT_BAND_INDEX;
         
-        // Subdivision table from shine (matches subdv_table in l3loop.c)
+        // Subdivision table from shine (matches subdv_table in l3loop.c exactly)
         const SUBDV_TABLE: [(u32, u32); 23] = [
             (0, 0), // 0 bands
             (0, 0), // 1 bands
@@ -506,7 +528,7 @@ impl QuantizationLoop {
         ];
         
         if info.big_values == 0 {
-            // No big_values region
+            // No big_values region - following shine's logic exactly
             info.region0_count = 0;
             info.region1_count = 0;
             info.address1 = 0;
@@ -528,13 +550,16 @@ impl QuantizationLoop {
             8000 => 8,
             _ => 0, // Default fallback
         };
-        let scalefac_band_long = &SCALE_FACT_BAND_INDEX[samplerate_index];
         
+        let scalefac_band_long = &SCALE_FACT_BAND_INDEX[samplerate_index];
         let bigvalues_region = (info.big_values * 2) as i32;
         
-        // Calculate scfb_anz (scale factor band count)
+        // Calculate scfb_anz - following shine's logic exactly
+        // scfb_anz = 0;
+        // while (scalefac_band_long[scfb_anz] < bigvalues_region)
+        //   scfb_anz++;
         let mut scfb_anz = 0;
-        while scfb_anz < 22 && scalefac_band_long[scfb_anz] < bigvalues_region {
+        while scfb_anz < scalefac_band_long.len() - 1 && scalefac_band_long[scfb_anz] < bigvalues_region {
             scfb_anz += 1;
         }
         
@@ -543,7 +568,11 @@ impl QuantizationLoop {
             scfb_anz = SUBDV_TABLE.len() - 1;
         }
         
-        // Calculate region0_count
+        // Calculate region0_count - following shine's logic exactly
+        // for (thiscount = subdv_table[scfb_anz].region0_count; thiscount; thiscount--) {
+        //   if (scalefac_band_long[thiscount + 1] <= bigvalues_region)
+        //     break;
+        // }
         let mut thiscount = SUBDV_TABLE[scfb_anz].0;
         while thiscount > 0 {
             if (thiscount as usize + 1) < scalefac_band_long.len() &&
@@ -559,19 +588,27 @@ impl QuantizationLoop {
             bigvalues_region as u32
         };
         
-        // Calculate region1_count
+        // Calculate region1_count - following shine's pointer offset logic exactly
+        // scalefac_band_long += cod_info->region0_count + 1;
+        // for (thiscount = subdv_table[scfb_anz].region1_count; thiscount; thiscount--) {
+        //   if (scalefac_band_long[thiscount + 1] <= bigvalues_region)
+        //     break;
+        // }
         let region0_offset = (info.region0_count + 1) as usize;
         let mut thiscount = SUBDV_TABLE[scfb_anz].1;
         while thiscount > 0 {
-            if (region0_offset + thiscount as usize + 1) < scalefac_band_long.len() &&
-               scalefac_band_long[region0_offset + thiscount as usize + 1] <= bigvalues_region {
+            let index = region0_offset + thiscount as usize + 1;
+            if index < scalefac_band_long.len() &&
+               scalefac_band_long[index] <= bigvalues_region {
                 break;
             }
             thiscount -= 1;
         }
         info.region1_count = thiscount;
-        info.address2 = if (region0_offset + thiscount as usize + 1) < scalefac_band_long.len() {
-            scalefac_band_long[region0_offset + thiscount as usize + 1] as u32
+        
+        let region1_index = region0_offset + thiscount as usize + 1;
+        info.address2 = if region1_index < scalefac_band_long.len() {
+            scalefac_band_long[region1_index] as u32
         } else {
             bigvalues_region as u32
         };
@@ -680,11 +717,26 @@ impl QuantizationLoop {
         }
     }
     
-    /// Calculate part2 length (scale factors)
-    fn calculate_part2_length(&self, _info: &GranuleInfo) -> u32 {
-        // Simplified calculation - in practice would calculate actual scale factor bits
-        // This depends on scale factor compression and SCFSI
-        42 // Typical value for scale factors
+    /// Calculate part2 length (scale factors) following shine's part2_length function
+    fn calculate_part2_length(&self, info: &GranuleInfo) -> u32 {
+        // Following shine's part2_length function in l3loop.c
+        use crate::tables::{SLEN1_TAB, SLEN2_TAB};
+        
+        let slen1 = SLEN1_TAB[info.scalefac_compress as usize % SLEN1_TAB.len()];
+        let slen2 = SLEN2_TAB[info.scalefac_compress as usize % SLEN2_TAB.len()];
+        
+        let mut bits = 0;
+        
+        // For MPEG-1, we need to consider SCFSI (Scale Factor Selection Information)
+        // For now, assume no SCFSI (gr == 0 or scfsi[band] == false)
+        // This matches shine's logic when !gr || !(scfsi[ch][band])
+        
+        bits += 6 * slen1;  // scalefactor band 0 (6 scalefactors)
+        bits += 5 * slen1;  // scalefactor band 1 (5 scalefactors)  
+        bits += 5 * slen2;  // scalefactor band 2 (5 scalefactors)
+        bits += 5 * slen2;  // scalefactor band 3 (5 scalefactors)
+        
+        bits as u32
     }
 }
 

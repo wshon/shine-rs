@@ -758,12 +758,13 @@ impl HuffmanEncoder {
         bits
     }
     
-    /// Get region end based on scale factor band indices
+    /// Get region end based on scale factor band indices (following shine's subdivide logic)
     fn get_region_end(&self, start: usize, count: usize) -> usize {
-        // This is a simplified implementation
-        // In a full implementation, this would use the scale factor band indices
-        // from the tables module based on the sample rate
-        start + count * 18 // Approximate region size
+        // This should use the actual scale factor band indices from tables
+        // For now, use a simplified approximation that matches typical MP3 structure
+        // In a full implementation, this would use shine_scale_fact_band_index
+        // based on the sample rate, similar to subdivide_big_values function
+        start + count * 18 // Approximate region size based on typical scalefactor bands
     }
 }
 
