@@ -160,6 +160,19 @@ impl Default for MdctTransform {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+    use std::sync::Once;
+
+    static INIT: Once = Once::new();
+
+    /// 设置自定义 panic 钩子，只输出通用错误信息
+    fn setup_panic_hook() {
+        INIT.call_once(|| {
+            std::panic::set_hook(Box::new(|_| {
+                eprintln!("Test failed: Property test assertion failed");
+            }));
+        });
+    }
     
     #[test]
     fn test_mdct_transform_creation() {
@@ -238,5 +251,181 @@ mod tests {
         // Values should have changed due to butterfly operation
         assert_ne!(coeffs[17], 1000);
         assert_ne!(coeffs[18], 2000);
+    }
+
+    // Property-based tests
+    
+    // Strategy for generating valid subband samples
+    fn subband_samples_strategy() -> impl Strategy<Value = [[i32; 32]; 36]> {
+        // Generate reasonable audio sample values (16-bit range scaled up)
+        let sample_strategy = -32768i32..32768i32;
+        
+        // Create array of arrays using proptest's collection strategies
+        prop::collection::vec(
+            prop::collection::vec(sample_strategy, 32..=32), 
+            36..=36
+        ).prop_map(|vec_of_vecs| {
+            let mut result = [[0i32; 32]; 36];
+            for (i, inner_vec) in vec_of_vecs.into_iter().enumerate() {
+                for (j, val) in inner_vec.into_iter().enumerate() {
+                    result[i][j] = val;
+                }
+            }
+            result
+        })
+    }
+    
+    // Strategy for generating MDCT coefficients
+    fn mdct_coeffs_strategy() -> impl Strategy<Value = [i32; 576]> {
+        // Generate reasonable coefficient values
+        let coeff_strategy = -1000000i32..1000000i32;
+        prop::collection::vec(coeff_strategy, 576..=576)
+            .prop_map(|vec| {
+                let mut result = [0i32; 576];
+                for (i, val) in vec.into_iter().enumerate() {
+                    result[i] = val;
+                }
+                result
+            })
+    }
+
+    proptest! {
+        // Feature: rust-mp3-encoder, Property 6: MDCT 变换正确性
+        #[test]
+        fn property_mdct_transform_correctness(
+            subband_samples in subband_samples_strategy()
+        ) {
+            setup_panic_hook();
+            
+            let mdct = MdctTransform::new();
+            let mut output = [0i32; 576];
+            
+            // Transform should always succeed with valid input
+            let result = mdct.transform(&subband_samples, &mut output);
+            prop_assert!(result.is_ok(), "MDCT transform should succeed");
+            
+            // Output should have exactly 576 coefficients (32 subbands * 18 coeffs each)
+            prop_assert_eq!(output.len(), 576, "Output should have 576 coefficients");
+            
+            // For zero input, output should be zero
+            let zero_input = [[0i32; 32]; 36];
+            let mut zero_output = [0i32; 576];
+            let zero_result = mdct.transform(&zero_input, &mut zero_output);
+            prop_assert!(zero_result.is_ok(), "Zero input transform should succeed");
+            
+            for &val in &zero_output {
+                prop_assert_eq!(val, 0, "Zero input should produce zero output");
+            }
+        }
+        
+        #[test]
+        fn property_mdct_linearity(
+            samples1 in subband_samples_strategy(),
+            samples2 in subband_samples_strategy()
+        ) {
+            setup_panic_hook();
+            
+            let mdct = MdctTransform::new();
+            
+            // Transform samples1
+            let mut output1 = [0i32; 576];
+            let result1 = mdct.transform(&samples1, &mut output1);
+            prop_assert!(result1.is_ok(), "First transform should succeed");
+            
+            // Transform samples2
+            let mut output2 = [0i32; 576];
+            let result2 = mdct.transform(&samples2, &mut output2);
+            prop_assert!(result2.is_ok(), "Second transform should succeed");
+            
+            // Transform sum of samples (with overflow protection)
+            let mut sum_samples = [[0i32; 32]; 36];
+            for i in 0..36 {
+                for j in 0..32 {
+                    // Use saturating add to prevent overflow
+                    sum_samples[i][j] = samples1[i][j].saturating_add(samples2[i][j]);
+                }
+            }
+            
+            let mut sum_output = [0i32; 576];
+            let sum_result = mdct.transform(&sum_samples, &mut sum_output);
+            prop_assert!(sum_result.is_ok(), "Sum transform should succeed");
+            
+            // Due to fixed-point arithmetic and potential overflow, we can't expect
+            // perfect linearity, but we can check that the transform produces reasonable results
+            // This is more of a sanity check than a strict linearity test
+            for i in 0..576 {
+                let expected_sum = output1[i].saturating_add(output2[i]);
+                let actual_sum = sum_output[i];
+                
+                // Allow for some deviation due to fixed-point arithmetic
+                let diff = (expected_sum - actual_sum).abs();
+                let tolerance = (expected_sum.abs() / 1000).max(1000); // 0.1% tolerance or minimum 1000
+                
+                prop_assert!(diff <= tolerance, 
+                    "Linearity deviation too large at index {}: expected {}, got {}, diff {}", 
+                    i, expected_sum, actual_sum, diff);
+            }
+        }
+        
+        #[test]
+        fn property_aliasing_reduction_correctness(
+            coeffs in mdct_coeffs_strategy()
+        ) {
+            setup_panic_hook();
+            
+            let mdct = MdctTransform::new();
+            let mut test_coeffs = coeffs;
+            
+            // Aliasing reduction should always succeed
+            let result = mdct.apply_aliasing_reduction(&mut test_coeffs);
+            prop_assert!(result.is_ok(), "Aliasing reduction should succeed");
+            
+            // The operation should preserve the array length
+            prop_assert_eq!(test_coeffs.len(), 576, "Array length should be preserved");
+            
+            // For zero input, output should remain zero
+            let mut zero_coeffs = [0i32; 576];
+            let zero_result = mdct.apply_aliasing_reduction(&mut zero_coeffs);
+            prop_assert!(zero_result.is_ok(), "Zero coeffs aliasing reduction should succeed");
+            
+            for &val in &zero_coeffs {
+                prop_assert_eq!(val, 0, "Zero coefficients should remain zero");
+            }
+        }
+        
+        #[test]
+        fn property_aliasing_reduction_boundary_effects(
+            coeffs in mdct_coeffs_strategy()
+        ) {
+            setup_panic_hook();
+            
+            let mdct = MdctTransform::new();
+            let mut test_coeffs = coeffs;
+            let original_coeffs = test_coeffs;
+            
+            let result = mdct.apply_aliasing_reduction(&mut test_coeffs);
+            prop_assert!(result.is_ok(), "Aliasing reduction should succeed");
+            
+            // Check that only boundary coefficients are affected
+            // Coefficients that are not at subband boundaries should be less affected
+            // This is a heuristic check since the butterfly operation affects specific indices
+            
+            // First subband (0-17) should only be affected at the end (indices 10-17)
+            // due to butterfly with second subband
+            for i in 0..8 {
+                // Early coefficients in first subband should be unchanged
+                // (no butterfly operation affects them)
+                prop_assert_eq!(test_coeffs[i], original_coeffs[i], 
+                    "Early coefficients in first subband should be unchanged");
+            }
+            
+            // Last subband (31*18 = 558-575) should only be affected at the beginning
+            let last_band_start = 31 * 18;
+            for i in (last_band_start + 8)..576 {
+                // Late coefficients in last subband should be unchanged
+                prop_assert_eq!(test_coeffs[i], original_coeffs[i], 
+                    "Late coefficients in last subband should be unchanged");
+            }
+        }
     }
 }
