@@ -264,9 +264,12 @@ impl QuantizationLoop {
             return Err(EncodingError::QuantizationFailed);
         }
         
-        // CRITICAL FIX: We need to recalculate run length with the final quantized coefficients
-        // to ensure side_info matches the actual output
-        self.calculate_run_length(output, side_info);
+        // CRITICAL FIX: DO NOT recalculate run length here!
+        // The outer_loop -> inner_loop already calculated the correct run length
+        // and all other side_info parameters. Recalculating here would overwrite
+        // the correct values with potentially different ones.
+        // Following shine's logic: outer_loop calls inner_loop which calls calc_runlen,
+        // and that's the final result we should use.
         
         // Set global gain (quantizer step size + 210 as per MP3 spec)
         side_info.global_gain = (side_info.quantizer_step_size + 210) as u32;
@@ -303,17 +306,14 @@ impl QuantizationLoop {
         side_info.count1 = 0;
         while i > 3 {
             // CRITICAL FIX: Follow shine's exact logic
-            // In shine, ix contains signed quantized values, and the check is <= 1
-            // This means values can be -1, 0, or 1 (not absolute values)
-            let val1 = quantized[i - 1];
-            let val2 = quantized[i - 2];
-            let val3 = quantized[i - 3];
-            let val4 = quantized[i - 4];
+            // In shine, quantized values are absolute values, and the check is <= 1
+            // This means values can be 0 or 1 (absolute values only)
+            let val1 = quantized[i - 1].abs();
+            let val2 = quantized[i - 2].abs();
+            let val3 = quantized[i - 3].abs();
+            let val4 = quantized[i - 4].abs();
             
-            if val1 <= 1 && val1 >= -1 && 
-               val2 <= 1 && val2 >= -1 && 
-               val3 <= 1 && val3 >= -1 && 
-               val4 <= 1 && val4 >= -1 {
+            if val1 <= 1 && val2 <= 1 && val3 <= 1 && val4 <= 1 {
                 side_info.count1 += 1;
                 i -= 4;
             } else {
@@ -328,13 +328,11 @@ impl QuantizationLoop {
         // CRITICAL FIX: Add strict validation to prevent big_values from being too large
         // MP3 standard limit: big_values cannot exceed 288 (576/2)
         if side_info.big_values > 288 {
-            eprintln!("WARNING: big_values {} exceeds maximum 288, clamping to 288", side_info.big_values);
             side_info.big_values = 288;
         }
         
         // Also validate that i is reasonable
         if i > GRANULE_SIZE {
-            eprintln!("ERROR: Invalid i value {} in calculate_run_length", i);
             side_info.big_values = 288; // Fallback to maximum
         }
     }

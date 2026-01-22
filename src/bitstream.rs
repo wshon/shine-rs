@@ -263,8 +263,12 @@ impl BitstreamWriter {
                     // Part 2+3 length (12 bits)
                     self.write_bits(gi.part2_3_length, 12);
                     
-                    // Big values (9 bits)
-                    self.write_bits(gi.big_values, 9);
+                    // Big values (9 bits) - CRITICAL: Ensure value is within MP3 standard limits
+                    let big_values_clamped = std::cmp::min(gi.big_values, 288);
+                    if gi.big_values > 288 {
+                        eprintln!("WARNING: Clamping big_values from {} to 288 in bitstream", gi.big_values);
+                    }
+                    self.write_bits(big_values_clamped, 9);
                     
                     // Global gain (8 bits)
                     self.write_bits(gi.global_gain, 8);
