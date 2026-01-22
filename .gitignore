@@ -32,9 +32,8 @@ Thumbs.db
 /test_output/
 *.mp3
 *.wav
-!tests/audio/
-!tests/audio/*.mp3
-!tests/audio/*.wav
+!tests/input/*.mp3
+!tests/input/*.wav
 
 # Logs
 *.log

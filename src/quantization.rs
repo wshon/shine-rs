@@ -257,22 +257,31 @@ impl QuantizationLoop {
         Ok(total_bits)
     }
     
-    /// Calculate run length encoding information
+    /// Calculate run length encoding information (following shine's calc_runlen exactly)
     fn calculate_run_length(&self, quantized: &[i32; GRANULE_SIZE], side_info: &mut GranuleInfo) {
-        // Count trailing zeros
-        let mut _rzero = 0;
         let mut i = GRANULE_SIZE;
         
+        // Count trailing zero pairs - following shine's logic exactly
+        // for (i = GRANULE_SIZE; i > 1; i -= 2)
+        //   if (!ix[i - 1] && !ix[i - 2])
+        //     rzero++;
+        //   else
+        //     break;
         while i > 1 {
             if quantized[i - 1] == 0 && quantized[i - 2] == 0 {
-                _rzero += 1;
                 i -= 2;
             } else {
                 break;
             }
         }
         
-        // Count quadruples (count1 region)
+        // Count quadruples (count1 region) - following shine's logic exactly
+        // cod_info->count1 = 0;
+        // for (; i > 3; i -= 4)
+        //   if (ix[i - 1] <= 1 && ix[i - 2] <= 1 && ix[i - 3] <= 1 && ix[i - 4] <= 1)
+        //     cod_info->count1++;
+        //   else
+        //     break;
         side_info.count1 = 0;
         while i > 3 {
             if quantized[i - 1].abs() <= 1 && quantized[i - 2].abs() <= 1 &&
@@ -284,8 +293,9 @@ impl QuantizationLoop {
             }
         }
         
-        // Set big values count
-        side_info.big_values = (i / 2) as u32;
+        // Set big values count - KEY FIX: use right shift like shine
+        // cod_info->big_values = i >> 1;
+        side_info.big_values = (i >> 1) as u32;
     }
     
     /// Inner loop: find optimal Huffman table selection
@@ -459,9 +469,39 @@ impl QuantizationLoop {
         }
     }
     
-    /// Subdivide big values region into sub-regions
+    /// Subdivide big values region into sub-regions (following shine's subdivide function exactly)
     fn subdivide_big_values(&self, info: &mut GranuleInfo) {
+        use crate::tables::SCALE_FACT_BAND_INDEX;
+        
+        // Subdivision table from shine (matches subdv_table in l3loop.c)
+        const SUBDV_TABLE: [(u32, u32); 23] = [
+            (0, 0), // 0 bands
+            (0, 0), // 1 bands
+            (0, 0), // 2 bands
+            (0, 0), // 3 bands
+            (0, 0), // 4 bands
+            (0, 1), // 5 bands
+            (1, 1), // 6 bands
+            (1, 1), // 7 bands
+            (1, 2), // 8 bands
+            (2, 2), // 9 bands
+            (2, 3), // 10 bands
+            (2, 3), // 11 bands
+            (3, 4), // 12 bands
+            (3, 4), // 13 bands
+            (3, 4), // 14 bands
+            (4, 5), // 15 bands
+            (4, 5), // 16 bands
+            (4, 6), // 17 bands
+            (5, 6), // 18 bands
+            (5, 6), // 19 bands
+            (5, 7), // 20 bands
+            (6, 7), // 21 bands
+            (6, 7), // 22 bands
+        ];
+        
         if info.big_values == 0 {
+            // No big_values region
             info.region0_count = 0;
             info.region1_count = 0;
             info.address1 = 0;
@@ -470,83 +510,85 @@ impl QuantizationLoop {
             return;
         }
         
-        let big_values_region = info.big_values * 2;
+        // Following shine's logic exactly
+        // For now, assume 44.1kHz (samplerate_index = 0) - this should be passed from config
+        let samplerate_index = 0; // TODO: get from config
+        let scalefac_band_long = &SCALE_FACT_BAND_INDEX[samplerate_index];
         
-        // Simplified subdivision - in practice would use scale factor bands
-        let region_size = big_values_region / 3;
+        let bigvalues_region = (info.big_values * 2) as i32;
         
-        info.region0_count = (region_size / 2).min(15);
-        info.region1_count = (region_size / 2).min(7);
+        // Calculate scfb_anz (scale factor band count)
+        let mut scfb_anz = 0;
+        while scfb_anz < 22 && scalefac_band_long[scfb_anz] < bigvalues_region {
+            scfb_anz += 1;
+        }
         
-        info.address1 = (info.region0_count + 1) * 2;
-        info.address2 = info.address1 + (info.region1_count + 1) * 2;
-        info.address3 = big_values_region;
+        // Ensure scfb_anz is within bounds for SUBDV_TABLE
+        if scfb_anz >= SUBDV_TABLE.len() {
+            scfb_anz = SUBDV_TABLE.len() - 1;
+        }
+        
+        // Calculate region0_count
+        let mut thiscount = SUBDV_TABLE[scfb_anz].0;
+        while thiscount > 0 {
+            if (thiscount as usize + 1) < scalefac_band_long.len() &&
+               scalefac_band_long[thiscount as usize + 1] <= bigvalues_region {
+                break;
+            }
+            thiscount -= 1;
+        }
+        info.region0_count = thiscount;
+        info.address1 = if (thiscount as usize + 1) < scalefac_band_long.len() {
+            scalefac_band_long[thiscount as usize + 1] as u32
+        } else {
+            bigvalues_region as u32
+        };
+        
+        // Calculate region1_count
+        let region0_offset = (info.region0_count + 1) as usize;
+        let mut thiscount = SUBDV_TABLE[scfb_anz].1;
+        while thiscount > 0 {
+            if (region0_offset + thiscount as usize + 1) < scalefac_band_long.len() &&
+               scalefac_band_long[region0_offset + thiscount as usize + 1] <= bigvalues_region {
+                break;
+            }
+            thiscount -= 1;
+        }
+        info.region1_count = thiscount;
+        info.address2 = if (region0_offset + thiscount as usize + 1) < scalefac_band_long.len() {
+            scalefac_band_long[region0_offset + thiscount as usize + 1] as u32
+        } else {
+            bigvalues_region as u32
+        };
+        
+        info.address3 = bigvalues_region as u32;
     }
     
     /// Select optimal Huffman tables for big values regions
+    /// Following shine's bigv_tab_select function exactly
     fn select_big_values_tables(&self, coeffs: &[i32; GRANULE_SIZE], info: &mut GranuleInfo) {
-        // Region 0
+        use crate::huffman::HuffmanEncoder;
+        
+        // Initialize all table selections to 0 (following shine's logic)
+        info.table_select[0] = 0;
+        info.table_select[1] = 0;
+        info.table_select[2] = 0;
+        
+        let encoder = HuffmanEncoder::new();
+        
+        // Region 0 - following shine's logic: if (cod_info->address1 > 0)
         if info.address1 > 0 {
-            info.table_select[0] = self.choose_huffman_table(coeffs, 0, info.address1 as usize);
+            info.table_select[0] = encoder.select_table(coeffs, 0, info.address1 as usize) as u32;
         }
         
-        // Region 1
+        // Region 1 - following shine's logic: if (cod_info->address2 > cod_info->address1)
         if info.address2 > info.address1 {
-            info.table_select[1] = self.choose_huffman_table(coeffs, info.address1 as usize, info.address2 as usize);
+            info.table_select[1] = encoder.select_table(coeffs, info.address1 as usize, info.address2 as usize) as u32;
         }
         
-        // Region 2
-        if info.address3 > info.address2 {
-            info.table_select[2] = self.choose_huffman_table(coeffs, info.address2 as usize, info.address3 as usize);
-        }
-    }
-    
-    /// Choose optimal Huffman table for a region
-    /// Following shine's new_choose_table logic exactly
-    fn choose_huffman_table(&self, coeffs: &[i32; GRANULE_SIZE], start: usize, end: usize) -> u32 {
-        let max_val = coeffs[start..end].iter().map(|&x| x.abs()).max().unwrap_or(0);
-        
-        // Following shine's logic: return 0 for all-zero regions
-        if max_val == 0 {
-            return 0; // Table 0 indicates no encoding needed (all zeros)
-        }
-        
-        // Following shine's new_choose_table logic exactly
-        if max_val < 15 {
-            // Try tables with no linbits (tables 0-14)
-            // Find first table where xlen > max_val
-            for i in (1..15).rev() { // Iterate from 14 down to 1 (shine uses i--)
-                if i == 4 || i == 14 {
-                    continue; // Skip tables that don't exist
-                }
-                
-                // Get xlen from our table definition
-                let xlen = match i {
-                    1 => 2,   // Table 1: xlen=2
-                    2 => 3,   // Table 2: xlen=3  
-                    3 => 3,   // Table 3: xlen=3
-                    5 => 4,   // Table 5: xlen=4
-                    6 => 4,   // Table 6: xlen=4
-                    7 => 6,   // Table 7: xlen=6
-                    8 => 6,   // Table 8: xlen=6
-                    9 => 6,   // Table 9: xlen=6
-                    10 => 8,  // Table 10: xlen=8
-                    11 => 8,  // Table 11: xlen=8
-                    12 => 8,  // Table 12: xlen=8
-                    13 => 16, // Table 13: xlen=16
-                    _ => continue,
-                };
-                
-                if xlen > max_val as u32 {
-                    return i as u32;
-                }
-            }
-            
-            // If no table found, use table 1 as fallback
-            return 1;
-        } else {
-            // For max_val >= 15, use escape tables (15-31)
-            return 15; // Table 15 with escape sequences
+        // Region 2 - following shine's logic: if (cod_info->big_values << 1 > cod_info->address2)
+        if (info.big_values << 1) > info.address2 {
+            info.table_select[2] = encoder.select_table(coeffs, info.address2 as usize, (info.big_values << 1) as usize) as u32;
         }
     }
     

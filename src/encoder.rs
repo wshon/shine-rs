@@ -9,7 +9,7 @@ use crate::mdct::MdctTransform;
 use crate::quantization::{QuantizationLoop, GranuleInfo};
 use crate::huffman::HuffmanEncoder;
 use crate::bitstream::{BitstreamWriter, SideInfo};
-use crate::error::{EncoderError, InputDataError, ConfigError};
+use crate::error::{EncoderError, InputDataError};
 use crate::Result;
 
 /// Main MP3 encoder structure
@@ -1331,6 +1331,7 @@ mod tests {
             prop_assert!(encoder_result.is_err(), "Invalid sample rate should be rejected");
             
             if let Err(EncoderError::Config(config_err)) = encoder_result {
+                use crate::error::ConfigError;
                 match config_err {
                     ConfigError::UnsupportedSampleRate(rate) => {
                         prop_assert_eq!(rate, invalid_sample_rate, "Error should contain invalid sample rate");

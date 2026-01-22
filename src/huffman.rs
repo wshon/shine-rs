@@ -112,41 +112,165 @@ impl HuffmanEncoder {
     }
     
     /// Select optimal Huffman table for a region
-    /// 
-    /// Analyzes the values in a region and selects the Huffman table
-    /// that would result in the minimum number of bits.
+    /// Following shine's new_choose_table logic exactly
     pub fn select_table(&self, values: &[i32], start: usize, end: usize) -> usize {
         if start >= end || start >= values.len() {
             return 1; // Default to table 1 (table 0 doesn't exist)
         }
         
         let actual_end = std::cmp::min(end, values.len());
-        let region_values = &values[start..actual_end];
         
-        let mut best_table = 1; // Start with table 1
-        let mut min_bits = usize::MAX;
-        
-        // Try each available Huffman table (skip tables 0, 4, and 14 which are None)
-        for table_index in 1..self.tables.len() {
-            if table_index == 4 || table_index == 14 {
-                continue; // Skip unavailable tables
+        // Following shine's ix_max function
+        let mut max = 0;
+        for i in start..actual_end {
+            if values[i].abs() > max {
+                max = values[i].abs();
             }
-            
-            if let Some(table) = &self.tables[table_index] {
-                let bits = self.calculate_bits_for_region(region_values, table);
-                if bits < min_bits {
-                    min_bits = bits;
-                    best_table = table_index;
+        }
+        
+        // Following shine's logic: return 0 for all-zero regions
+        if max == 0 {
+            return 0;
+        }
+        
+        let mut choice = [0usize; 2];
+        let mut sum = [0usize; 2];
+        
+        if max < 15 {
+            // Try tables with no linbits - following shine's logic exactly
+            for i in (1..15).rev() { // Iterate from 14 down to 1 (shine uses i--)
+                if i == 4 || i == 14 {
+                    continue; // Skip tables that don't exist
+                }
+                
+                // Get xlen from our table definition - following shine's huffman_table[i].xlen
+                let xlen = match i {
+                    1 => 2,   // Table 1: xlen=2
+                    2 => 3,   // Table 2: xlen=3  
+                    3 => 3,   // Table 3: xlen=3
+                    5 => 4,   // Table 5: xlen=4
+                    6 => 4,   // Table 6: xlen=4
+                    7 => 6,   // Table 7: xlen=6
+                    8 => 6,   // Table 8: xlen=6
+                    9 => 6,   // Table 9: xlen=6
+                    10 => 8,  // Table 10: xlen=8
+                    11 => 8,  // Table 11: xlen=8
+                    12 => 8,  // Table 12: xlen=8
+                    13 => 16, // Table 13: xlen=16
+                    _ => continue,
+                };
+                
+                if xlen > max as u32 {
+                    choice[0] = i;
+                    break;
                 }
             }
+            
+            // Calculate bits for the chosen table
+            sum[0] = self.calculate_bits_for_region(&values[start..actual_end], 
+                                                   &self.tables[choice[0]].as_ref().unwrap_or(&self.tables[1].as_ref().unwrap()));
+            
+            // Following shine's switch statement for table optimization
+            match choice[0] {
+                2 => {
+                    if let Some(table) = &self.tables[3] {
+                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 3;
+                        }
+                    }
+                },
+                5 => {
+                    if let Some(table) = &self.tables[6] {
+                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 6;
+                        }
+                    }
+                },
+                7 => {
+                    if let Some(table) = &self.tables[8] {
+                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 8;
+                            sum[0] = sum[1];
+                        }
+                    }
+                    if let Some(table) = &self.tables[9] {
+                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 9;
+                        }
+                    }
+                },
+                10 => {
+                    if let Some(table) = &self.tables[11] {
+                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 11;
+                            sum[0] = sum[1];
+                        }
+                    }
+                    if let Some(table) = &self.tables[12] {
+                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 12;
+                        }
+                    }
+                },
+                13 => {
+                    if let Some(table) = &self.tables[15] {
+                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 15;
+                        }
+                    }
+                },
+                _ => {}
+            }
+        } else {
+            // Try tables with linbits - following shine's logic exactly
+            let max_linbits = max - 15;
+            
+            // Find first table in range 15-23 that can handle max_linbits
+            for i in 15..24 {
+                if let Some(table) = &self.tables[i] {
+                    if table.linmax >= max_linbits as u32 {
+                        choice[0] = i;
+                        break;
+                    }
+                }
+            }
+            
+            // Find first table in range 24-31 that can handle max_linbits
+            for i in 24..32 {
+                if let Some(table) = &self.tables[i] {
+                    if table.linmax >= max_linbits as u32 {
+                        choice[1] = i;
+                        break;
+                    }
+                }
+            }
+            
+            // Compare the two choices
+            if let Some(table) = &self.tables[choice[0]] {
+                sum[0] = self.calculate_bits_for_region(&values[start..actual_end], table);
+            } else {
+                sum[0] = usize::MAX;
+            }
+            
+            if let Some(table) = &self.tables[choice[1]] {
+                sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
+            } else {
+                sum[1] = usize::MAX;
+            }
+            
+            if sum[1] < sum[0] {
+                choice[0] = choice[1];
+            }
         }
         
-        // If no table could encode the values, return table 1 as fallback
-        if min_bits == usize::MAX {
-            1
-        } else {
-            best_table
-        }
+        choice[0]
     }
     
     /// Select optimal table with bit budget constraint
