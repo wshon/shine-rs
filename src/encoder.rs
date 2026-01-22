@@ -85,8 +85,72 @@ impl Mp3Encoder {
         // De-interleave PCM data into channel buffers
         self.deinterleave_pcm(pcm_data, channels, samples_per_frame);
         
+        // Reset buffer counter since we have a complete frame
+        self.samples_in_buffer = 0;
+        
         // Encode the frame through the complete pipeline
         self.encode_frame_pipeline(channels, samples_per_frame)
+    }
+    
+    /// Encode samples incrementally, buffering until a complete frame is available
+    /// 
+    /// This method allows encoding PCM data in chunks smaller than a complete frame.
+    /// Data is buffered internally until enough samples are available for encoding.
+    /// 
+    /// # Arguments
+    /// * `pcm_data` - PCM samples (non-interleaved format)
+    /// 
+    /// # Returns
+    /// * `Ok(Some(&[u8]))` - Encoded MP3 frame data if a complete frame was produced
+    /// * `Ok(None)` - Data was buffered, no frame produced yet
+    /// * `Err(EncoderError)` - Encoding error
+    pub fn encode_samples(&mut self, pcm_data: &[i16]) -> Result<Option<&[u8]>> {
+        let channels = self.config.wave.channels as usize;
+        let samples_per_frame = self.config.samples_per_frame();
+        let samples_per_channel = pcm_data.len() / channels;
+        
+        // Validate input is properly aligned to channels
+        if pcm_data.len() % channels != 0 {
+            return Err(EncoderError::InputData(InputDataError::InvalidChannelCount {
+                expected: channels,
+                actual: pcm_data.len() % channels,
+            }));
+        }
+        
+        // Add new samples to buffer
+        for ch in 0..channels {
+            let channel_start = ch * samples_per_channel;
+            let channel_end = channel_start + samples_per_channel;
+            
+            for sample_idx in channel_start..channel_end {
+                if sample_idx < pcm_data.len() {
+                    self.buffer[ch].push(pcm_data[sample_idx]);
+                }
+            }
+        }
+        
+        self.samples_in_buffer += samples_per_channel;
+        
+        // Check if we have enough samples for a complete frame
+        if self.samples_in_buffer >= samples_per_frame {
+            // Clear frame buffer for new frame
+            self.frame_buffer.clear();
+            self.bitstream.reset();
+            
+            // Encode the frame through the complete pipeline
+            self.encode_frame_pipeline(channels, samples_per_frame)?;
+            
+            // Remove encoded samples from buffer
+            for ch in 0..channels {
+                self.buffer[ch].drain(0..samples_per_frame);
+            }
+            self.samples_in_buffer -= samples_per_frame;
+            
+            Ok(Some(&self.frame_buffer))
+        } else {
+            // Not enough samples yet, just buffer
+            Ok(None)
+        }
     }
     
     /// Encode a frame of interleaved PCM data
@@ -117,19 +181,55 @@ impl Mp3Encoder {
         // De-interleave PCM data into channel buffers
         self.deinterleave_pcm_interleaved(pcm_data, channels, samples_per_frame);
         
+        // Reset buffer counter since we have a complete frame
+        self.samples_in_buffer = 0;
+        
         // Encode the frame through the complete pipeline
         self.encode_frame_pipeline(channels, samples_per_frame)
     }
     
     /// Flush any remaining data and finalize encoding
     /// 
+    /// This method processes any remaining buffered samples and outputs the final MP3 frame.
+    /// If there are insufficient samples for a complete frame, they will be padded with zeros.
+    /// 
     /// # Returns
-    /// * `Ok(&[u8])` - Final MP3 frame data (may be empty)
+    /// * `Ok(&[u8])` - Final MP3 frame data (may be empty if no buffered data)
     /// * `Err(EncoderError)` - Encoding error
     pub fn flush(&mut self) -> Result<&[u8]> {
-        // For now, just return empty buffer since we don't buffer partial frames
-        // In a full implementation, this would handle any remaining buffered samples
+        // Check if we have any buffered samples
+        if self.samples_in_buffer == 0 {
+            // No buffered data, return empty
+            self.frame_buffer.clear();
+            return Ok(&self.frame_buffer);
+        }
+        
+        let channels = self.config.wave.channels as usize;
+        let samples_per_frame = self.config.samples_per_frame();
+        
+        // If we have partial data, pad it to a complete frame
+        if self.samples_in_buffer < samples_per_frame {
+            for ch in 0..channels {
+                // Pad with zeros to complete the frame
+                while self.buffer[ch].len() < samples_per_frame {
+                    self.buffer[ch].push(0);
+                }
+            }
+        }
+        
+        // Clear frame buffer for new frame
         self.frame_buffer.clear();
+        self.bitstream.reset();
+        
+        // Encode the final frame through the complete pipeline
+        self.encode_frame_pipeline(channels, samples_per_frame)?;
+        
+        // Clear the buffer after flushing
+        self.samples_in_buffer = 0;
+        for channel_buffer in &mut self.buffer {
+            channel_buffer.clear();
+        }
+        
         Ok(&self.frame_buffer)
     }
     
@@ -498,7 +598,144 @@ mod tests {
         
         let flushed_data = result.unwrap();
         // For now, flush returns empty data since we don't buffer partial frames
-        assert!(flushed_data.is_empty(), "Flush should return empty data for now");
+        assert!(flushed_data.is_empty(), "Flush should return empty data when no buffered samples");
+    }
+
+    #[test]
+    fn test_mp3_encoder_encode_samples_incremental() {
+        let config = Config {
+            wave: WaveConfig {
+                channels: Channels::Mono,
+                sample_rate: 44100,
+            },
+            mpeg: MpegConfig {
+                mode: StereoMode::Mono,
+                bitrate: 128,
+                emphasis: Emphasis::None,
+                copyright: false,
+                original: true,
+            },
+        };
+        
+        let mut encoder = Mp3Encoder::new(config).unwrap();
+        
+        // Test incremental encoding with partial frames
+        let partial_samples = vec![100i16; 500]; // Less than 1152 samples needed for mono MPEG-1
+        
+        // First partial frame should be buffered
+        let result = encoder.encode_samples(&partial_samples);
+        assert!(result.is_ok(), "Partial frame encoding should succeed");
+        assert!(result.unwrap().is_none(), "Partial frame should return None");
+        
+        // Add more samples to complete a frame
+        let remaining_samples = vec![200i16; 652]; // 500 + 652 = 1152 total
+        let result = encoder.encode_samples(&remaining_samples);
+        assert!(result.is_ok(), "Completing frame should succeed");
+        
+        let encoded_frame = result.unwrap();
+        assert!(encoded_frame.is_some(), "Complete frame should return Some");
+        
+        let frame_data = encoded_frame.unwrap();
+        assert!(!frame_data.is_empty(), "Encoded frame should not be empty");
+        
+        // Verify MP3 sync word
+        let sync = ((frame_data[0] as u16) << 3) | ((frame_data[1] as u16) >> 5);
+        assert_eq!(sync, 0x7FF, "Frame should start with MP3 sync word");
+    }
+
+    #[test]
+    fn test_mp3_encoder_flush_with_buffered_data() {
+        let config = Config {
+            wave: WaveConfig {
+                channels: Channels::Mono,
+                sample_rate: 44100,
+            },
+            mpeg: MpegConfig {
+                mode: StereoMode::Mono,
+                bitrate: 128,
+                emphasis: Emphasis::None,
+                copyright: false,
+                original: true,
+            },
+        };
+        
+        let mut encoder = Mp3Encoder::new(config).unwrap();
+        
+        // Add some partial samples
+        let partial_samples = vec![300i16; 800]; // Less than 1152 samples
+        let result = encoder.encode_samples(&partial_samples);
+        assert!(result.is_ok(), "Partial encoding should succeed");
+        assert!(result.unwrap().is_none(), "Partial frame should be buffered");
+        
+        // Flush should encode the remaining data with zero padding
+        let flush_result = encoder.flush();
+        assert!(flush_result.is_ok(), "Flush should succeed");
+        
+        let flushed_data = flush_result.unwrap();
+        assert!(!flushed_data.is_empty(), "Flush should return encoded frame with buffered data");
+        
+        // Verify MP3 sync word
+        let sync = ((flushed_data[0] as u16) << 3) | ((flushed_data[1] as u16) >> 5);
+        assert_eq!(sync, 0x7FF, "Flushed frame should start with MP3 sync word");
+    }
+
+    #[test]
+    fn test_complete_encoding_workflow() {
+        let config = Config {
+            wave: WaveConfig {
+                channels: Channels::Stereo,
+                sample_rate: 44100,
+            },
+            mpeg: MpegConfig {
+                mode: StereoMode::Stereo,
+                bitrate: 128,
+                emphasis: Emphasis::None,
+                copyright: false,
+                original: true,
+            },
+        };
+        
+        let mut encoder = Mp3Encoder::new(config).unwrap();
+        
+        // Encode multiple frames
+        let samples_per_frame = encoder.samples_per_frame();
+        let channels = 2;
+        let total_samples = samples_per_frame * channels;
+        
+        // Frame 1: Sine wave pattern
+        let frame1: Vec<i16> = (0..total_samples)
+            .map(|i| ((i as f32 * 0.1).sin() * 1000.0) as i16)
+            .collect();
+        
+        let result1 = encoder.encode_frame_interleaved(&frame1);
+        assert!(result1.is_ok(), "First frame encoding should succeed");
+        let encoded1 = result1.unwrap().to_vec(); // Copy to avoid borrow issues
+        assert!(!encoded1.is_empty(), "First encoded frame should not be empty");
+        
+        // Frame 2: Different pattern
+        let frame2: Vec<i16> = (0..total_samples)
+            .map(|i| ((i as f32 * 0.2).cos() * 800.0) as i16)
+            .collect();
+        
+        let result2 = encoder.encode_frame_interleaved(&frame2);
+        assert!(result2.is_ok(), "Second frame encoding should succeed");
+        let encoded2 = result2.unwrap().to_vec(); // Copy to avoid borrow issues
+        assert!(!encoded2.is_empty(), "Second encoded frame should not be empty");
+        
+        // Verify frames are different (different content should produce different output)
+        assert_ne!(encoded1, encoded2, "Different input should produce different output");
+        
+        // Both frames should have valid MP3 headers
+        for (i, frame) in [&encoded1, &encoded2].iter().enumerate() {
+            let sync = ((frame[0] as u16) << 3) | ((frame[1] as u16) >> 5);
+            assert_eq!(sync, 0x7FF, "Frame {} should have valid sync word", i + 1);
+        }
+        
+        // Flush should return empty since we encoded complete frames
+        let flush_result = encoder.flush();
+        assert!(flush_result.is_ok(), "Flush should succeed");
+        let flushed = flush_result.unwrap();
+        assert!(flushed.is_empty(), "Flush should be empty after complete frames");
     }
 
     #[test]
