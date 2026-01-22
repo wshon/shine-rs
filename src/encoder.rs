@@ -53,17 +53,34 @@ impl Mp3Encoder {
         let channels = config.wave.channels as usize;
         let samples_per_frame = config.samples_per_frame();
         
-        // Calculate frame size parameters (following shine's logic)
-        let bitrate = config.mpeg.bitrate * 1000; // Convert to bps
+        // Calculate frame size parameters (following shine's logic exactly)
+        let bitrate_kbps = config.mpeg.bitrate; // Keep in kbps like shine
         let sample_rate = config.wave.sample_rate;
+        let granules_per_frame = match config.mpeg_version() {
+            crate::config::MpegVersion::Mpeg1 => 2,
+            crate::config::MpegVersion::Mpeg2 | crate::config::MpegVersion::Mpeg25 => 1,
+        };
+        let granule_size = 576; // GRANULE_SIZE from shine
+        let bits_per_slot = 8;
         
-        // Calculate average slots per frame
-        let avg_slots_per_frame = (bitrate as f64 * samples_per_frame as f64) / 
-                                 (sample_rate as f64 * 8.0);
+        // Following shine's avg_slots_per_frame calculation exactly:
+        // avg_slots_per_frame = ((double)granules_per_frame * GRANULE_SIZE / 
+        //                       ((double)samplerate)) *
+        //                      (1000 * (double)bitr / (double)bits_per_slot);
+        let avg_slots_per_frame = ((granules_per_frame * granule_size) as f64 / sample_rate as f64) *
+                                 (1000.0 * bitrate_kbps as f64 / bits_per_slot as f64);
         
         let whole_slots_per_frame = avg_slots_per_frame as usize;
         let frac_slots_per_frame = avg_slots_per_frame - whole_slots_per_frame as f64;
         let slot_lag = -frac_slots_per_frame;
+        
+        // Debug output for frame size calculation
+        println!("Frame size calculation:");
+        println!("  Bitrate: {}kbps, Sample rate: {}Hz", bitrate_kbps, sample_rate);
+        println!("  Granules per frame: {}, Granule size: {}", granules_per_frame, granule_size);
+        println!("  Avg slots per frame: {:.6}", avg_slots_per_frame);
+        println!("  Whole slots per frame: {}", whole_slots_per_frame);
+        println!("  Target frame size: {} bytes", whole_slots_per_frame);
         
         Ok(Self {
             subband: SubbandFilter::new(channels),
@@ -317,8 +334,9 @@ impl Mp3Encoder {
     }
     
     /// Main encoding pipeline that processes PCM data through all stages
+    /// Following shine's encode_buffer_internal logic
     fn encode_frame_pipeline(&mut self, channels: usize, samples_per_frame: usize) -> Result<&[u8]> {
-        // Step 1: Calculate padding bit for this frame
+        // Step 1: Calculate padding bit for this frame (following shine's logic)
         let padding = if self.frac_slots_per_frame > 0.0 {
             let should_pad = self.slot_lag <= (self.frac_slots_per_frame - 1.0);
             self.slot_lag += if should_pad { 1.0 } else { 0.0 } - self.frac_slots_per_frame;
@@ -327,11 +345,11 @@ impl Mp3Encoder {
             false
         };
         
-        // Step 2: Calculate target frame size in bits
+        // Step 2: Calculate target frame size in bits (following shine's bits_per_frame calculation)
         let target_frame_size_bytes = self.whole_slots_per_frame + if padding { 1 } else { 0 };
         let target_frame_size_bits = target_frame_size_bytes * 8;
         
-        // Step 3: Write MP3 frame header
+        // Step 3: Write MP3 frame header (following shine's encodeSideInfo)
         self.bitstream.write_frame_header(&self.config, padding);
         
         // Step 4: Prepare side information structure
@@ -343,14 +361,14 @@ impl Mp3Encoder {
             self.encode_channel(ch, samples_per_frame, &mut side_info)?;
         }
         
-        // Step 6: Write side information
+        // Step 6: Write side information (following shine's encodeSideInfo)
         self.bitstream.write_side_info(&side_info, &self.config);
         
-        // Step 7: Pad to target frame size if necessary
+        // Step 7: Ensure frame is exactly the target size (following shine's approach)
         let current_bits = self.bitstream.bits_written();
         if current_bits < target_frame_size_bits {
             let padding_bits = target_frame_size_bits - current_bits;
-            // Add padding bits (zeros)
+            // Add padding bits (zeros) to reach exact frame size
             for _ in 0..(padding_bits / 8) {
                 self.bitstream.write_bits(0, 8);
             }
@@ -358,12 +376,34 @@ impl Mp3Encoder {
             if remaining_bits > 0 {
                 self.bitstream.write_bits(0, remaining_bits as u8);
             }
+        } else if current_bits > target_frame_size_bits {
+            // This should not happen in a correct implementation
+            // But if it does, we need to truncate (this is an error condition)
+            eprintln!("Warning: Frame size exceeded target ({} > {})", current_bits, target_frame_size_bits);
+            // In this case, we should still flush what we have, but the frame will be oversized
         }
         
-        // Step 8: Flush bitstream and copy to frame buffer
+        // Step 8: Flush bitstream to get the complete frame data
         let encoded_data = self.bitstream.flush();
+        
+        // Step 9: Copy to frame buffer and ensure it's exactly the target size
         self.frame_buffer.clear();
-        self.frame_buffer.extend_from_slice(encoded_data);
+        if encoded_data.len() <= target_frame_size_bytes {
+            // Frame is correct size or smaller, copy it
+            self.frame_buffer.extend_from_slice(encoded_data);
+            // Pad with zeros if needed
+            while self.frame_buffer.len() < target_frame_size_bytes {
+                self.frame_buffer.push(0);
+            }
+        } else {
+            // Frame is too large, truncate to target size
+            eprintln!("Warning: Truncating oversized frame ({} > {} bytes)", encoded_data.len(), target_frame_size_bytes);
+            self.frame_buffer.extend_from_slice(&encoded_data[..target_frame_size_bytes]);
+        }
+        
+        // Step 10: Reset bitstream for next frame (following shine's data_position = 0)
+        // This ensures each frame is independent and starts with a fresh bitstream
+        self.bitstream.reset();
         
         Ok(&self.frame_buffer)
     }
