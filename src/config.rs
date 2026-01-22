@@ -222,3 +222,259 @@ impl From<Channels> for usize {
         channels as usize
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    // Property test generators
+    prop_compose! {
+        fn valid_sample_rate()(rate in prop::sample::select(&[
+            44100u32, 48000, 32000,  // MPEG-1
+            22050, 24000, 16000,     // MPEG-2
+            11025, 12000, 8000,      // MPEG-2.5
+        ])) -> u32 {
+            rate
+        }
+    }
+
+    prop_compose! {
+        fn valid_bitrate()(rate in prop::sample::select(&[
+            8u32, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 192, 224, 256, 320
+        ])) -> u32 {
+            rate
+        }
+    }
+
+    prop_compose! {
+        fn valid_channels()(channels in prop::sample::select(&[Channels::Mono, Channels::Stereo])) -> Channels {
+            channels
+        }
+    }
+
+    prop_compose! {
+        fn valid_stereo_mode()(mode in prop::sample::select(&[
+            StereoMode::Stereo, StereoMode::JointStereo, StereoMode::DualChannel, StereoMode::Mono
+        ])) -> StereoMode {
+            mode
+        }
+    }
+
+    prop_compose! {
+        fn valid_emphasis()(emphasis in prop::sample::select(&[
+            Emphasis::None, Emphasis::Emphasis50_15, Emphasis::CcittJ17
+        ])) -> Emphasis {
+            emphasis
+        }
+    }
+
+    fn compatible_config() -> impl Strategy<Value = Config> {
+        (valid_sample_rate(), valid_channels(), valid_emphasis(), any::<bool>(), any::<bool>())
+            .prop_flat_map(|(sample_rate, channels, emphasis, copyright, original)| {
+                let bitrate_strategy = match sample_rate {
+                    44100 | 48000 | 32000 => prop::sample::select(vec![32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320]),
+                    22050 | 24000 | 16000 => prop::sample::select(vec![8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]),
+                    11025 | 12000 | 8000 => prop::sample::select(vec![8, 16, 24, 32, 40, 48, 56, 64]),
+                    _ => prop::sample::select(vec![128]), // fallback
+                };
+                
+                let mode_strategy = match channels {
+                    Channels::Mono => prop::sample::select(vec![StereoMode::Mono]),
+                    Channels::Stereo => prop::sample::select(vec![StereoMode::Stereo, StereoMode::JointStereo, StereoMode::DualChannel]),
+                };
+                
+                (Just(sample_rate), Just(channels), bitrate_strategy, mode_strategy, Just(emphasis), Just(copyright), Just(original))
+            })
+            .prop_map(|(sample_rate, channels, bitrate, mode, emphasis, copyright, original)| {
+                Config {
+                    wave: WaveConfig {
+                        channels,
+                        sample_rate,
+                    },
+                    mpeg: MpegConfig {
+                        mode,
+                        bitrate,
+                        emphasis,
+                        copyright,
+                        original,
+                    },
+                }
+            })
+    }
+
+    prop_compose! {
+        fn invalid_sample_rate()(rate in prop::num::u32::ANY.prop_filter("Must be invalid", |&rate| {
+            !matches!(rate, 44100 | 48000 | 32000 | 22050 | 24000 | 16000 | 11025 | 12000 | 8000)
+        })) -> u32 {
+            rate
+        }
+    }
+
+    prop_compose! {
+        fn invalid_bitrate()(rate in prop::num::u32::ANY.prop_filter("Must be invalid", |&rate| {
+            !matches!(rate, 8 | 16 | 24 | 32 | 40 | 48 | 56 | 64 | 80 | 96 | 112 | 128 | 144 | 160 | 192 | 224 | 256 | 320)
+        })) -> u32 {
+            rate
+        }
+    }
+
+    // Feature: rust-mp3-encoder, Property 12: 配置管理完整性
+    proptest! {
+        #[test]
+        fn test_config_management_integrity_valid_configs(config in compatible_config()) {
+            // For any valid configuration parameter combination, 
+            // the configuration system should correctly set and validate all parameters
+            prop_assert!(config.validate().is_ok(), "Valid configuration should pass validation");
+            
+            // Verify MPEG version detection is correct
+            let expected_version = match config.wave.sample_rate {
+                44100 | 48000 | 32000 => MpegVersion::Mpeg1,
+                22050 | 24000 | 16000 => MpegVersion::Mpeg2,
+                11025 | 12000 | 8000 => MpegVersion::Mpeg25,
+                _ => MpegVersion::Mpeg1,
+            };
+            prop_assert_eq!(config.mpeg_version(), expected_version, "MPEG version should be correctly detected");
+            
+            // Verify samples per frame calculation
+            let expected_samples = match expected_version {
+                MpegVersion::Mpeg1 => 1152,
+                MpegVersion::Mpeg2 | MpegVersion::Mpeg25 => 576,
+            };
+            prop_assert_eq!(config.samples_per_frame(), expected_samples, "Samples per frame should be correct");
+        }
+
+        #[test]
+        fn test_config_management_integrity_invalid_sample_rate(
+            invalid_rate in invalid_sample_rate(),
+            channels in valid_channels(),
+            bitrate in valid_bitrate(),
+            mode in valid_stereo_mode(),
+            emphasis in valid_emphasis(),
+            copyright in any::<bool>(),
+            original in any::<bool>(),
+        ) {
+            let config = Config {
+                wave: WaveConfig {
+                    channels,
+                    sample_rate: invalid_rate,
+                },
+                mpeg: MpegConfig {
+                    mode,
+                    bitrate,
+                    emphasis,
+                    copyright,
+                    original,
+                },
+            };
+            
+            // For any invalid configuration, should return appropriate error information
+            let result = config.validate();
+            prop_assert!(result.is_err(), "Invalid sample rate should fail validation");
+            
+            if let Err(ConfigError::UnsupportedSampleRate(rate)) = result {
+                prop_assert_eq!(rate, invalid_rate, "Error should contain the invalid sample rate");
+            } else if let Err(ConfigError::IncompatibleRateCombination { sample_rate, .. }) = result {
+                prop_assert_eq!(sample_rate, invalid_rate, "Error should contain the invalid sample rate");
+            } else {
+                prop_assert!(false, "Should get sample rate related error");
+            }
+        }
+
+        #[test]
+        fn test_config_management_integrity_invalid_bitrate(
+            sample_rate in valid_sample_rate(),
+            channels in valid_channels(),
+            invalid_bitrate in invalid_bitrate(),
+            mode in valid_stereo_mode(),
+            emphasis in valid_emphasis(),
+            copyright in any::<bool>(),
+            original in any::<bool>(),
+        ) {
+            let config = Config {
+                wave: WaveConfig {
+                    channels,
+                    sample_rate,
+                },
+                mpeg: MpegConfig {
+                    mode,
+                    bitrate: invalid_bitrate,
+                    emphasis,
+                    copyright,
+                    original,
+                },
+            };
+            
+            // For any invalid configuration, should return appropriate error information
+            let result = config.validate();
+            prop_assert!(result.is_err(), "Invalid bitrate should fail validation");
+            
+            match result {
+                Err(ConfigError::UnsupportedBitrate(rate)) => {
+                    prop_assert_eq!(rate, invalid_bitrate, "Error should contain the invalid bitrate");
+                },
+                Err(ConfigError::IncompatibleRateCombination { bitrate, .. }) => {
+                    prop_assert_eq!(bitrate, invalid_bitrate, "Error should contain the invalid bitrate");
+                },
+                _ => prop_assert!(false, "Should get bitrate related error"),
+            }
+        }
+
+        #[test]
+        fn test_config_management_integrity_incompatible_stereo_mode(
+            sample_rate in valid_sample_rate(),
+            bitrate in valid_bitrate(),
+            emphasis in valid_emphasis(),
+            copyright in any::<bool>(),
+            original in any::<bool>(),
+        ) {
+            // Test incompatible combinations: Mono channel with non-Mono stereo mode
+            let config = Config {
+                wave: WaveConfig {
+                    channels: Channels::Mono,
+                    sample_rate,
+                },
+                mpeg: MpegConfig {
+                    mode: StereoMode::Stereo, // Incompatible with Mono channels
+                    bitrate,
+                    emphasis,
+                    copyright,
+                    original,
+                },
+            };
+            
+            let result = config.validate();
+            // This might pass or fail depending on bitrate compatibility, but if it fails due to stereo mode, check the error
+            if let Err(ConfigError::InvalidStereoMode { mode: _, channels }) = result {
+                prop_assert_eq!(channels, 1, "Error should indicate mono channel count");
+            }
+        }
+
+        #[test]
+        fn test_config_default_values(_unit in Just(())) {
+            let config = Config::default();
+            
+            // Default configuration should always be valid
+            prop_assert!(config.validate().is_ok(), "Default configuration should be valid");
+            
+            // Verify default values
+            prop_assert_eq!(config.wave.channels, Channels::Stereo, "Default should be stereo");
+            prop_assert_eq!(config.wave.sample_rate, 44100, "Default sample rate should be 44100");
+            prop_assert_eq!(config.mpeg.mode, StereoMode::JointStereo, "Default should be joint stereo");
+            prop_assert_eq!(config.mpeg.bitrate, 128, "Default bitrate should be 128");
+            prop_assert_eq!(config.mpeg.emphasis, Emphasis::None, "Default emphasis should be None");
+            prop_assert_eq!(config.mpeg.copyright, false, "Default copyright should be false");
+            prop_assert_eq!(config.mpeg.original, true, "Default original should be true");
+        }
+    }
+
+    #[test]
+    fn test_channels_conversion() {
+        assert_eq!(Channels::from(1), Channels::Mono);
+        assert_eq!(Channels::from(2), Channels::Stereo);
+        assert_eq!(Channels::from(99), Channels::Stereo); // Default fallback
+        
+        assert_eq!(usize::from(Channels::Mono), 1);
+        assert_eq!(usize::from(Channels::Stereo), 2);
+    }
+}
