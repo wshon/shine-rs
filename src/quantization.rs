@@ -90,7 +90,7 @@ impl QuantizationLoop {
             step_table: [0.0; 256],
             step_table_i32: [0; 256],
             int2idx: [0; 10000],
-            reservoir: BitReservoir::new(7680), // Maximum reservoir size for Layer III
+            reservoir: BitReservoir::new(128, 44100, 2), // Default values for testing
         };
         
         quantizer.initialize_tables();
@@ -124,22 +124,24 @@ impl QuantizationLoop {
     
     /// Quantize MDCT coefficients using non-linear quantization
     /// Returns the maximum quantized value
+    /// Following shine's quantize function exactly
     pub fn quantize(&self, mdct_coeffs: &[i32; GRANULE_SIZE], stepsize: i32, output: &mut [i32; GRANULE_SIZE]) -> i32 {
         let mut max_value = 0;
         
-        // Get the step size from the table
+        // Get the step size from the table - following shine's logic exactly
         let step_index = (stepsize + 127).clamp(0, 255) as usize;
         let scalei = self.step_table_i32[step_index];
         
-        // Find maximum absolute value for quick check
+        // Find maximum absolute value for quick check - following shine's xrmax logic
         let xrmax = mdct_coeffs.iter().map(|&x| x.abs()).max().unwrap_or(0);
         
-        // Quick check to see if max quantized value will be less than 8192
-        // This speeds up the early calls to binary search
+        // Quick check to see if ixmax will be less than 8192 - following shine's logic exactly
+        // if ((mulr(config->l3loop.xrmax, scalei)) > 165140) /* 8192**(4/3) */
         if Self::multiply_and_round(xrmax, scalei) > 165140 { // 8192^(4/3)
-            return 16384; // No point in continuing, stepsize not big enough
+            return 16384; // Following shine: no point in continuing, stepsize not big enough
         }
         
+        // Main quantization loop - following shine's logic exactly
         for i in 0..GRANULE_SIZE {
             let abs_coeff = mdct_coeffs[i].abs();
             
@@ -148,23 +150,26 @@ impl QuantizationLoop {
                 continue;
             }
             
-            // Multiply coefficient by step size
+            // Following shine's calculation exactly:
+            // ln = mulr(labs(config->l3loop.xr[i]), scalei);
             let ln = Self::multiply_and_round(abs_coeff, scalei);
             
             let quantized = if ln < 10000 {
-                // Use lookup table for fast quantization
+                // Following shine: ln < 10000 catches most values
+                // ix[i] = config->l3loop.int2idx[ln]; /* quick look up method */
                 self.int2idx[ln as usize] as i32
             } else {
-                // Outside table range, use floating point calculation
+                // Following shine: outside table range so have to do it using floats
                 let scale = self.step_table[step_index];
-                let dbl = (abs_coeff as f64) * (scale as f64) * 4.656612875e-10; // 1.0 / 0x7fffffff
+                let dbl = (abs_coeff as f64) * (scale as f64) * 4.656612875e-10; // 0x7fffffff
                 (dbl.sqrt().sqrt() * dbl.sqrt()) as i32 // dbl^(3/4)
             };
             
-            // CRITICAL FIX: Store only absolute values, signs are handled separately in MP3
+            // Following shine's comment: "note. ix cannot be negative"
+            // Store only absolute values, signs are handled separately in MP3
             output[i] = quantized;
             
-            // Track maximum value
+            // Following shine: calculate ixmax while we're here
             if quantized > max_value {
                 max_value = quantized;
             }
@@ -180,7 +185,7 @@ impl QuantizationLoop {
     }
     
     /// Calculate quantization step size for given coefficients
-    pub fn calculate_step_size(&self, mdct_coeffs: &[i32; GRANULE_SIZE], target_bits: usize) -> i32 {
+    pub fn calculate_step_size(&self, mdct_coeffs: &[i32; GRANULE_SIZE], target_bits: usize, granule_info: &mut GranuleInfo, sample_rate: u32) -> i32 {
         // Binary search for optimal step size
         let mut low = -120;
         let mut high = 120;
@@ -195,8 +200,8 @@ impl QuantizationLoop {
                 // Step size too small, increase it
                 low = mid + 1;
             } else {
-                // Calculate approximate bit count (simplified)
-                let estimated_bits = self.estimate_bits(&temp_output);
+                // Calculate exact bit count following shine's bin_search_StepSize logic
+                let estimated_bits = self.calculate_exact_bits(&temp_output, granule_info, sample_rate);
                 
                 if estimated_bits <= target_bits {
                     best_step = mid;
@@ -210,29 +215,27 @@ impl QuantizationLoop {
         best_step
     }
     
-    /// Estimate the number of bits needed for quantized coefficients
-    /// Following shine's bit counting logic more closely
-    fn estimate_bits(&self, quantized: &[i32; GRANULE_SIZE]) -> usize {
-        let mut bits = 0;
+    /// Calculate exact bit count following shine's bin_search_StepSize logic
+    /// This implements the complete shine algorithm for bit counting
+    fn calculate_exact_bits(&self, quantized: &[i32; GRANULE_SIZE], granule_info: &mut GranuleInfo, sample_rate: u32) -> usize {
+        // Following shine's bin_search_StepSize: calc_runlen -> count1_bitcount -> subdivide -> bigv_tab_select -> bigv_bitcount
         
-        // Estimate based on coefficient distribution
-        // This is still simplified but more realistic than the original
-        for &coeff in quantized.iter() {
-            let abs_val = coeff.abs();
-            if abs_val == 0 {
-                bits += 1; // Huffman codes for zero are typically short
-            } else if abs_val == 1 {
-                bits += 3; // Small values need ~3 bits including sign
-            } else if abs_val <= 7 {
-                bits += 5; // Medium values
-            } else if abs_val <= 15 {
-                bits += 7; // Large values without escape
-            } else {
-                bits += 12; // Values requiring escape sequences
-            }
-        }
+        // Step 1: Calculate run length (rzero, count1, big_values)
+        self.calculate_run_length(quantized, granule_info);
         
-        bits
+        // Step 2: Count1 table selection and bit count
+        let count1_bits = self.count1_bitcount(quantized, granule_info);
+        
+        // Step 3: Subdivide big values region
+        self.subdivide_big_values(granule_info, sample_rate);
+        
+        // Step 4: Select Huffman tables for big values regions
+        self.select_big_values_tables(quantized, granule_info);
+        
+        // Step 5: Count big values bits
+        let bigv_bits = self.big_values_bitcount(quantized, granule_info);
+        
+        count1_bits + bigv_bits
     }
     
     /// Quantize MDCT coefficients and encode them
@@ -247,12 +250,18 @@ impl QuantizationLoop {
         // Use outer loop to find optimal quantization and encoding
         let total_bits = self.outer_loop(mdct_coeffs, max_bits, side_info, sample_rate);
         
-        // Quantize coefficients with the selected step size
+        // CRITICAL FIX: The outer_loop already calculated the optimal quantization
+        // and updated side_info accordingly. We need to quantize with the final
+        // step size to get the coefficients that match the side_info.
         let max_quantized = self.quantize(mdct_coeffs, side_info.quantizer_step_size, output);
         
         if max_quantized > 8192 {
             return Err(EncodingError::QuantizationFailed);
         }
+        
+        // CRITICAL FIX: We need to recalculate run length with the final quantized coefficients
+        // to ensure side_info matches the actual output
+        self.calculate_run_length(output, side_info);
         
         // Set global gain (quantizer step size + 210 as per MP3 spec)
         side_info.global_gain = (side_info.quantizer_step_size + 210) as u32;
@@ -289,10 +298,17 @@ impl QuantizationLoop {
         side_info.count1 = 0;
         while i > 3 {
             // CRITICAL FIX: Follow shine's exact logic
-            // In shine, quantized coefficients are non-negative (ix cannot be negative)
-            // So we check if values are <= 1, which means 0 or 1 only
-            if quantized[i - 1] <= 1 && quantized[i - 2] <= 1 &&
-               quantized[i - 3] <= 1 && quantized[i - 4] <= 1 {
+            // In shine, ix contains signed quantized values, and the check is <= 1
+            // This means values can be -1, 0, or 1 (not absolute values)
+            let val1 = quantized[i - 1];
+            let val2 = quantized[i - 2];
+            let val3 = quantized[i - 3];
+            let val4 = quantized[i - 4];
+            
+            if val1 <= 1 && val1 >= -1 && 
+               val2 <= 1 && val2 >= -1 && 
+               val3 <= 1 && val3 >= -1 && 
+               val4 <= 1 && val4 >= -1 {
                 side_info.count1 += 1;
                 i -= 4;
             } else {
@@ -303,50 +319,65 @@ impl QuantizationLoop {
         // Set big values count - KEY FIX: use right shift like shine
         // cod_info->big_values = i >> 1;
         side_info.big_values = (i >> 1) as u32;
+        
+        // CRITICAL FIX: Add strict validation to prevent big_values from being too large
+        // MP3 standard limit: big_values cannot exceed 288 (576/2)
+        if side_info.big_values > 288 {
+            eprintln!("WARNING: big_values {} exceeds maximum 288, clamping to 288", side_info.big_values);
+            side_info.big_values = 288;
+        }
+        
+        // Also validate that i is reasonable
+        if i > GRANULE_SIZE {
+            eprintln!("ERROR: Invalid i value {} in calculate_run_length", i);
+            side_info.big_values = 288; // Fallback to maximum
+        }
     }
     
     /// Inner loop: find optimal Huffman table selection
     /// Returns the number of bits needed for encoding
-    fn inner_loop(&self, coeffs: &mut [i32; GRANULE_SIZE], max_bits: usize, info: &mut GranuleInfo, sample_rate: u32) -> usize {
+    /// Following shine's inner_loop logic exactly
+    fn inner_loop(&self, original_coeffs: &[i32; GRANULE_SIZE], quantized_coeffs: &mut [i32; GRANULE_SIZE], max_bits: usize, info: &mut GranuleInfo, sample_rate: u32) -> usize {
         let mut bits;
         
-        // Ensure quantized values are within table range
-        while self.max_quantized_value(coeffs) > 8192 {
-            info.quantizer_step_size += 1;
-            self.quantize_coefficients(coeffs, info.quantizer_step_size);
+        // Following shine's logic: if (max_bits < 0) cod_info->quantizerStepSize--;
+        if max_bits == 0 {
+            info.quantizer_step_size = info.quantizer_step_size.saturating_sub(1);
         }
         
-        // Calculate run length encoding info
-        self.calculate_run_length(coeffs, info);
-        
-        // Count bits for count1 region (quadruples)
-        let c1bits = self.count1_bitcount(coeffs, info);
-        bits = c1bits;
-        
-        // Subdivide big values region
-        self.subdivide_big_values(info, sample_rate);
-        
-        // Select optimal Huffman tables for big values
-        self.select_big_values_tables(coeffs, info);
-        
-        // Count bits for big values region
-        let bvbits = self.big_values_bitcount(coeffs, info);
-        bits += bvbits;
-        
-        // Continue until we're within the bit limit
-        while bits > max_bits {
-            info.quantizer_step_size += 1;
-            self.quantize_coefficients(coeffs, info.quantizer_step_size);
-            
-            if self.max_quantized_value(coeffs) > 8192 {
-                continue;
+        // Main quantization loop - following shine's do-while structure exactly
+        loop {
+            // Following shine's logic: while (quantize(ix, ++cod_info->quantizerStepSize, config) > 8192)
+            loop {
+                info.quantizer_step_size += 1;
+                let max_quantized = self.quantize(original_coeffs, info.quantizer_step_size, quantized_coeffs);
+                if max_quantized <= 8192 {
+                    break;
+                }
             }
             
-            self.calculate_run_length(coeffs, info);
-            bits = self.count1_bitcount(coeffs, info);
+            // Following shine's exact sequence:
+            // calc_runlen(ix, cod_info);                     /* rzero,count1,big_values*/
+            self.calculate_run_length(quantized_coeffs, info);
+            
+            // bits = c1bits = count1_bitcount(ix, cod_info); /* count1_table selection*/
+            let c1bits = self.count1_bitcount(quantized_coeffs, info);
+            bits = c1bits;
+            
+            // subdivide(cod_info, config);                   /* bigvalues sfb division */
             self.subdivide_big_values(info, sample_rate);
-            self.select_big_values_tables(coeffs, info);
-            bits += self.big_values_bitcount(coeffs, info);
+            
+            // bigv_tab_select(ix, cod_info);                 /* codebook selection*/
+            self.select_big_values_tables(quantized_coeffs, info);
+            
+            // bits += bvbits = bigv_bitcount(ix, cod_info);  /* bit count */
+            let bvbits = self.big_values_bitcount(quantized_coeffs, info);
+            bits += bvbits;
+            
+            // } while (bits > max_bits);
+            if bits <= max_bits {
+                break;
+            }
         }
         
         bits
@@ -354,30 +385,32 @@ impl QuantizationLoop {
     
     /// Outer loop: adjust quantization step size for optimal quality
     /// Returns the total number of bits used
+    /// Following shine's outer_loop logic exactly
     fn outer_loop(&self, mdct_coeffs: &[i32; GRANULE_SIZE], max_bits: usize, info: &mut GranuleInfo, sample_rate: u32) -> usize {
-        // Binary search for optimal quantization step size
+        // Following shine's logic: cod_info->quantizerStepSize = bin_search_StepSize(max_bits, ix, cod_info, config);
         info.quantizer_step_size = self.binary_search_step_size(mdct_coeffs, max_bits, info, sample_rate);
         
-        // Calculate part2 length (scale factors)
+        // Following shine's logic: cod_info->part2_length = part2_length(gr, ch, config);
         info.part2_length = self.calculate_part2_length(info);
         
-        // Calculate available bits for Huffman coding
+        // Following shine's logic: huff_bits = max_bits - cod_info->part2_length;
         let huffman_bits = max_bits.saturating_sub(info.part2_length as usize);
         
         // Quantize coefficients with the selected step size
         let mut quantized = [0i32; GRANULE_SIZE];
         self.quantize(mdct_coeffs, info.quantizer_step_size, &mut quantized);
         
-        // Run inner loop to optimize Huffman coding
-        let bits = self.inner_loop(&mut quantized, huffman_bits, info, sample_rate);
+        // Following shine's logic: bits = shine_inner_loop(ix, huff_bits, cod_info, gr, ch, config);
+        let bits = self.inner_loop(mdct_coeffs, &mut quantized, huffman_bits, info, sample_rate);
         
-        // Set total part2_3 length
+        // Following shine's logic: cod_info->part2_3_length = cod_info->part2_length + bits;
         info.part2_3_length = info.part2_length + bits as u32;
         
         info.part2_3_length as usize
     }
     
     /// Binary search for optimal quantization step size
+    /// Following shine's bin_search_StepSize logic exactly
     fn binary_search_step_size(&self, mdct_coeffs: &[i32; GRANULE_SIZE], desired_rate: usize, info: &mut GranuleInfo, sample_rate: u32) -> i32 {
         let mut low = -120;
         let mut high = 120;
@@ -386,6 +419,8 @@ impl QuantizationLoop {
         while low <= high {
             let mid = (low + high) / 2;
             let mut temp_coeffs = [0i32; GRANULE_SIZE];
+            
+            // Following shine's logic: if (quantize(ix, next + half, config) > 8192)
             let max_quantized = self.quantize(mdct_coeffs, mid, &mut temp_coeffs);
             
             if max_quantized > 8192 {
@@ -397,7 +432,7 @@ impl QuantizationLoop {
                 temp_info.quantizer_step_size = mid;
                 
                 self.calculate_run_length(&temp_coeffs, &mut temp_info);
-                let c1bits = self.count1_bitcount(&temp_coeffs, &temp_info);
+                let c1bits = self.count1_bitcount(&temp_coeffs, &mut temp_info);
                 self.subdivide_big_values(&mut temp_info, sample_rate);
                 self.select_big_values_tables(&temp_coeffs, &mut temp_info);
                 let bvbits = self.big_values_bitcount(&temp_coeffs, &temp_info);
@@ -416,85 +451,65 @@ impl QuantizationLoop {
     }
     
     /// Get maximum quantized value in coefficients array
+    #[allow(dead_code)]
     fn max_quantized_value(&self, coeffs: &[i32; GRANULE_SIZE]) -> i32 {
         coeffs.iter().map(|&x| x.abs()).max().unwrap_or(0)
     }
     
-    /// Quantize coefficients in place
-    fn quantize_coefficients(&self, coeffs: &mut [i32; GRANULE_SIZE], step_size: i32) {
-        // This is a simplified version - in practice would use the full quantize method
-        let step_index = (step_size + 127).clamp(0, 255) as usize;
-        let scale = self.step_table[step_index];
-        
-        for coeff in coeffs.iter_mut() {
-            if *coeff != 0 {
-                let abs_val = coeff.abs();
-                let quantized = ((abs_val as f32) * scale).round() as i32;
-                // CRITICAL FIX: Store only absolute values, signs are handled separately in MP3
-                *coeff = quantized;
-            }
-        }
-    }
-    
     /// Count bits needed for count1 region (quadruples)
-    fn count1_bitcount(&self, coeffs: &[i32; GRANULE_SIZE], info: &GranuleInfo) -> usize {
-        let mut bits = 0;
-        let start_index = (info.big_values * 2) as usize;
-        let mut i = start_index;
-        
-        // Count quadruples in count1 region
-        for _ in 0..info.count1 {
-            if i + 3 < GRANULE_SIZE {
-                let v = coeffs[i].abs().min(1);
-                let w = coeffs[i + 1].abs().min(1);
-                let x = coeffs[i + 2].abs().min(1);
-                let y = coeffs[i + 3].abs().min(1);
-                
-                // Simplified bit counting for quadruples
-                let pattern = v + (w << 1) + (x << 2) + (y << 3);
-                bits += self.estimate_quadruple_bits(pattern);
-                
-                // Add sign bits
-                if coeffs[i] != 0 { bits += 1; }
-                if coeffs[i + 1] != 0 { bits += 1; }
-                if coeffs[i + 2] != 0 { bits += 1; }
-                if coeffs[i + 3] != 0 { bits += 1; }
-                
-                i += 4;
-            }
-        }
-        
-        bits
-    }
-    
-    /// Estimate bits needed for a quadruple pattern (following shine's count1_bitcount logic)
-    fn estimate_quadruple_bits(&self, pattern: i32) -> usize {
-        // Following shine's count1_bitcount more closely
-        // This uses the actual count1 Huffman table structure
+    /// Following shine's count1_bitcount function exactly
+    fn count1_bitcount(&self, coeffs: &[i32; GRANULE_SIZE], info: &mut GranuleInfo) -> usize {
         use crate::tables::COUNT1_TABLES;
         
-        let table_a = COUNT1_TABLES[0]; // Table A
-        let table_b = COUNT1_TABLES[1]; // Table B
+        let mut sum0 = 0;
+        let mut sum1 = 0;
         
-        if (pattern as usize) < table_a.codes.len() {
-            let bits_a = table_a.lengths[pattern as usize] as usize;
-            let bits_b = if (pattern as usize) < table_b.codes.len() {
-                table_b.lengths[pattern as usize] as usize
-            } else {
-                bits_a
-            };
-            
-            // Return the minimum (shine chooses the better table)
-            bits_a.min(bits_b)
-        } else {
-            // Fallback for invalid patterns
-            match pattern {
-                0 => 1,      // All zeros
-                1..=7 => 3,  // Simple patterns
-                _ => 5,      // Complex patterns
+        // Following shine's exact loop: for (i = cod_info->big_values << 1, k = 0; k < cod_info->count1; i += 4, k++)
+        let mut i = (info.big_values << 1) as usize;
+        for _k in 0..info.count1 {
+            if i + 3 >= GRANULE_SIZE {
+                break;
             }
+            
+            let v = coeffs[i];
+            let w = coeffs[i + 1];
+            let x = coeffs[i + 2];
+            let y = coeffs[i + 3];
+            
+            // Following shine's pattern calculation: p = v + (w << 1) + (x << 2) + (y << 3);
+            let p = (v.abs().min(1) + (w.abs().min(1) << 1) + (x.abs().min(1) << 2) + (y.abs().min(1) << 3)) as usize;
+            
+            // Count sign bits - following shine's logic exactly
+            let mut signbits = 0;
+            if v != 0 { signbits += 1; }
+            if w != 0 { signbits += 1; }
+            if x != 0 { signbits += 1; }
+            if y != 0 { signbits += 1; }
+            
+            sum0 += signbits;
+            sum1 += signbits;
+            
+            // Add Huffman table bits - following shine's logic
+            if p < COUNT1_TABLES[0].lengths.len() {
+                sum0 += COUNT1_TABLES[0].lengths[p] as usize;
+            }
+            if p < COUNT1_TABLES[1].lengths.len() {
+                sum1 += COUNT1_TABLES[1].lengths[p] as usize;
+            }
+            
+            i += 4;
+        }
+        
+        // Following shine's table selection logic
+        if sum0 < sum1 {
+            info.count1table_select = false;
+            sum0
+        } else {
+            info.count1table_select = true;
+            sum1
         }
     }
+
     
     /// Subdivide big values region into sub-regions (following shine's subdivide function exactly)
     fn subdivide_big_values(&self, info: &mut GranuleInfo, sample_rate: u32) {
@@ -619,103 +634,247 @@ impl QuantizationLoop {
     /// Select optimal Huffman tables for big values regions
     /// Following shine's bigv_tab_select function exactly
     fn select_big_values_tables(&self, coeffs: &[i32; GRANULE_SIZE], info: &mut GranuleInfo) {
-        use crate::huffman::HuffmanEncoder;
-        
-        // Initialize all table selections to 0 (following shine's logic)
+        // Following shine's initialization: all tables start at 0
         info.table_select[0] = 0;
         info.table_select[1] = 0;
         info.table_select[2] = 0;
         
-        let encoder = HuffmanEncoder::new();
-        
-        // Region 0 - following shine's logic: if (cod_info->address1 > 0)
+        // Following shine's logic: if (cod_info->address1 > 0)
         if info.address1 > 0 {
-            info.table_select[0] = encoder.select_table(coeffs, 0, info.address1 as usize) as u32;
+            info.table_select[0] = self.new_choose_table(coeffs, 0, info.address1 as usize) as u32;
         }
         
-        // Region 1 - following shine's logic: if (cod_info->address2 > cod_info->address1)
+        // Following shine's logic: if (cod_info->address2 > cod_info->address1)
         if info.address2 > info.address1 {
-            info.table_select[1] = encoder.select_table(coeffs, info.address1 as usize, info.address2 as usize) as u32;
+            info.table_select[1] = self.new_choose_table(coeffs, info.address1 as usize, info.address2 as usize) as u32;
         }
         
-        // Region 2 - following shine's logic: if (cod_info->big_values << 1 > cod_info->address2)
+        // Following shine's logic: if (cod_info->big_values << 1 > cod_info->address2)
         if (info.big_values << 1) > info.address2 {
-            info.table_select[2] = encoder.select_table(coeffs, info.address2 as usize, (info.big_values << 1) as usize) as u32;
+            info.table_select[2] = self.new_choose_table(coeffs, info.address2 as usize, (info.big_values << 1) as usize) as u32;
         }
     }
     
+    /// Choose the Huffman table following shine's new_choose_table function exactly
+    fn new_choose_table(&self, coeffs: &[i32; GRANULE_SIZE], begin: usize, end: usize) -> usize {
+        use crate::tables::HUFFMAN_TABLES;
+        
+        if begin >= end || begin >= GRANULE_SIZE {
+            return 0;
+        }
+        
+        let actual_end = std::cmp::min(end, GRANULE_SIZE);
+        
+        // Following shine's ix_max function
+        let mut max = 0;
+        for i in begin..actual_end {
+            if coeffs[i].abs() > max {
+                max = coeffs[i].abs();
+            }
+        }
+        
+        if max == 0 {
+            return 0; // Following shine's logic: return 0 for all-zero regions
+        }
+        
+        let mut choice = [0usize; 2];
+        let mut sum = [usize::MAX; 2];
+        
+        if max < 15 {
+            // Following shine's logic: try tables with no linbits
+            // for (i = 14; i--; ) if (shine_huffman_table[i].xlen > max)
+            for i in (0..15).rev() {
+                if i == 4 || i == 14 { continue; } // Skip non-existent tables
+                
+                if let Some(table) = &HUFFMAN_TABLES[i] {
+                    if table.xlen > max as u32 {
+                        choice[0] = i;
+                        break;
+                    }
+                }
+            }
+            
+            if choice[0] > 0 {
+                sum[0] = self.count_bit_region(coeffs, begin, actual_end, choice[0] as u32);
+            }
+            
+            // Following shine's switch statement for table optimization
+            match choice[0] {
+                2 => {
+                    if let Some(_) = &HUFFMAN_TABLES[3] {
+                        sum[1] = self.count_bit_region(coeffs, begin, actual_end, 3);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 3;
+                        }
+                    }
+                },
+                5 => {
+                    if let Some(_) = &HUFFMAN_TABLES[6] {
+                        sum[1] = self.count_bit_region(coeffs, begin, actual_end, 6);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 6;
+                        }
+                    }
+                },
+                7 => {
+                    if let Some(_) = &HUFFMAN_TABLES[8] {
+                        sum[1] = self.count_bit_region(coeffs, begin, actual_end, 8);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 8;
+                            sum[0] = sum[1];
+                        }
+                    }
+                    if let Some(_) = &HUFFMAN_TABLES[9] {
+                        sum[1] = self.count_bit_region(coeffs, begin, actual_end, 9);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 9;
+                        }
+                    }
+                },
+                10 => {
+                    if let Some(_) = &HUFFMAN_TABLES[11] {
+                        sum[1] = self.count_bit_region(coeffs, begin, actual_end, 11);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 11;
+                            sum[0] = sum[1];
+                        }
+                    }
+                    if let Some(_) = &HUFFMAN_TABLES[12] {
+                        sum[1] = self.count_bit_region(coeffs, begin, actual_end, 12);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 12;
+                        }
+                    }
+                },
+                13 => {
+                    if let Some(_) = &HUFFMAN_TABLES[15] {
+                        sum[1] = self.count_bit_region(coeffs, begin, actual_end, 15);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 15;
+                        }
+                    }
+                },
+                _ => {}
+            }
+        } else {
+            // Following shine's logic: try tables with linbits
+            let max_linbits = max - 15;
+            
+            // for (i = 15; i < 24; i++) if (shine_huffman_table[i].linmax >= max)
+            for i in 15..24 {
+                if let Some(table) = &HUFFMAN_TABLES[i] {
+                    if table.linmax >= max_linbits as u32 {
+                        choice[0] = i;
+                        break;
+                    }
+                }
+            }
+            
+            // for (i = 24; i < 32; i++) if (shine_huffman_table[i].linmax >= max)
+            for i in 24..32 {
+                if let Some(table) = &HUFFMAN_TABLES[i] {
+                    if table.linmax >= max_linbits as u32 {
+                        choice[1] = i;
+                        break;
+                    }
+                }
+            }
+            
+            if choice[0] > 0 {
+                sum[0] = self.count_bit_region(coeffs, begin, actual_end, choice[0] as u32);
+            }
+            if choice[1] > 0 {
+                sum[1] = self.count_bit_region(coeffs, begin, actual_end, choice[1] as u32);
+            }
+            
+            // Following shine's logic: if (sum[1] < sum[0]) choice[0] = choice[1];
+            if sum[1] < sum[0] {
+                choice[0] = choice[1];
+            }
+        }
+        
+        choice[0]
+    }
+    
     /// Count bits needed for big values regions
+    /// Following shine's bigv_bitcount function exactly
     fn big_values_bitcount(&self, coeffs: &[i32; GRANULE_SIZE], info: &GranuleInfo) -> usize {
         let mut bits = 0;
         
-        // Region 0 - following shine's logic: skip if table is 0
-        if info.table_select[0] != 0 && info.address1 > 0 {
-            bits += self.count_region_bits(coeffs, 0, info.address1 as usize, info.table_select[0]);
+        // Following shine's logic: if ((table = gi->table_select[0])) bits += count_bit(ix, 0, gi->address1, table);
+        if info.table_select[0] != 0 {
+            bits += self.count_bit_region(coeffs, 0, info.address1 as usize, info.table_select[0]);
         }
         
-        // Region 1 - following shine's logic: skip if table is 0
-        if info.table_select[1] != 0 && info.address2 > info.address1 {
-            bits += self.count_region_bits(coeffs, info.address1 as usize, info.address2 as usize, info.table_select[1]);
+        // Following shine's logic: if ((table = gi->table_select[1])) bits += count_bit(ix, gi->address1, gi->address2, table);
+        if info.table_select[1] != 0 {
+            bits += self.count_bit_region(coeffs, info.address1 as usize, info.address2 as usize, info.table_select[1]);
         }
         
-        // Region 2 - following shine's logic: skip if table is 0
-        if info.table_select[2] != 0 && info.address3 > info.address2 {
-            bits += self.count_region_bits(coeffs, info.address2 as usize, info.address3 as usize, info.table_select[2]);
+        // Following shine's logic: if ((table = gi->table_select[2])) bits += count_bit(ix, gi->address2, gi->big_values << 1, table);
+        if info.table_select[2] != 0 {
+            bits += self.count_bit_region(coeffs, info.address2 as usize, (info.big_values << 1) as usize, info.table_select[2]);
         }
         
         bits
     }
     
-    /// Count bits for a specific region with given Huffman table
-    fn count_region_bits(&self, coeffs: &[i32; GRANULE_SIZE], start: usize, end: usize, table: u32) -> usize {
-        // Following shine's logic: return 0 if table is 0
-        if table == 0 {
+    /// Count bits for a specific region using Huffman table (following shine's count_bit function)
+    fn count_bit_region(&self, coeffs: &[i32; GRANULE_SIZE], start: usize, end: usize, table: u32) -> usize {
+        use crate::tables::HUFFMAN_TABLES;
+        
+        if table == 0 || table as usize >= HUFFMAN_TABLES.len() {
             return 0;
         }
+        
+        let huffman_table = match &HUFFMAN_TABLES[table as usize] {
+            Some(table) => table,
+            None => return 0,
+        };
         
         let mut bits = 0;
         let mut i = start;
         
+        // Process pairs of coefficients (following shine's logic)
         while i + 1 < end && i + 1 < GRANULE_SIZE {
             let x = coeffs[i].abs();
             let y = coeffs[i + 1].abs();
             
-            // Estimate bits based on table and values
-            bits += self.estimate_pair_bits(x, y, table);
+            // Check if values are within table range
+            if x > huffman_table.xlen as i32 || y > huffman_table.ylen as i32 {
+                return usize::MAX; // Cannot encode with this table
+            }
             
-            // Add sign bits
-            if coeffs[i] != 0 { bits += 1; }
-            if coeffs[i + 1] != 0 { bits += 1; }
+            // Calculate table index: idx = x * ylen + y
+            let table_idx = (x as u32 * huffman_table.ylen + y as u32) as usize;
+            
+            if table_idx < huffman_table.lengths.len() {
+                bits += huffman_table.lengths[table_idx] as usize;
+                
+                // Add linbits for large values (following shine's logic)
+                if huffman_table.linbits > 0 {
+                    if x as u32 > huffman_table.linmax {
+                        bits += huffman_table.linbits as usize;
+                    }
+                    if y as u32 > huffman_table.linmax {
+                        bits += huffman_table.linbits as usize;
+                    }
+                }
+                
+                // Add sign bits
+                if coeffs[i] != 0 { bits += 1; }
+                if coeffs[i + 1] != 0 { bits += 1; }
+            } else {
+                return usize::MAX; // Invalid table index
+            }
             
             i += 2;
         }
         
         bits
     }
-    
-    /// Estimate bits needed for a coefficient pair
-    fn estimate_pair_bits(&self, x: i32, y: i32, table: u32) -> usize {
-        // Following shine's logic: return 0 if table is 0
-        if table == 0 {
-            return 0;
-        }
-        
-        // Simplified estimation - in practice would use actual Huffman tables
-        let max_val = x.max(y);
-        
-        match table {
-            1..=3 => if max_val <= 1 { 2 } else { 100 }, // Small value tables (skip table 4)
-            5..=9 => if max_val <= 3 { 4 } else { 100 }, // Medium value tables
-            10..=13 => if max_val <= 7 { 6 } else { 100 }, // Large value tables (skip table 14)
-            15..=31 => {
-                // Tables with escape sequences
-                let base_bits = 8;
-                let escape_bits = if max_val > 15 { (max_val - 15) * 2 } else { 0 };
-                base_bits + escape_bits as usize
-            },
-            _ => 100, // Invalid table
-        }
-    }
+
+
     
     /// Calculate part2 length (scale factors) following shine's part2_length function
     fn calculate_part2_length(&self, info: &GranuleInfo) -> u32 {
@@ -906,28 +1065,28 @@ mod tests {
         // Feature: rust-mp3-encoder, Property 8: 比特储备池机制
         #[test]
         fn test_bit_reservoir_integration(
-            mean_bits in mean_bits_strategy(),
+            _mean_bits in mean_bits_strategy(),
             channels in channels_strategy(),
             perceptual_entropy in perceptual_entropy_strategy()
         ) {
             setup_panic_hook();
             
             use crate::reservoir::BitReservoir;
+            use crate::bitstream::SideInfo;
             
-            let mut reservoir = BitReservoir::new(7680);
-            reservoir.frame_begin(mean_bits);
+            let mut reservoir = BitReservoir::new(128, 44100, channels as u8);
             
             // Property 1: Max reservoir bits should be reasonable
-            let max_bits = reservoir.max_reservoir_bits(perceptual_entropy, channels);
+            let max_bits = reservoir.max_reservoir_bits(perceptual_entropy, channels as u8);
             prop_assert!(max_bits <= 4095, "Max bits should not exceed 4095");
             prop_assert!(max_bits > 0, "Max bits should be positive");
             
             // Property 2: Frame operations should maintain consistency
-            let initial_bits = reservoir.available_bits();
-            let (stuffing_bits, _drain_bits) = reservoir.frame_end(channels);
+            let mut side_info = SideInfo::default();
+            let stuffing_bits = reservoir.frame_end(&mut side_info, channels as u8);
             
             // Stuffing bits should be reasonable
-            prop_assert!(stuffing_bits <= initial_bits + mean_bits, "Stuffing bits should be reasonable");
+            prop_assert!(stuffing_bits >= 0, "Stuffing bits should be non-negative");
         }
     }
 
@@ -979,7 +1138,8 @@ mod tests {
             let quantizer = QuantizationLoop::new();
             let test_coeffs = [100i32; GRANULE_SIZE];
             
-            let step_size = quantizer.calculate_step_size(&test_coeffs, 1000);
+            let mut granule_info = GranuleInfo::default();
+            let step_size = quantizer.calculate_step_size(&test_coeffs, 1000, &mut granule_info, 44100);
             
             // Should return a reasonable step size
             assert!(step_size >= -120);

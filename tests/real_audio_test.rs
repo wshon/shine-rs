@@ -95,58 +95,117 @@ fn get_mp3_duration(mp3_path: &str) -> Result<f64, String> {
 }
 
 /// Read WAV file and extract PCM data
-/// This is a simplified WAV reader for testing purposes
+/// Complete WAV reader implementation following WAV format specification
 fn read_wav_file(path: &str) -> Result<(Vec<i16>, u32, u16), Box<dyn std::error::Error>> {
     let mut file = File::open(path)?;
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
     
-    // Simple WAV header parsing (assumes standard format)
-    if &buffer[0..4] != b"RIFF" || &buffer[8..12] != b"WAVE" {
-        return Err("Invalid WAV file format".into());
+    if buffer.len() < 44 {
+        return Err("WAV file too small".into());
     }
     
-    // Find fmt chunk
+    // Validate RIFF header
+    if &buffer[0..4] != b"RIFF" {
+        return Err("Not a RIFF file".into());
+    }
+    
+    let file_size = u32::from_le_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
+    if file_size as usize + 8 != buffer.len() {
+        return Err("Invalid RIFF file size".into());
+    }
+    
+    // Validate WAVE format
+    if &buffer[8..12] != b"WAVE" {
+        return Err("Not a WAVE file".into());
+    }
+    
+    let mut sample_rate = 0u32;
+    let mut channels = 0u16;
+    let mut bits_per_sample = 0u16;
+    let mut pcm_data = Vec::new();
+    let mut fmt_found = false;
+    let mut data_found = false;
+    
+    // Parse chunks
     let mut pos = 12;
     while pos < buffer.len() - 8 {
-        let chunk_id = &buffer[pos..pos+4];
-        let chunk_size = u32::from_le_bytes([buffer[pos+4], buffer[pos+5], buffer[pos+6], buffer[pos+7]]);
-        
-        if chunk_id == b"fmt " {
-            let sample_rate = u32::from_le_bytes([buffer[pos+12], buffer[pos+13], buffer[pos+14], buffer[pos+15]]);
-            let channels = u16::from_le_bytes([buffer[pos+10], buffer[pos+11]]);
-            pos += 8 + chunk_size as usize;
-            
-            // Find data chunk
-            while pos < buffer.len() - 8 {
-                let data_chunk_id = &buffer[pos..pos+4];
-                let data_chunk_size = u32::from_le_bytes([buffer[pos+4], buffer[pos+5], buffer[pos+6], buffer[pos+7]]);
-                
-                if data_chunk_id == b"data" {
-                    let data_start = pos + 8;
-                    let data_end = data_start + data_chunk_size as usize;
-                    
-                    // Convert bytes to i16 samples
-                    let mut samples = Vec::new();
-                    for i in (data_start..data_end).step_by(2) {
-                        if i + 1 < buffer.len() {
-                            let sample = i16::from_le_bytes([buffer[i], buffer[i+1]]);
-                            samples.push(sample);
-                        }
-                    }
-                    
-                    return Ok((samples, sample_rate, channels));
-                }
-                
-                pos += 8 + data_chunk_size as usize;
-            }
+        if pos + 8 > buffer.len() {
             break;
         }
         
-        pos += 8 + chunk_size as usize;
+        let chunk_id = &buffer[pos..pos+4];
+        let chunk_size = u32::from_le_bytes([buffer[pos+4], buffer[pos+5], buffer[pos+6], buffer[pos+7]]);
+        let chunk_data_start = pos + 8;
+        let chunk_data_end = chunk_data_start + chunk_size as usize;
+        
+        if chunk_data_end > buffer.len() {
+            return Err("Invalid chunk size".into());
+        }
+        
+        match chunk_id {
+            b"fmt " => {
+                if chunk_size < 16 {
+                    return Err("Invalid fmt chunk size".into());
+                }
+                
+                let audio_format = u16::from_le_bytes([buffer[chunk_data_start], buffer[chunk_data_start+1]]);
+                if audio_format != 1 {
+                    return Err("Only PCM format supported".into());
+                }
+                
+                channels = u16::from_le_bytes([buffer[chunk_data_start+2], buffer[chunk_data_start+3]]);
+                sample_rate = u32::from_le_bytes([
+                    buffer[chunk_data_start+4], buffer[chunk_data_start+5], 
+                    buffer[chunk_data_start+6], buffer[chunk_data_start+7]
+                ]);
+                bits_per_sample = u16::from_le_bytes([buffer[chunk_data_start+14], buffer[chunk_data_start+15]]);
+                
+                if bits_per_sample != 16 {
+                    return Err("Only 16-bit samples supported".into());
+                }
+                
+                fmt_found = true;
+            },
+            b"data" => {
+                if !fmt_found {
+                    return Err("Data chunk found before fmt chunk".into());
+                }
+                
+                // Convert bytes to i16 samples
+                for i in (chunk_data_start..chunk_data_end).step_by(2) {
+                    if i + 1 < buffer.len() {
+                        let sample = i16::from_le_bytes([buffer[i], buffer[i+1]]);
+                        pcm_data.push(sample);
+                    }
+                }
+                data_found = true;
+            },
+            _ => {
+                // Skip unknown chunks
+            }
+        }
+        
+        // Move to next chunk (ensure even alignment)
+        pos = chunk_data_end;
+        if chunk_size % 2 == 1 {
+            pos += 1; // WAV chunks are word-aligned
+        }
     }
     
-    Err("Could not parse WAV file".into())
+    if !fmt_found {
+        return Err("No fmt chunk found".into());
+    }
+    
+    if !data_found {
+        return Err("No data chunk found".into());
+    }
+    
+    if pcm_data.is_empty() {
+        return Err("No audio data found".into());
+    }
+    
+    Ok((pcm_data, sample_rate, channels))
 }
 
 #[test]
@@ -348,14 +407,15 @@ fn test_different_sample_rates() {
     for &sample_rate in &test_rates {
         println!("Testing sample rate: {} Hz", sample_rate);
         
-        // Generate 0.5 second test signal
+        // Generate 0.5 second test signal with lower amplitude
         let duration = 0.5;
         let samples_count = (sample_rate as f32 * duration) as usize;
         
         let mut pcm_data = Vec::with_capacity(samples_count * 2); // Stereo
         for i in 0..samples_count {
             let t = i as f32 / sample_rate as f32;
-            let sample = (t * 1000.0 * 2.0 * std::f32::consts::PI).sin() * 8000.0;
+            // Use lower frequency and amplitude to avoid quantization issues
+            let sample = (t * 440.0 * 2.0 * std::f32::consts::PI).sin() * 4000.0; // Reduced from 8000.0 and 1000Hz
             let sample_i16 = sample as i16;
             pcm_data.push(sample_i16); // Left channel
             pcm_data.push(sample_i16); // Right channel

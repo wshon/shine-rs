@@ -333,24 +333,18 @@ impl HuffmanEncoder {
         quantized: &[i32; 576],
         info: &GranuleInfo,
     ) -> usize {
-        let big_values = info.big_values as usize;
-        let big_values_end = std::cmp::min(big_values * 2, 576);
-        
-        // Calculate region boundaries
-        let region0_end = std::cmp::min(self.get_region_end(0, info.region0_count as usize), big_values_end);
-        let region1_end = std::cmp::min(self.get_region_end(region0_end, info.region1_count as usize), big_values_end);
-        
         let mut total_bits: usize = 0;
         
+        // Use the addresses calculated by subdivide_big_values (following shine's logic)
         // Calculate bits for region 0
-        if region0_end > 0 {
+        if info.address1 > 0 {
             let table_index = info.table_select[0] as usize;
             if table_index == 0 {
                 // Table 0 means no encoding needed (all zeros)
                 // Don't add any bits
             } else if table_index < self.tables.len() {
                 if let Some(table) = &self.tables[table_index] {
-                    let region_values = &quantized[0..region0_end];
+                    let region_values = &quantized[0..info.address1 as usize];
                     let bits = self.calculate_bits_for_region(region_values, table);
                     if bits == usize::MAX {
                         return usize::MAX;
@@ -361,14 +355,14 @@ impl HuffmanEncoder {
         }
         
         // Calculate bits for region 1
-        if region1_end > region0_end {
+        if info.address2 > info.address1 {
             let table_index = info.table_select[1] as usize;
             if table_index == 0 {
                 // Table 0 means no encoding needed (all zeros)
                 // Don't add any bits
             } else if table_index < self.tables.len() {
                 if let Some(table) = &self.tables[table_index] {
-                    let region_values = &quantized[region0_end..region1_end];
+                    let region_values = &quantized[info.address1 as usize..info.address2 as usize];
                     let bits = self.calculate_bits_for_region(region_values, table);
                     if bits == usize::MAX {
                         return usize::MAX;
@@ -379,14 +373,14 @@ impl HuffmanEncoder {
         }
         
         // Calculate bits for region 2
-        if big_values_end > region1_end {
+        if info.address3 > info.address2 {
             let table_index = info.table_select[2] as usize;
             if table_index == 0 {
                 // Table 0 means no encoding needed (all zeros)
                 // Don't add any bits
             } else if table_index < self.tables.len() {
                 if let Some(table) = &self.tables[table_index] {
-                    let region_values = &quantized[region1_end..big_values_end];
+                    let region_values = &quantized[info.address2 as usize..info.address3 as usize];
                     let bits = self.calculate_bits_for_region(region_values, table);
                     if bits == usize::MAX {
                         return usize::MAX;
@@ -408,26 +402,21 @@ impl HuffmanEncoder {
     /// Optimizes the table selection for all three regions to minimize
     /// the total number of bits required.
     pub fn optimize_table_selection(&self, quantized: &[i32; 576], info: &mut GranuleInfo) -> usize {
-        let big_values = info.big_values as usize;
-        let big_values_end = std::cmp::min(big_values * 2, 576);
-        
-        // Calculate region boundaries
-        let region0_end = std::cmp::min(self.get_region_end(0, info.region0_count as usize), big_values_end);
-        let region1_end = std::cmp::min(self.get_region_end(region0_end, info.region1_count as usize), big_values_end);
+        // Use the addresses calculated by subdivide_big_values (following shine's logic)
         
         // Optimize table selection for each region
-        if region0_end > 0 {
-            let optimal_table = self.select_table(quantized, 0, region0_end);
+        if info.address1 > 0 {
+            let optimal_table = self.select_table(quantized, 0, info.address1 as usize);
             info.table_select[0] = optimal_table as u32;
         }
         
-        if region1_end > region0_end {
-            let optimal_table = self.select_table(quantized, region0_end, region1_end);
+        if info.address2 > info.address1 {
+            let optimal_table = self.select_table(quantized, info.address1 as usize, info.address2 as usize);
             info.table_select[1] = optimal_table as u32;
         }
         
-        if big_values_end > region1_end {
-            let optimal_table = self.select_table(quantized, region1_end, big_values_end);
+        if info.address3 > info.address2 {
+            let optimal_table = self.select_table(quantized, info.address2 as usize, info.address3 as usize);
             info.table_select[2] = optimal_table as u32;
         }
         
@@ -759,12 +748,30 @@ impl HuffmanEncoder {
     }
     
     /// Get region end based on scale factor band indices (following shine's subdivide logic)
-    fn get_region_end(&self, start: usize, count: usize) -> usize {
-        // This should use the actual scale factor band indices from tables
-        // For now, use a simplified approximation that matches typical MP3 structure
-        // In a full implementation, this would use shine_scale_fact_band_index
-        // based on the sample rate, similar to subdivide_big_values function
-        start + count * 18 // Approximate region size based on typical scalefactor bands
+    /// This uses the actual SCALE_FACT_BAND_INDEX table instead of approximation
+    #[allow(dead_code)]
+    fn get_region_end(&self, start: usize, count: usize, sample_rate: u32) -> usize {
+        use crate::tables::SCALE_FACT_BAND_INDEX;
+        
+        // Get sample rate index (following shine's logic)
+        let samplerate_index = match sample_rate {
+            44100 => 0, 48000 => 1, 32000 => 2,  // MPEG-1
+            22050 => 3, 24000 => 4, 16000 => 5,  // MPEG-2
+            11025 => 6, 12000 => 7, 8000 => 8,   // MPEG-2.5
+            _ => 0, // Default to 44.1kHz
+        };
+        
+        let scalefac_band_long = &SCALE_FACT_BAND_INDEX[samplerate_index];
+        
+        // Calculate end based on scale factor bands
+        let band_index = start / 18; // Approximate band from coefficient index
+        let target_band = (band_index + count).min(22); // Ensure we don't exceed table bounds
+        
+        if target_band < scalefac_band_long.len() {
+            scalefac_band_long[target_band] as usize
+        } else {
+            start + count * 18 // Fallback to approximation
+        }
     }
 }
 
@@ -925,8 +932,8 @@ mod tests {
     fn test_get_region_end() {
         let encoder = HuffmanEncoder::new();
         
-        let end1 = encoder.get_region_end(0, 5);
-        let end2 = encoder.get_region_end(10, 3);
+        let end1 = encoder.get_region_end(0, 5, 44100);
+        let end2 = encoder.get_region_end(10, 3, 44100);
         
         // Should return reasonable values
         assert!(end1 > 0);
