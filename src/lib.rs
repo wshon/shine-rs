@@ -27,6 +27,7 @@ pub mod bitstream;
 pub mod subband;
 pub mod mdct;
 pub mod quantization;
+pub mod reservoir;
 pub mod huffman;
 pub mod encoder;
 pub mod error;

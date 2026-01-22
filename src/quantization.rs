@@ -5,6 +5,7 @@
 //! step sizes and managing the bit reservoir.
 
 use crate::error::{EncodingError, EncodingResult};
+use crate::reservoir::BitReservoir;
 
 /// Number of MDCT coefficients per granule
 pub const GRANULE_SIZE: usize = 576;
@@ -78,14 +79,6 @@ impl Default for GranuleInfo {
             address3: 0,
         }
     }
-}
-
-/// Bit reservoir for managing available bits across frames
-pub struct BitReservoir {
-    /// Current reservoir size
-    size: usize,
-    /// Maximum reservoir size
-    max_size: usize,
 }
 
 impl QuantizationLoop {
@@ -312,50 +305,6 @@ impl QuantizationLoop {
     }
 }
 
-impl BitReservoir {
-    /// Create a new bit reservoir with specified maximum size
-    pub fn new(max_size: usize) -> Self {
-        Self {
-            size: 0,
-            max_size,
-        }
-    }
-    
-    /// Add bits to the reservoir
-    pub fn add_bits(&mut self, bits: usize) -> EncodingResult<()> {
-        if self.size + bits > self.max_size {
-            return Err(EncodingError::BitReservoirOverflow {
-                requested: bits,
-                available: self.max_size - self.size,
-            });
-        }
-        self.size += bits;
-        Ok(())
-    }
-    
-    /// Use bits from the reservoir
-    pub fn use_bits(&mut self, bits: usize) -> EncodingResult<()> {
-        if bits > self.size {
-            return Err(EncodingError::BitReservoirOverflow {
-                requested: bits,
-                available: self.size,
-            });
-        }
-        self.size -= bits;
-        Ok(())
-    }
-    
-    /// Get available bits in reservoir
-    pub fn available_bits(&self) -> usize {
-        self.size
-    }
-    
-    /// Reset the reservoir
-    pub fn reset(&mut self) {
-        self.size = 0;
-    }
-}
-
 impl Default for QuantizationLoop {
     fn default() -> Self {
         Self::new()
@@ -397,6 +346,21 @@ mod tests {
     /// Strategy for generating target bit counts
     fn target_bits_strategy() -> impl Strategy<Value = usize> {
         100usize..10000usize
+    }
+
+    /// Strategy for generating perceptual entropy values
+    fn perceptual_entropy_strategy() -> impl Strategy<Value = f64> {
+        0.0f64..1000.0f64
+    }
+
+    /// Strategy for generating channel counts
+    fn channels_strategy() -> impl Strategy<Value = usize> {
+        1usize..=2usize
+    }
+
+    /// Strategy for generating mean bits per granule
+    fn mean_bits_strategy() -> impl Strategy<Value = usize> {
+        100usize..5000usize
     }
 
     // Feature: rust-mp3-encoder, Property 7: 量化和比特率控制
@@ -506,6 +470,33 @@ mod tests {
                     );
                 }
             }
+        }
+
+        // Feature: rust-mp3-encoder, Property 8: 比特储备池机制
+        #[test]
+        fn test_bit_reservoir_integration(
+            mean_bits in mean_bits_strategy(),
+            channels in channels_strategy(),
+            perceptual_entropy in perceptual_entropy_strategy()
+        ) {
+            setup_panic_hook();
+            
+            use crate::reservoir::BitReservoir;
+            
+            let mut reservoir = BitReservoir::new(7680);
+            reservoir.frame_begin(mean_bits);
+            
+            // Property 1: Max reservoir bits should be reasonable
+            let max_bits = reservoir.max_reservoir_bits(perceptual_entropy, channels);
+            prop_assert!(max_bits <= 4095, "Max bits should not exceed 4095");
+            prop_assert!(max_bits > 0, "Max bits should be positive");
+            
+            // Property 2: Frame operations should maintain consistency
+            let initial_bits = reservoir.available_bits();
+            let (stuffing_bits, _drain_bits) = reservoir.frame_end(channels);
+            
+            // Stuffing bits should be reasonable
+            prop_assert!(stuffing_bits <= initial_bits + mean_bits, "Stuffing bits should be reasonable");
         }
     }
 
