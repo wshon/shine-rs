@@ -25,105 +25,220 @@ impl HuffmanEncoder {
         }
     }
     
-    /// Encode big values using Huffman tables
+    /// Calculate bits for big values region (following shine's bigv_bitcount)
     /// 
-    /// Encodes the big values region of quantized coefficients using
-    /// the appropriate Huffman tables selected in the granule info.
+    /// Calculates the number of bits necessary to code the bigvalues region.
+    /// This mirrors shine's bigv_bitcount function (ref/shine/src/lib/l3loop.c:693-704)
     /// 
     /// # Arguments
-    /// * `original_coeffs` - Original MDCT coefficients (for sign information)
-    /// * `quantized` - Quantized coefficients (absolute values only)
-    /// * `info` - Granule information with table selections
+    /// * `quantized` - Quantized coefficients (ix array in shine)
+    /// * `info` - Granule information with table selections and addresses
+    pub fn calculate_big_values_bits(&self, quantized: &[i32; 576], info: &GranuleInfo) -> usize {
+        let mut bits = 0;
+        
+        // Following shine's bigv_bitcount logic exactly:
+        // if ((table = gi->table_select[0])) /* region0 */
+        //   bits += count_bit(ix, 0, gi->address1, table);
+        if info.table_select[0] != 0 {
+            bits += self.count_bits(quantized, 0, info.address1 as usize, info.table_select[0] as usize);
+        }
+        
+        // if ((table = gi->table_select[1])) /* region1 */
+        //   bits += count_bit(ix, gi->address1, gi->address2, table);
+        if info.table_select[1] != 0 {
+            bits += self.count_bits(quantized, info.address1 as usize, info.address2 as usize, info.table_select[1] as usize);
+        }
+        
+        // if ((table = gi->table_select[2])) /* region2 */
+        //   bits += count_bit(ix, gi->address2, gi->address3, table);
+        if info.table_select[2] != 0 {
+            bits += self.count_bits(quantized, info.address2 as usize, info.address3 as usize, info.table_select[2] as usize);
+        }
+        
+        bits
+    }
+    
+    /// Encode big values region using Huffman tables (following shine's Huffmancodebits)
+    /// 
+    /// Encodes the big values region of quantized coefficients using
+    /// the appropriate Huffman tables. This mirrors the big values part of
+    /// shine's Huffmancodebits function (ref/shine/src/lib/l3bitstream.c:174-190)
+    /// 
+    /// # Arguments
+    /// * `quantized` - Quantized coefficients with sign information (ix array in shine)
+    /// * `info` - Granule information with table selections and addresses
     /// * `output` - Bitstream writer for output
     pub fn encode_big_values(
         &self,
-        original_coeffs: &[i32; 576],
         quantized: &[i32; 576],
         info: &GranuleInfo,
         output: &mut BitstreamWriter
     ) -> EncodingResult<usize> {
         let mut bits_written = 0;
-        let big_values = info.big_values as usize;
         
-        // Big values are encoded in pairs, so we process 2*big_values coefficients
-        let big_values_end = std::cmp::min(big_values * 2, 576);
+        // Following shine's Huffmancodebits logic:
+        // bigvalues = gi->big_values << 1;
+        let big_values = (info.big_values as usize) << 1;
         
-        // Use the region boundaries calculated by the quantization loop
-        let region0_end = std::cmp::min(info.address1 as usize, big_values_end);
-        let region1_end = std::cmp::min(info.address2 as usize, big_values_end);
-        let region2_end = std::cmp::min(info.address3 as usize, big_values_end);
+        // for (i = 0; i < bigvalues; i += 2) {
+        //   /* get table pointer */
+        //   int idx = (i >= region1Start) + (i >= region2Start);
+        //   unsigned tableindex = gi->table_select[idx];
+        //   /* get huffman code */
+        //   if (tableindex) {
+        //     x = ix[i];
+        //     y = ix[i + 1];
+        //     shine_HuffmanCode(&config->bs, tableindex, x, y);
+        //   }
+        // }
         
-        // Encode region 0
-        if region0_end > 0 {
-            let table_index = info.table_select[0] as usize;
-            bits_written += self.encode_region(original_coeffs, quantized, 0, region0_end, table_index, output)?;
-        }
-        
-        // Encode region 1
-        if region1_end > region0_end {
-            let table_index = info.table_select[1] as usize;
-            bits_written += self.encode_region(original_coeffs, quantized, region0_end, region1_end, table_index, output)?;
-        }
-        
-        // Encode region 2
-        if region2_end > region1_end {
-            let table_index = info.table_select[2] as usize;
-            bits_written += self.encode_region(original_coeffs, quantized, region1_end, region2_end, table_index, output)?;
+        let mut i = 0;
+        while i < big_values && i + 1 < 576 {
+            // Determine which region we're in
+            let region_idx = if i >= info.address2 as usize {
+                2
+            } else if i >= info.address1 as usize {
+                1
+            } else {
+                0
+            };
+            
+            let table_index = info.table_select[region_idx] as usize;
+            
+            if table_index != 0 {
+                let x = quantized[i];
+                let y = quantized[i + 1];
+                bits_written += self.encode_huffman_pair(x, y, table_index, output)?;
+            }
+            
+            i += 2;
         }
         
         Ok(bits_written)
     }
     
-    /// Encode count1 region using count1 tables
+    /// Encode count1 region using count1 tables (following shine's Huffmancodebits)
     /// 
     /// Encodes the count1 region (values of ±1 or 0) using the
-    /// specialized count1 Huffman tables.
+    /// specialized count1 Huffman tables. This mirrors the count1 part of
+    /// shine's Huffmancodebits function (ref/shine/src/lib/l3bitstream.c:192-200)
     /// 
     /// # Arguments
-    /// * `original_coeffs` - Original MDCT coefficients (for sign information)
-    /// * `quantized` - Quantized coefficients (absolute values only)
+    /// * `quantized` - Quantized coefficients with sign information (ix array in shine)
     /// * `info` - Granule information with count1 settings
     /// * `output` - Bitstream writer for output
     pub fn encode_count1(
         &self,
-        original_coeffs: &[i32; 576],
         quantized: &[i32; 576],
         info: &GranuleInfo,
         output: &mut BitstreamWriter
     ) -> EncodingResult<usize> {
         let mut bits_written = 0;
-        let big_values_end = std::cmp::min((info.big_values as usize) * 2, 576);
         
-        // CRITICAL FIX: Follow shine's exact logic
-        // count1End = bigvalues + (gi->count1 << 2);
-        // for (i = bigvalues; i < count1End; i += 4)
-        let count1_end = big_values_end + ((info.count1 as usize) << 2);
-        
-        // Select count1 table (A or B)
+        // Following shine's Huffmancodebits logic:
+        // h = &shine_huffman_table[gi->count1table_select + 32];
         let table_index = if info.count1table_select { 1 } else { 0 };
-        let table = self.count1_tables[table_index];
+        let h = self.count1_tables[table_index];
         
-        // Process count1 region in groups of 4 coefficients
-        // Following shine's exact loop structure
-        let mut pos = big_values_end;
-        while pos < count1_end && pos + 3 < 576 {
-            let quantized_values = [
-                quantized[pos],
-                quantized[pos + 1], 
-                quantized[pos + 2],
-                quantized[pos + 3]
-            ];
+        // bigvalues = gi->big_values << 1;
+        let big_values = (info.big_values as usize) << 1;
+        
+        // count1End = bigvalues + (gi->count1 << 2);
+        let count1_end = big_values + ((info.count1 as usize) << 2);
+        
+        // for (i = bigvalues; i < count1End; i += 4) {
+        let mut i = big_values;
+        while i < count1_end && i + 3 < 576 {
+            let v = quantized[i];
+            let w = quantized[i + 1];
+            let x = quantized[i + 2];
+            let y = quantized[i + 3];
             
-            let original_values = [
-                original_coeffs[pos],
-                original_coeffs[pos + 1], 
-                original_coeffs[pos + 2],
-                original_coeffs[pos + 3]
-            ];
+            // shine_huffman_coder_count1(&config->bs, h, v, w, x, y);
+            bits_written += self.encode_count1_quadruple(v, w, x, y, h, output)?;
             
-            // Encode the quadruple with sign information
-            bits_written += self.encode_count1_quadruple(&quantized_values, &original_values, table, output)?;
-            pos += 4;
+            i += 4;
+        }
+        
+        Ok(bits_written)
+    }
+    
+    /// Encode count1 quadruple (following shine's shine_huffman_coder_count1)
+    /// 
+    /// This mirrors shine's shine_huffman_coder_count1 function 
+    /// (ref/shine/src/lib/l3bitstream.c:213-241)
+    fn encode_count1_quadruple(
+        &self,
+        v: i32, w: i32, x: i32, y: i32,
+        h: &HuffmanTable,
+        output: &mut BitstreamWriter
+    ) -> EncodingResult<usize> {
+        // Following shine's shine_huffman_coder_count1 implementation:
+        
+        // Get absolute values and signs
+        let abs_v = v.abs();
+        let abs_w = w.abs();
+        let abs_x = x.abs();
+        let abs_y = y.abs();
+        
+        let signv = if v < 0 { 1u32 } else { 0u32 };
+        let signw = if w < 0 { 1u32 } else { 0u32 };
+        let signx = if x < 0 { 1u32 } else { 0u32 };
+        let signy = if y < 0 { 1u32 } else { 0u32 };
+        
+        // Convert to count1 format (0 or 1)
+        let v_bit = if abs_v != 0 { 1u32 } else { 0u32 };
+        let w_bit = if abs_w != 0 { 1u32 } else { 0u32 };
+        let x_bit = if abs_x != 0 { 1u32 } else { 0u32 };
+        let y_bit = if abs_y != 0 { 1u32 } else { 0u32 };
+        
+        // p = v + (w << 1) + (x << 2) + (y << 3);
+        let p = (v_bit + (w_bit << 1) + (x_bit << 2) + (y_bit << 3)) as usize;
+        
+        if p >= h.codes.len() {
+            return Err(EncodingError::HuffmanError(
+                format!("Count1 table index {} out of bounds", p)
+            ));
+        }
+        
+        // shine_putbits(bs, h->table[p], h->hlen[p]);
+        let code = h.codes[p] as u32;
+        let length = h.lengths[p];
+        output.write_bits(code, length);
+        let mut bits_written = length as usize;
+        
+        // Build sign bits following shine's logic
+        let mut sign_code = 0u32;
+        let mut sign_bits = 0u8;
+        
+        // if (v) { code = signv; cbits = 1; }
+        if v != 0 {
+            sign_code = signv;
+            sign_bits = 1;
+        }
+        
+        // if (w) { code = (code << 1) | signw; cbits++; }
+        if w != 0 {
+            sign_code = (sign_code << 1) | signw;
+            sign_bits += 1;
+        }
+        
+        // if (x) { code = (code << 1) | signx; cbits++; }
+        if x != 0 {
+            sign_code = (sign_code << 1) | signx;
+            sign_bits += 1;
+        }
+        
+        // if (y) { code = (code << 1) | signy; cbits++; }
+        if y != 0 {
+            sign_code = (sign_code << 1) | signy;
+            sign_bits += 1;
+        }
+        
+        // shine_putbits(bs, code, cbits);
+        if sign_bits > 0 {
+            output.write_bits(sign_code, sign_bits);
+            bits_written += sign_bits as usize;
         }
         
         Ok(bits_written)
@@ -140,9 +255,9 @@ impl HuffmanEncoder {
         
         // Following shine's ix_max function
         let mut max = 0;
-        for i in start..actual_end {
-            if values[i].abs() > max {
-                max = values[i].abs();
+        for value in values.iter().take(actual_end).skip(start) {
+            if value.abs() > max {
+                max = value.abs();
             }
         }
         
@@ -185,63 +300,48 @@ impl HuffmanEncoder {
             }
             
             // Calculate bits for the chosen table
-            sum[0] = self.calculate_bits_for_region(&values[start..actual_end], 
-                                                   &self.tables[choice[0]].as_ref().unwrap_or(&self.tables[1].as_ref().unwrap()));
+            sum[0] = self.calculate_bits(values, start, actual_end, choice[0]);
             
             // Following shine's switch statement for table optimization
             match choice[0] {
                 2 => {
-                    if let Some(table) = &self.tables[3] {
-                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
-                        if sum[1] <= sum[0] {
-                            choice[0] = 3;
-                        }
+                    sum[1] = self.calculate_bits(values, start, actual_end, 3);
+                    if sum[1] <= sum[0] {
+                        choice[0] = 3;
                     }
                 },
                 5 => {
-                    if let Some(table) = &self.tables[6] {
-                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
-                        if sum[1] <= sum[0] {
-                            choice[0] = 6;
-                        }
+                    sum[1] = self.calculate_bits(values, start, actual_end, 6);
+                    if sum[1] <= sum[0] {
+                        choice[0] = 6;
                     }
                 },
                 7 => {
-                    if let Some(table) = &self.tables[8] {
-                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
-                        if sum[1] <= sum[0] {
-                            choice[0] = 8;
-                            sum[0] = sum[1];
-                        }
+                    sum[1] = self.calculate_bits(values, start, actual_end, 8);
+                    if sum[1] <= sum[0] {
+                        choice[0] = 8;
+                        sum[0] = sum[1];
                     }
-                    if let Some(table) = &self.tables[9] {
-                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
-                        if sum[1] <= sum[0] {
-                            choice[0] = 9;
-                        }
+                    sum[1] = self.calculate_bits(values, start, actual_end, 9);
+                    if sum[1] <= sum[0] {
+                        choice[0] = 9;
                     }
                 },
                 10 => {
-                    if let Some(table) = &self.tables[11] {
-                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
-                        if sum[1] <= sum[0] {
-                            choice[0] = 11;
-                            sum[0] = sum[1];
-                        }
+                    sum[1] = self.calculate_bits(values, start, actual_end, 11);
+                    if sum[1] <= sum[0] {
+                        choice[0] = 11;
+                        sum[0] = sum[1];
                     }
-                    if let Some(table) = &self.tables[12] {
-                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
-                        if sum[1] <= sum[0] {
-                            choice[0] = 12;
-                        }
+                    sum[1] = self.calculate_bits(values, start, actual_end, 12);
+                    if sum[1] <= sum[0] {
+                        choice[0] = 12;
                     }
                 },
                 13 => {
-                    if let Some(table) = &self.tables[15] {
-                        sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
-                        if sum[1] <= sum[0] {
-                            choice[0] = 15;
-                        }
+                    sum[1] = self.calculate_bits(values, start, actual_end, 15);
+                    if sum[1] <= sum[0] {
+                        choice[0] = 15;
                     }
                 },
                 _ => {}
@@ -271,17 +371,8 @@ impl HuffmanEncoder {
             }
             
             // Compare the two choices
-            if let Some(table) = &self.tables[choice[0]] {
-                sum[0] = self.calculate_bits_for_region(&values[start..actual_end], table);
-            } else {
-                sum[0] = usize::MAX;
-            }
-            
-            if let Some(table) = &self.tables[choice[1]] {
-                sum[1] = self.calculate_bits_for_region(&values[start..actual_end], table);
-            } else {
-                sum[1] = usize::MAX;
-            }
+            sum[0] = self.calculate_bits(values, start, actual_end, choice[0]);
+            sum[1] = self.calculate_bits(values, start, actual_end, choice[1]);
             
             if sum[1] < sum[0] {
                 choice[0] = choice[1];
@@ -300,9 +391,6 @@ impl HuffmanEncoder {
             return Some(1);
         }
         
-        let actual_end = std::cmp::min(end, values.len());
-        let region_values = &values[start..actual_end];
-        
         let mut best_table = None;
         let mut min_bits = usize::MAX;
         
@@ -312,8 +400,8 @@ impl HuffmanEncoder {
                 continue; // Skip unavailable tables
             }
             
-            if let Some(table) = &self.tables[table_index] {
-                let bits = self.calculate_bits_for_region(region_values, table);
+            if self.tables[table_index].is_some() {
+                let bits = self.calculate_bits(values, start, end, table_index);
                 if bits <= max_bits && bits < min_bits {
                     min_bits = bits;
                     best_table = Some(table_index);
@@ -333,68 +421,11 @@ impl HuffmanEncoder {
         quantized: &[i32; 576],
         info: &GranuleInfo,
     ) -> usize {
-        let mut total_bits: usize = 0;
-        
-        // Use the addresses calculated by subdivide_big_values (following shine's logic)
-        // Calculate bits for region 0
-        if info.address1 > 0 {
-            let table_index = info.table_select[0] as usize;
-            if table_index == 0 {
-                // Table 0 means no encoding needed (all zeros)
-                // Don't add any bits
-            } else if table_index < self.tables.len() {
-                if let Some(table) = &self.tables[table_index] {
-                    let region_values = &quantized[0..info.address1 as usize];
-                    let bits = self.calculate_bits_for_region(region_values, table);
-                    if bits == usize::MAX {
-                        return usize::MAX;
-                    }
-                    total_bits = total_bits.saturating_add(bits);
-                }
-            }
-        }
-        
-        // Calculate bits for region 1
-        if info.address2 > info.address1 {
-            let table_index = info.table_select[1] as usize;
-            if table_index == 0 {
-                // Table 0 means no encoding needed (all zeros)
-                // Don't add any bits
-            } else if table_index < self.tables.len() {
-                if let Some(table) = &self.tables[table_index] {
-                    let region_values = &quantized[info.address1 as usize..info.address2 as usize];
-                    let bits = self.calculate_bits_for_region(region_values, table);
-                    if bits == usize::MAX {
-                        return usize::MAX;
-                    }
-                    total_bits = total_bits.saturating_add(bits);
-                }
-            }
-        }
-        
-        // Calculate bits for region 2
-        if info.address3 > info.address2 {
-            let table_index = info.table_select[2] as usize;
-            if table_index == 0 {
-                // Table 0 means no encoding needed (all zeros)
-                // Don't add any bits
-            } else if table_index < self.tables.len() {
-                if let Some(table) = &self.tables[table_index] {
-                    let region_values = &quantized[info.address2 as usize..info.address3 as usize];
-                    let bits = self.calculate_bits_for_region(region_values, table);
-                    if bits == usize::MAX {
-                        return usize::MAX;
-                    }
-                    total_bits = total_bits.saturating_add(bits);
-                }
-            }
-        }
-        
-        // Add count1 region bits
+        // Use shine's approach: calculate big values bits + count1 bits
+        let big_values_bits = self.calculate_big_values_bits(quantized, info);
         let count1_bits = self.calculate_count1_bits(quantized, info);
-        total_bits = total_bits.saturating_add(count1_bits);
         
-        total_bits
+        big_values_bits.saturating_add(count1_bits)
     }
     
     /// Optimize table selection for all regions
@@ -426,52 +457,43 @@ impl HuffmanEncoder {
     
     /// Calculate bits required for count1 region
     fn calculate_count1_bits(&self, quantized: &[i32; 576], info: &GranuleInfo) -> usize {
-        let big_values_end = std::cmp::min((info.big_values as usize) * 2, 576);
-        let count1_start = big_values_end;
+        // Following shine's count1_bitcount logic
+        let big_values = (info.big_values as usize) << 1;
+        let count1_end = big_values + ((info.count1 as usize) << 2);
         
         // Select count1 table (A or B)
         let table_index = if info.count1table_select { 1 } else { 0 };
         let table = self.count1_tables[table_index];
         
         let mut total_bits: usize = 0;
-        let mut pos = count1_start;
+        let mut i = big_values;
         
         // Process count1 region in groups of 4 coefficients
-        while pos + 3 < 576 {
-            let v = [
-                quantized[pos],
-                quantized[pos + 1], 
-                quantized[pos + 2],
-                quantized[pos + 3]
-            ];
-            
-            // Check if all values are in count1 range (0, ±1)
-            let all_count1 = v.iter().all(|&x| x.abs() <= 1);
-            if !all_count1 {
-                break; // End of count1 region
-            }
+        while i < count1_end && i + 3 < 576 {
+            let v = quantized[i];
+            let w = quantized[i + 1];
+            let x = quantized[i + 2];
+            let y = quantized[i + 3];
             
             // Calculate bits for this quadruple
-            let quadruple_bits = self.calculate_count1_quadruple_bits(&v, table);
+            let quadruple_bits = self.calculate_count1_quadruple_bits(v, w, x, y, table);
             total_bits = total_bits.saturating_add(quadruple_bits);
-            pos += 4;
+            i += 4;
         }
         
         total_bits
     }
     
     /// Calculate bits for a count1 quadruple
-    fn calculate_count1_quadruple_bits(&self, values: &[i32; 4], table: &HuffmanTable) -> usize {
+    fn calculate_count1_quadruple_bits(&self, v: i32, w: i32, x: i32, y: i32, table: &HuffmanTable) -> usize {
         // Convert values to count1 format (0, 1 for abs values)
-        let v: [u32; 4] = [
-            if values[0] != 0 { 1 } else { 0 },
-            if values[1] != 0 { 1 } else { 0 },
-            if values[2] != 0 { 1 } else { 0 },
-            if values[3] != 0 { 1 } else { 0 },
-        ];
+        let v_bit = if v != 0 { 1u32 } else { 0u32 };
+        let w_bit = if w != 0 { 1u32 } else { 0u32 };
+        let x_bit = if x != 0 { 1u32 } else { 0u32 };
+        let y_bit = if y != 0 { 1u32 } else { 0u32 };
         
         // Calculate table index for count1 table
-        let table_idx = (v[0] * 8 + v[1] * 4 + v[2] * 2 + v[3]) as usize;
+        let table_idx = (v_bit + (w_bit << 1) + (x_bit << 2) + (y_bit << 3)) as usize;
         
         if table_idx >= table.codes.len() {
             return usize::MAX;
@@ -480,13 +502,255 @@ impl HuffmanEncoder {
         let mut bits = table.lengths[table_idx] as usize;
         
         // Add sign bits for non-zero values
-        for &value in values {
-            if value != 0 {
-                bits = bits.saturating_add(1);
+        if v != 0 { bits = bits.saturating_add(1); }
+        if w != 0 { bits = bits.saturating_add(1); }
+        if x != 0 { bits = bits.saturating_add(1); }
+        if y != 0 { bits = bits.saturating_add(1); }
+        
+        bits
+    }
+    
+    /// Count bits for a region (following shine's count_bit function)
+    /// 
+    /// Counts the number of bits necessary to code a subregion.
+    /// This mirrors shine's count_bit function (ref/shine/src/lib/l3loop.c:711-757)
+    /// 
+    /// # Arguments
+    /// * `quantized` - Quantized coefficients (ix array in shine)
+    /// * `start` - Start index (unsigned int in shine)
+    /// * `end` - End index (unsigned int in shine)  
+    /// * `table` - Huffman table index (unsigned int in shine)
+    pub fn count_bits(&self, quantized: &[i32; 576], start: usize, end: usize, table: usize) -> usize {
+        // Following shine's count_bit logic:
+        // if (!table) return 0;
+        if table == 0 {
+            return 0;
+        }
+        
+        if table >= self.tables.len() {
+            return usize::MAX;
+        }
+        
+        let h = match &self.tables[table] {
+            Some(huffman_table) => huffman_table,
+            None => return usize::MAX,
+        };
+        
+        let mut sum = 0;
+        let ylen = h.ylen;
+        let linbits = h.linbits;
+        
+        // Following shine's count_bit implementation exactly:
+        if table > 15 {
+            // ESC-table is used
+            // for (i = start; i < end; i += 2) {
+            let mut i = start;
+            while i < end && i + 1 < 576 {
+                let mut x = quantized[i].unsigned_abs();
+                let mut y = quantized[i + 1].unsigned_abs();
+                
+                // if (x > 14) { x = 15; sum += linbits; }
+                if x > 14 {
+                    x = 15;
+                    sum += linbits as usize;
+                }
+                
+                // if (y > 14) { y = 15; sum += linbits; }
+                if y > 14 {
+                    y = 15;
+                    sum += linbits as usize;
+                }
+                
+                // sum += h->hlen[(x * ylen) + y];
+                let idx = (x * ylen + y) as usize;
+                if idx < h.lengths.len() {
+                    sum += h.lengths[idx] as usize;
+                } else {
+                    return usize::MAX;
+                }
+                
+                // if (x) sum++;
+                if quantized[i] != 0 {
+                    sum += 1;
+                }
+                
+                // if (y) sum++;
+                if quantized[i + 1] != 0 {
+                    sum += 1;
+                }
+                
+                i += 2;
+            }
+        } else {
+            // No ESC-words
+            // for (i = start; i < end; i += 2) {
+            let mut i = start;
+            while i < end && i + 1 < 576 {
+                let x = quantized[i].unsigned_abs();
+                let y = quantized[i + 1].unsigned_abs();
+                
+                // sum += h->hlen[(x * ylen) + y];
+                let idx = (x * ylen + y) as usize;
+                if idx < h.lengths.len() {
+                    sum += h.lengths[idx] as usize;
+                } else {
+                    return usize::MAX;
+                }
+                
+                // if (x != 0) sum++;
+                if quantized[i] != 0 {
+                    sum += 1;
+                }
+                
+                // if (y != 0) sum++;
+                if quantized[i + 1] != 0 {
+                    sum += 1;
+                }
+                
+                i += 2;
             }
         }
         
-        bits
+        sum
+    }
+    
+    /// Encode a Huffman pair (following shine's shine_HuffmanCode function)
+    /// 
+    /// Implements the pseudocode of page 98 of the IS.
+    /// This mirrors shine's shine_HuffmanCode function (ref/shine/src/lib/l3bitstream.c:243-309)
+    /// 
+    /// # Arguments
+    /// * `x` - First coefficient (with sign)
+    /// * `y` - Second coefficient (with sign)
+    /// * `table_select` - Huffman table index
+    /// * `output` - Bitstream writer for output
+    fn encode_huffman_pair(&self, x: i32, y: i32, table_select: usize, output: &mut BitstreamWriter) -> EncodingResult<usize> {
+        if table_select >= self.tables.len() {
+            return Err(EncodingError::HuffmanError(
+                format!("Invalid Huffman table index: {}", table_select)
+            ));
+        }
+        
+        let h = match &self.tables[table_select] {
+            Some(huffman_table) => huffman_table,
+            None => return Err(EncodingError::HuffmanError(
+                format!("Huffman table {} is not available", table_select)
+            )),
+        };
+        
+        // Following shine's shine_HuffmanCode implementation:
+        let mut abs_x = x.unsigned_abs();
+        let mut abs_y = y.unsigned_abs();
+        let signx = if x < 0 { 1u32 } else { 0u32 };
+        let signy = if y < 0 { 1u32 } else { 0u32 };
+        
+        let ylen = h.ylen;
+        let mut bits_written = 0;
+        
+        if table_select > 15 {
+            // ESC-table is used
+            let mut linbitsx = 0u32;
+            let mut linbitsy = 0u32;
+            let linbits = h.linbits;
+            
+            // if (x > 14) { linbitsx = x - 15; x = 15; }
+            if abs_x > 14 {
+                linbitsx = abs_x - 15;
+                abs_x = 15;
+            }
+            
+            // if (y > 14) { linbitsy = y - 15; y = 15; }
+            if abs_y > 14 {
+                linbitsy = abs_y - 15;
+                abs_y = 15;
+            }
+            
+            // idx = (x * ylen) + y;
+            let idx = (abs_x * ylen + abs_y) as usize;
+            if idx >= h.codes.len() {
+                return Err(EncodingError::HuffmanError(
+                    format!("Huffman code index {} out of bounds", idx)
+                ));
+            }
+            
+            // code = h->table[idx]; cbits = h->hlen[idx];
+            let code = h.codes[idx] as u32;
+            let cbits = h.lengths[idx];
+            bits_written += cbits as usize;
+            
+            // shine_putbits(bs, code, cbits);
+            output.write_bits(code, cbits);
+            
+            // Build extension bits following shine's exact logic
+            let mut ext = 0u32;
+            let mut xbits = 0u8;
+            
+            // if (x > 14) { ext |= linbitsx; xbits += linbits; }
+            if x.abs() > 14 {
+                ext |= linbitsx;
+                xbits += linbits as u8;
+            }
+            
+            // if (x != 0) { ext <<= 1; ext |= signx; xbits += 1; }
+            if x != 0 {
+                ext <<= 1;
+                ext |= signx;
+                xbits += 1;
+            }
+            
+            // if (y > 14) { ext <<= linbits; ext |= linbitsy; xbits += linbits; }
+            if y.abs() > 14 {
+                ext <<= linbits as u8;
+                ext |= linbitsy;
+                xbits += linbits as u8;
+            }
+            
+            // if (y != 0) { ext <<= 1; ext |= signy; xbits += 1; }
+            if y != 0 {
+                ext <<= 1;
+                ext |= signy;
+                xbits += 1;
+            }
+            
+            // shine_putbits(bs, ext, xbits);
+            if xbits > 0 {
+                output.write_bits(ext, xbits);
+                bits_written += xbits as usize;
+            }
+        } else {
+            // No ESC-words
+            // idx = (x * ylen) + y;
+            let idx = (abs_x * ylen + abs_y) as usize;
+            if idx >= h.codes.len() {
+                return Err(EncodingError::HuffmanError(
+                    format!("Huffman code index {} out of bounds", idx)
+                ));
+            }
+            
+            // code = h->table[idx]; cbits = h->hlen[idx];
+            let mut code = h.codes[idx] as u32;
+            let mut cbits = h.lengths[idx];
+            
+            // if (x != 0) { code <<= 1; code |= signx; cbits += 1; }
+            if x != 0 {
+                code <<= 1;
+                code |= signx;
+                cbits += 1;
+            }
+            
+            // if (y != 0) { code <<= 1; code |= signy; cbits += 1; }
+            if y != 0 {
+                code <<= 1;
+                code |= signy;
+                cbits += 1;
+            }
+            
+            // shine_putbits(bs, code, cbits);
+            output.write_bits(code, cbits);
+            bits_written += cbits as usize;
+        }
+        
+        Ok(bits_written)
     }
     
     /// Calculate bits required for encoding with a specific table
@@ -494,258 +758,24 @@ impl HuffmanEncoder {
     /// Estimates the number of bits required to encode a region
     /// using the specified Huffman table.
     pub fn calculate_bits(&self, values: &[i32], start: usize, end: usize, table_index: usize) -> usize {
-        if table_index >= self.tables.len() {
-            return usize::MAX;
+        if start >= values.len() || start >= end {
+            return 0;
         }
         
-        if let Some(table) = &self.tables[table_index] {
-            let actual_end = std::cmp::min(end, values.len());
-            if start >= actual_end {
-                return 0;
-            }
-            
-            let region_values = &values[start..actual_end];
-            self.calculate_bits_for_region(region_values, table)
-        } else {
-            usize::MAX
+        // Convert to fixed-size array for count_bits function
+        let mut quantized = [0i32; 576];
+        let copy_end = std::cmp::min(end, values.len()).min(576);
+        let copy_start = std::cmp::min(start, copy_end);
+        
+        if copy_end > copy_start {
+            quantized[copy_start..copy_end].copy_from_slice(&values[copy_start..copy_end]);
         }
+        
+        self.count_bits(&quantized, start, end, table_index)
     }
     
-    /// Encode a region using the specified Huffman table
-    fn encode_region(
-        &self,
-        original_coeffs: &[i32; 576],
-        quantized: &[i32; 576],
-        start: usize,
-        end: usize,
-        table_index: usize,
-        output: &mut BitstreamWriter
-    ) -> EncodingResult<usize> {
-        // Following shine's logic: return 0 bits if table is 0 (no encoding needed)
-        if table_index == 0 {
-            return Ok(0);
-        }
-        
-        if table_index >= self.tables.len() {
-            return Err(EncodingError::HuffmanError(
-                format!("Invalid Huffman table index: {}", table_index)
-            ));
-        }
-        
-        let table = match &self.tables[table_index] {
-            Some(t) => t,
-            None => {
-                // If table is not available, treat as table 0 (no encoding)
-                eprintln!("Warning: Huffman table {} is not available, skipping region", table_index);
-                return Ok(0);
-            }
-        };
-        
-        let mut bits_written = 0;
-        let mut pos = start;
-        
-        // Process pairs of coefficients
-        while pos + 1 < end && pos + 1 < 576 {
-            // Use quantized values for magnitude, original values for sign
-            let quantized_x = quantized[pos];
-            let quantized_y = quantized[pos + 1];
-            let original_x = original_coeffs[pos];
-            let original_y = original_coeffs[pos + 1];
-            
-            // Create signed quantized values: quantized magnitude with original sign
-            let signed_x = if original_x >= 0 { quantized_x } else { -quantized_x };
-            let signed_y = if original_y >= 0 { quantized_y } else { -quantized_y };
-            
-            bits_written += self.encode_pair(signed_x, signed_y, table, output)?;
-            pos += 2;
-        }
-        
-        Ok(bits_written)
-    }
-    
-    /// Encode a pair of coefficients using the specified table
-    fn encode_pair(
-        &self,
-        x: i32,
-        y: i32,
-        table: &HuffmanTable,
-        output: &mut BitstreamWriter
-    ) -> EncodingResult<usize> {
-        let abs_x = x.unsigned_abs();
-        let abs_y = y.unsigned_abs();
-        
-        // Check if values are within table range
-        if abs_x > table.xlen || abs_y > table.ylen {
-            return Err(EncodingError::HuffmanError(
-                format!("Values ({}, {}) exceed table range ({}, {})", abs_x, abs_y, table.xlen, table.ylen)
-            ));
-        }
-        
-        // Calculate table index safely
-        let table_idx = match abs_x.checked_mul(table.ylen) {
-            Some(product) => match product.checked_add(abs_y) {
-                Some(idx) => idx as usize,
-                None => return Err(EncodingError::HuffmanError(
-                    format!("Table index calculation overflow for values ({}, {})", abs_x, abs_y)
-                )),
-            },
-            None => return Err(EncodingError::HuffmanError(
-                format!("Table index calculation overflow for values ({}, {})", abs_x, abs_y)
-            )),
-        };
-        
-        if table_idx >= table.codes.len() {
-            return Err(EncodingError::HuffmanError(
-                format!("Huffman code index {} out of bounds for table with {} entries (values: {}, {})", 
-                       table_idx, table.codes.len(), abs_x, abs_y)
-            ));
-        }
-        
-        let code = table.codes[table_idx] as u32;
-        let length = table.lengths[table_idx];
-        let mut bits_written = length as usize;
-        
-        // Write the Huffman code
-        output.write_bits(code, length);
-        
-        // Handle linbits for large values
-        if table.linbits > 0 {
-            if abs_x > table.linmax {
-                let linbits_x = abs_x - table.linmax - 1;
-                output.write_bits(linbits_x, table.linbits as u8);
-                bits_written = bits_written.saturating_add(table.linbits as usize);
-            }
-            
-            if abs_y > table.linmax {
-                let linbits_y = abs_y - table.linmax - 1;
-                output.write_bits(linbits_y, table.linbits as u8);
-                bits_written = bits_written.saturating_add(table.linbits as usize);
-            }
-        }
-        
-        // Write sign bits for non-zero values
-        if x != 0 {
-            output.write_bits(if x < 0 { 1 } else { 0 }, 1);
-            bits_written = bits_written.saturating_add(1);
-        }
-        
-        if y != 0 {
-            output.write_bits(if y < 0 { 1 } else { 0 }, 1);
-            bits_written = bits_written.saturating_add(1);
-        }
-        
-        Ok(bits_written)
-    }
-    
-    /// Encode a quadruple of count1 values
-    fn encode_count1_quadruple(
-        &self,
-        quantized_values: &[i32; 4],
-        original_values: &[i32; 4],
-        table: &HuffmanTable,
-        output: &mut BitstreamWriter
-    ) -> EncodingResult<usize> {
-        // Convert quantized values to count1 format (0, 1 for abs values)
-        let v: [u32; 4] = [
-            if quantized_values[0] != 0 { 1 } else { 0 },
-            if quantized_values[1] != 0 { 1 } else { 0 },
-            if quantized_values[2] != 0 { 1 } else { 0 },
-            if quantized_values[3] != 0 { 1 } else { 0 },
-        ];
-        
-        // Calculate table index for count1 table
-        let table_idx = (v[0] * 8 + v[1] * 4 + v[2] * 2 + v[3]) as usize;
-        
-        if table_idx >= table.codes.len() {
-            return Err(EncodingError::HuffmanError(
-                format!("Count1 table index {} out of bounds", table_idx)
-            ));
-        }
-        
-        let code = table.codes[table_idx] as u32;
-        let length = table.lengths[table_idx];
-        let mut bits_written = length as usize;
-        
-        // Write the Huffman code
-        output.write_bits(code, length);
-        
-        // Write sign bits for non-zero values using original coefficients
-        for i in 0..4 {
-            if quantized_values[i] != 0 {
-                output.write_bits(if original_values[i] < 0 { 1 } else { 0 }, 1);
-                bits_written += 1;
-            }
-        }
-        
-        Ok(bits_written)
-    }
-    
-    /// Calculate bits required for a region with a specific table
-    fn calculate_bits_for_region(&self, values: &[i32], table: &HuffmanTable) -> usize {
-        let mut total_bits: usize = 0;
-        let mut pos = 0;
-        
-        while pos + 1 < values.len() {
-            let x = values[pos];
-            let y = values[pos + 1];
-            
-            let pair_bits = self.calculate_pair_bits(x, y, table);
-            if pair_bits == usize::MAX {
-                return usize::MAX; // Cannot encode with this table
-            }
-            
-            total_bits = total_bits.saturating_add(pair_bits);
-            pos += 2;
-        }
-        
-        total_bits
-    }
-    
-    /// Calculate bits required for encoding a pair with a specific table
-    fn calculate_pair_bits(&self, x: i32, y: i32, table: &HuffmanTable) -> usize {
-        let abs_x = x.unsigned_abs();
-        let abs_y = y.unsigned_abs();
-        
-        // Check if values are within table range
-        if abs_x > table.xlen || abs_y > table.ylen {
-            return usize::MAX; // Cannot encode with this table
-        }
-        
-        // Calculate table index safely - following shine's logic: idx = (x * ylen) + y
-        let table_idx = match abs_x.checked_mul(table.ylen) {
-            Some(product) => match product.checked_add(abs_y) {
-                Some(idx) => idx as usize,
-                None => return usize::MAX,
-            },
-            None => return usize::MAX,
-        };
-        
-        if table_idx >= table.codes.len() {
-            return usize::MAX;
-        }
-        
-        let mut bits = table.lengths[table_idx] as usize;
-        
-        // Add linbits for large values
-        if table.linbits > 0 {
-            if abs_x > table.linmax {
-                bits = bits.saturating_add(table.linbits as usize);
-            }
-            if abs_y > table.linmax {
-                bits = bits.saturating_add(table.linbits as usize);
-            }
-        }
-        
-        // Add sign bits for non-zero values
-        if x != 0 {
-            bits = bits.saturating_add(1);
-        }
-        if y != 0 {
-            bits = bits.saturating_add(1);
-        }
-        
-        bits
-    }
+
+
     
     /// Get region end based on scale factor band indices (following shine's subdivide logic)
     /// This uses the actual SCALE_FACT_BAND_INDEX table instead of approximation
@@ -863,14 +893,15 @@ mod tests {
         let mut info = GranuleInfo::default();
         info.big_values = 10;
         info.table_select = [1, 2, 3];
-        info.region0_count = 5;
-        info.region1_count = 3;
+        info.address1 = 10;
+        info.address2 = 15;
+        info.address3 = 20;
         
-        let result = encoder.encode_big_values(&quantized, &quantized, &info, &mut output);
+        let result = encoder.encode_big_values(&quantized, &info, &mut output);
         
         // Should succeed with all-zero input
         assert!(result.is_ok());
-        let _bits_written = result.unwrap(); // Remove the useless comparison
+        let _bits_written = result.unwrap();
     }
 
     #[test]
@@ -887,13 +918,14 @@ mod tests {
         
         let mut info = GranuleInfo::default();
         info.big_values = 50; // Count1 region starts after big values
+        info.count1 = 5; // 5 quadruples
         info.count1table_select = false; // Use table A
         
-        let result = encoder.encode_count1(&quantized, &quantized, &info, &mut output);
+        let result = encoder.encode_count1(&quantized, &info, &mut output);
         
         // Should succeed
         assert!(result.is_ok());
-        let _bits_written = result.unwrap(); // Remove the useless comparison
+        let _bits_written = result.unwrap();
     }
 
     #[test]
@@ -902,36 +934,35 @@ mod tests {
         let mut output = BitstreamWriter::new(100);
         let quantized = [0i32; 576];
         
-        // Test with invalid table index
-        let result = encoder.encode_region(&quantized, &quantized, 0, 10, 100, &mut output);
+        // Test with invalid table index using new interface
+        let result = encoder.encode_huffman_pair(0, 0, 100, &mut output);
         assert!(result.is_err());
         
-        // Test with table 0 (which should return 0 bits, not error, following shine's logic)
-        let result = encoder.encode_region(&quantized, &quantized, 0, 10, 0, &mut output);
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 0);
+        // Test with table 0 (which should be handled gracefully)
+        let result = encoder.count_bits(&quantized, 0, 10, 0);
+        assert_eq!(result, 0); // Table 0 returns 0 bits following shine's logic
     }
 
     #[test]
     fn test_calculate_pair_bits() {
         let encoder = HuffmanEncoder::new();
         
-        // Get a valid table for testing
-        if let Some(table) = &encoder.tables[1] {
-            // Use smaller values that are within table range
-            let bits = encoder.calculate_pair_bits(0, 0, table);
-            assert!(bits > 0);
-            assert!(bits < 50); // More reasonable upper bound
-            
-            // Test with small non-zero values
-            let bits_small = encoder.calculate_pair_bits(1, 0, table);
-            assert!(bits_small > 0);
-            assert!(bits_small < 50);
-            
-            // Test with values that exceed table range
-            let bits_large = encoder.calculate_pair_bits(1000, 1000, table);
-            assert_eq!(bits_large, usize::MAX);
-        }
+        // Test count_bits function with valid table
+        let quantized = [0i32; 576];
+        let bits = encoder.count_bits(&quantized, 0, 4, 1);
+        assert!(bits < 50); // Reasonable upper bound
+        
+        // Test with small non-zero values
+        let mut quantized_small = [0i32; 576];
+        quantized_small[0] = 1;
+        quantized_small[1] = 0;
+        let bits_small = encoder.count_bits(&quantized_small, 0, 2, 1);
+        assert!(bits_small > 0);
+        assert!(bits_small < 50);
+        
+        // Test with invalid table
+        let bits_invalid = encoder.count_bits(&quantized, 0, 4, 100);
+        assert_eq!(bits_invalid, usize::MAX);
     }
 
     #[test]
@@ -1036,6 +1067,7 @@ mod tests {
         
         let mut info = GranuleInfo::default();
         info.big_values = 50; // Count1 starts at index 100
+        info.count1 = 5; // 5 quadruples
         info.count1table_select = false;
         
         let count1_bits = encoder.calculate_count1_bits(&quantized, &info);
@@ -1051,12 +1083,12 @@ mod tests {
         let table = encoder.count1_tables[0]; // Table A
         
         // Test with all zeros
-        let bits_zero = encoder.calculate_count1_quadruple_bits(&[0, 0, 0, 0], table);
+        let bits_zero = encoder.calculate_count1_quadruple_bits(0, 0, 0, 0, table);
         assert!(bits_zero > 0);
         assert!(bits_zero < 10);
         
         // Test with mixed values
-        let bits_mixed = encoder.calculate_count1_quadruple_bits(&[1, -1, 0, 1], table);
+        let bits_mixed = encoder.calculate_count1_quadruple_bits(1, -1, 0, 1, table);
         assert!(bits_mixed > bits_zero); // Should require more bits due to sign bits
         assert!(bits_mixed < 20);
     }
@@ -1098,7 +1130,14 @@ mod tests {
             region0_count in 0u32..=15,
             region1_count in 0u32..=7,
             count1table_select in any::<bool>(),
+            count1 in 0u32..=50,
         ) -> GranuleInfo {
+            // Calculate addresses based on big_values (simplified)
+            let big_values_end = std::cmp::min(big_values * 2, 576);
+            let address1 = std::cmp::min(big_values_end / 3, big_values_end);
+            let address2 = std::cmp::min(big_values_end * 2 / 3, big_values_end);
+            let address3 = big_values_end;
+            
             GranuleInfo {
                 part2_3_length: 100,
                 big_values,
@@ -1111,11 +1150,11 @@ mod tests {
                 scalefac_scale: false,
                 count1table_select,
                 quantizer_step_size: 0,
-                count1: 0,
+                count1,
                 part2_length: 0,
-                address1: 0,
-                address2: 0,
-                address3: 0,
+                address1,
+                address2,
+                address3,
             }
         }
     }
@@ -1184,18 +1223,13 @@ mod tests {
             let encoder = HuffmanEncoder::new();
             let mut output = BitstreamWriter::new(1000);
             
-            let result = encoder.encode_big_values(&quantized, &quantized, &info, &mut output);
+            let result = encoder.encode_big_values(&quantized, &info, &mut output);
             
             // Encoding should either succeed or fail gracefully
             match result {
                 Ok(bits_written) => {
-                    // If successful, should write some bits for non-zero coefficients
-                    let has_nonzero = quantized[0..(info.big_values as usize * 2).min(576)]
-                        .iter().any(|&x| x != 0);
-                    if has_nonzero {
-                        // May write 0 bits if all values are efficiently encoded
-                        prop_assert!(bits_written < 10000, "Should not write excessive bits");
-                    }
+                    // If successful, should write reasonable number of bits
+                    prop_assert!(bits_written < 10000, "Should not write excessive bits");
                 },
                 Err(_) => {
                     // Errors are acceptable for invalid table selections or out-of-range values
@@ -1215,14 +1249,17 @@ mod tests {
             
             // Create quantized coefficients with count1 values only
             let mut quantized = [0i32; 576];
-            let big_values_end = (info.big_values as usize * 2).min(576);
+            let big_values_end = (info.big_values as usize) << 1;
             
             // Fill count1 region with ±1 or 0 values
             for i in big_values_end..576.min(big_values_end + 100) {
                 quantized[i] = if i % 3 == 0 { 1 } else if i % 3 == 1 { -1 } else { 0 };
             }
             
-            let result = encoder.encode_count1(&quantized, &quantized, &info, &mut output);
+            let mut count1_info = info.clone();
+            count1_info.count1 = 5; // Set reasonable count1 value
+            
+            let result = encoder.encode_count1(&quantized, &count1_info, &mut output);
             
             // Count1 encoding should succeed for valid count1 values
             prop_assert!(result.is_ok(), "Count1 encoding should succeed for ±1,0 values");

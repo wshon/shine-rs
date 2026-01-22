@@ -125,27 +125,36 @@ impl QuantizationLoop {
     /// Quantize MDCT coefficients using non-linear quantization
     /// Returns the maximum quantized value
     /// Following shine's quantize function exactly (ref/shine/src/lib/l3loop.c:365-420)
+    /// 
+    /// Original shine signature: int quantize(int ix[GRANULE_SIZE], int stepsize, shine_global_config *config)
+    /// - ix: int array (quantized output) - corresponds to our output parameter
+    /// - stepsize: int (quantization step size) - matches our stepsize parameter
+    /// - return: int (maximum quantized value) - matches our return type
     pub fn quantize(&self, mdct_coeffs: &[i32; GRANULE_SIZE], stepsize: i32, output: &mut [i32; GRANULE_SIZE]) -> i32 {
         let mut max_value = 0;
         
         // Get the step size from the table - following shine's logic exactly
-        // scalei = config->l3loop.steptabi[stepsize + 127]; /* 2**(-stepsize/4) */
-        let step_index = (stepsize + 127).clamp(0, 255) as usize;
-        let scalei = self.step_table_i32[step_index];
+        // Original shine: scalei = config->l3loop.steptabi[stepsize + 127]; /* 2**(-stepsize/4) */
+        // stepsize: int, steptabi: int32_t array, scalei: int32_t
+        let step_index = (stepsize + 127).clamp(0, 255) as usize; // Convert to usize only for array indexing
+        let scalei = self.step_table_i32[step_index]; // scalei: int32_t (matches shine)
         
         // Find maximum absolute value for quick check - following shine's xrmax logic
-        let xrmax = mdct_coeffs.iter().map(|&x| x.abs()).max().unwrap_or(0);
+        // Original shine: xrmax is int32_t, mdct_coeffs corresponds to config->l3loop.xr (int32_t*)
+        let xrmax = mdct_coeffs.iter().map(|&x| x.abs()).max().unwrap_or(0); // xrmax: i32 (matches shine's int32_t)
         
         // Quick check to see if ixmax will be less than 8192 - following shine's logic exactly
-        // if ((mulr(config->l3loop.xrmax, scalei)) > 165140) /* 8192**(4/3) */
-        if Self::multiply_and_round(xrmax, scalei) > 165140 { // 8192^(4/3)
+        // Original shine: if ((mulr(config->l3loop.xrmax, scalei)) > 165140) /* 8192**(4/3) */
+        // mulr returns int32_t, comparison with int constant 165140
+        if Self::multiply_and_round(xrmax, scalei) > 165140 { // 8192^(4/3) - all int32_t types
             return 16384; // Following shine: no point in continuing, stepsize not big enough
         }
         
         // Main quantization loop - following shine's logic exactly
-        // for (i = 0, max = 0; i < GRANULE_SIZE; i++)
+        // Original shine: for (i = 0, max = 0; i < GRANULE_SIZE; i++)
+        // i: int, max: int, GRANULE_SIZE: const int (576)
         for i in 0..GRANULE_SIZE {
-            let abs_coeff = mdct_coeffs[i].abs();
+            let abs_coeff = mdct_coeffs[i].abs(); // abs_coeff: i32 (matches shine's labs() result)
             
             if abs_coeff == 0 {
                 output[i] = 0;
@@ -153,28 +162,33 @@ impl QuantizationLoop {
             }
             
             // Following shine's calculation exactly:
-            // ln = mulr(labs(config->l3loop.xr[i]), scalei);
-            let ln = Self::multiply_and_round(abs_coeff, scalei);
+            // Original shine: ln = mulr(labs(config->l3loop.xr[i]), scalei);
+            // ln: int32_t, labs(): int32_t, mulr(): int32_t
+            let ln = Self::multiply_and_round(abs_coeff, scalei); // ln: i32 (matches shine's int32_t)
             
             let quantized = if ln < 10000 {
                 // Following shine: ln < 10000 catches most values
-                // ix[i] = config->l3loop.int2idx[ln]; /* quick look up method */
-                self.int2idx[ln as usize] as i32
+                // Original shine: ix[i] = config->l3loop.int2idx[ln]; /* quick look up method */
+                // int2idx: int array, ln used as array index
+                self.int2idx[ln as usize] as i32 // Convert to usize only for array indexing, result is int
             } else {
                 // Following shine: outside table range so have to do it using floats
-                let scale = self.step_table[step_index];
+                // Original shine: scale = config->l3loop.steptab[stepsize + 127]; /* 2**(-stepsize/4) */
+                // steptab: double array
+                let scale = self.step_table[step_index]; // scale: f32 (corresponds to shine's double)
                 let dbl = (abs_coeff as f64) * (scale as f64) * 4.656612875e-10; // 0x7fffffff
-                (dbl.sqrt().sqrt() * dbl.sqrt()) as i32 // dbl^(3/4)
+                (dbl.sqrt().sqrt() * dbl.sqrt()) as i32 // dbl^(3/4), result: int
             };
             
             // Following shine's comment: "note. ix cannot be negative"
             // Store only absolute values, signs are handled separately in MP3
-            output[i] = quantized;
+            output[i] = quantized; // output[i]: int (matches shine's ix[i])
             
             // Following shine: calculate ixmax while we're here
-            // if (max < ix[i]) max = ix[i];
+            // Original shine: if (max < ix[i]) max = ix[i];
+            // max: int, ix[i]: int
             if quantized > max_value {
-                max_value = quantized;
+                max_value = quantized; // max_value: i32 (matches shine's int max)
             }
         }
         
@@ -182,15 +196,25 @@ impl QuantizationLoop {
     }
     
     /// Multiply two integers with rounding (fixed-point arithmetic)
-    /// Following shine's mulr macro: (int32_t)(((((int64_t)a) * ((int64_t)b)) + 0x80000000LL) >> 32)
+    /// Following shine's mulr macro exactly: (int32_t)(((((int64_t)a) * ((int64_t)b)) + 0x80000000LL) >> 32)
+    /// 
+    /// Original shine signature: #define mulr(a, b) (int32_t)(((((int64_t)a) * ((int64_t)b)) + 0x80000000LL) >> 32)
+    /// - a: int32_t input parameter
+    /// - b: int32_t input parameter  
+    /// - return: int32_t result
     fn multiply_and_round(a: i32, b: i32) -> i32 {
-        let result = (a as i64) * (b as i64);
-        ((result + 0x80000000i64) >> 32) as i32 // Round and shift like shine's mulr
+        let result = (a as i64) * (b as i64); // Cast to i64 matches shine's (int64_t) cast
+        ((result + 0x80000000i64) >> 32) as i32 // Round and shift like shine's mulr, cast back to i32
     }
     
     /// Calculate quantization step size for given coefficients
     /// Following shine's bin_search_StepSize exactly (ref/shine/src/lib/l3loop.c:774-810)
-    /// desired_rate: int (shine type)
+    /// 
+    /// Original shine signature: int bin_search_StepSize(int desired_rate, int ix[GRANULE_SIZE], gr_info *cod_info, shine_global_config *config)
+    /// - desired_rate: int (target bit rate)
+    /// - ix: int array (quantized coefficients) - corresponds to our temp_output
+    /// - cod_info: gr_info* (granule info structure) - corresponds to our granule_info
+    /// - return: int (optimal step size)
     pub fn calculate_step_size(&self, mdct_coeffs: &[i32; GRANULE_SIZE], desired_rate: i32, granule_info: &mut GranuleInfo, sample_rate: u32) -> i32 {
         // Binary search for optimal step size
         let mut low = -120;
@@ -223,6 +247,15 @@ impl QuantizationLoop {
     
     /// Calculate exact bit count following shine's bin_search_StepSize logic
     /// This implements the complete shine algorithm for bit counting
+    /// 
+    /// Original shine sequence in bin_search_StepSize:
+    /// calc_runlen(ix, cod_info);           /* rzero,count1,big_values */
+    /// bit = count1_bitcount(ix, cod_info); /* count1_table selection */
+    /// subdivide(cod_info, config);         /* bigvalues sfb division */
+    /// bigv_tab_select(ix, cod_info);       /* codebook selection */
+    /// bit += bigv_bitcount(ix, cod_info);  /* bit count */
+    /// 
+    /// Returns: usize (converted from shine's int for interface compatibility)
     fn calculate_exact_bits(&self, quantized: &[i32; GRANULE_SIZE], granule_info: &mut GranuleInfo, sample_rate: u32) -> usize {
         // Following shine's bin_search_StepSize: calc_runlen -> count1_bitcount -> subdivide -> bigv_tab_select -> bigv_bitcount
         
@@ -242,11 +275,12 @@ impl QuantizationLoop {
         let bigv_bits = self.big_values_bitcount(quantized, granule_info);
         
         // Check for encoding failure
-        if bigv_bits == usize::MAX {
-            return usize::MAX;
+        if bigv_bits == i32::MAX {
+            return usize::MAX; // Cannot encode - return max value to indicate failure
         }
         
-        count1_bits.saturating_add(bigv_bits)
+        // Return total bit count - convert from shine's int to usize for interface
+        (count1_bits + bigv_bits) as usize
     }
     
     /// Quantize MDCT coefficients and encode them
@@ -787,7 +821,7 @@ impl QuantizationLoop {
             for i in 15..24 {
                 if let Some(table) = &HUFFMAN_TABLES[i] {
                     if table.linmax >= max_linbits as u32 {
-                        choice[0] = i;
+                        choice[0] = i as i32;
                         break;
                     }
                 }
@@ -797,7 +831,7 @@ impl QuantizationLoop {
             for i in 24..32 {
                 if let Some(table) = &HUFFMAN_TABLES[i] {
                     if table.linmax >= max_linbits as u32 {
-                        choice[1] = i;
+                        choice[1] = i as i32;
                         break;
                     }
                 }

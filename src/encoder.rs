@@ -569,15 +569,14 @@ impl Mp3Encoder {
         self.reservoir.adjust_reservoir(bits_used, channels as u8);
         
         // Step 8: Huffman encoding (write directly to bitstream)
+        // Note: quantized_coeffs now contains signed values (quantized magnitude with original sign)
         let _big_values_bits = self.huffman.encode_big_values(
-            &mdct_coeffs,
             &quantized_coeffs, 
             granule_info, 
             &mut self.bitstream
         )?;
         
         let _count1_bits = self.huffman.encode_count1(
-            &mdct_coeffs,
             &quantized_coeffs, 
             granule_info, 
             &mut self.bitstream
