@@ -17,6 +17,10 @@ path = "src/bin/mp3_validator.rs"
 name = "mp3_hexdump"
 path = "src/bin/mp3_hexdump.rs"
 
+[[bin]]
+name = "wav2mp3"
+path = "src/bin/wav2mp3.rs"
+
 [dependencies]
 thiserror = "1.0"
 
