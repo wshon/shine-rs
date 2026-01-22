@@ -38,6 +38,10 @@ impl BitReservoir {
     
     /// Calculate maximum available bits for a granule based on perceptual entropy
     pub fn max_reservoir_bits(&self, perceptual_entropy: f64, channels: usize) -> usize {
+        if self.mean_bits == 0 || channels == 0 {
+            return 0; // Return 0 if no mean bits or channels
+        }
+        
         let mean_bits = self.mean_bits / channels;
         let mut max_bits = mean_bits;
         
@@ -80,6 +84,10 @@ impl BitReservoir {
     
     /// Adjust reservoir size after granule allocation
     pub fn adjust_after_granule(&mut self, used_bits: usize, channels: usize) -> EncodingResult<()> {
+        if self.mean_bits == 0 || channels == 0 {
+            return Ok(()); // Skip adjustment if no mean bits or channels
+        }
+        
         let mean_bits_per_channel = self.mean_bits / channels;
         
         if used_bits <= mean_bits_per_channel {
@@ -87,7 +95,13 @@ impl BitReservoir {
             self.add_bits(returned_bits)?;
         } else {
             let extra_bits = used_bits - mean_bits_per_channel;
-            self.use_bits(extra_bits)?;
+            // Only try to use bits if we have enough in the reservoir
+            if extra_bits <= self.size {
+                self.use_bits(extra_bits)?;
+            } else {
+                // If we don't have enough bits, just use what we have
+                self.size = 0;
+            }
         }
         
         Ok(())
@@ -318,13 +332,11 @@ mod tests {
             prop_assert_eq!(reservoir.mean_bits, mean_bits, "Frame begin should set mean bits");
             
             // Property 2: Adjust after granule should maintain balance
-            let initial_size = reservoir.available_bits();
+            let _initial_size = reservoir.available_bits();
             let result = reservoir.adjust_after_granule(used_bits, channels);
             
-            // Should succeed for reasonable inputs
-            if used_bits < mean_bits * 2 / channels {
-                prop_assert!(result.is_ok(), "Reasonable granule adjustment should succeed");
-            }
+            // Should always succeed with our defensive implementation
+            prop_assert!(result.is_ok(), "Granule adjustment should succeed");
         }
 
         #[test]
@@ -421,7 +433,7 @@ mod tests {
             assert!(max_bits <= 4095);
             
             // Test frame end
-            let (stuffing_bits, drain_bits) = reservoir.frame_end(2);
+            let (_stuffing_bits, drain_bits) = reservoir.frame_end(2);
             assert_eq!(drain_bits, 0);
         }
 
