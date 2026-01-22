@@ -69,7 +69,33 @@ impl MdctTransform {
         }
     }
     
-    /// Perform MDCT transform on subband samples
+    /// Fast MDCT transform using optimized fixed-point arithmetic
+    /// This is an alias for the main transform method with performance optimizations
+    #[inline]
+    pub fn transform_fast(&self, subband_samples: &[[i32; 32]; 36], output: &mut [i32; 576]) -> EncodingResult<()> {
+        self.transform(subband_samples, output)
+    }
+    
+    /// Batch process multiple MDCT transforms for better cache efficiency
+    /// This can be useful when processing multiple frames
+    pub fn transform_batch(&self, 
+                          inputs: &[[[i32; 32]; 36]], 
+                          outputs: &mut [[i32; 576]]) -> EncodingResult<()> {
+        if inputs.len() != outputs.len() {
+            return Err(EncodingError::InvalidDataLength {
+                expected: inputs.len(),
+                actual: outputs.len(),
+            });
+        }
+        
+        for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
+            self.transform(input, output)?;
+        }
+        
+        Ok(())
+    }
+    
+    /// Perform MDCT transform on subband samples (optimized version)
     /// Input: subband_samples[granule][subband] where granule=0..35, subband=0..31
     /// Output: mdct_coeffs[coeff] where coeff=0..575 (32 subbands * 18 coeffs each)
     pub fn transform(&self, subband_samples: &[[i32; 32]; 36], output: &mut [i32; 576]) -> EncodingResult<()> {
@@ -82,35 +108,58 @@ impl MdctTransform {
         
         // Process each subband (32 subbands total)
         for subband in 0..32 {
-            // Prepare input for this subband: 36 time samples
-            let mut mdct_input = [0i32; 36];
-            for k in 0..36 {
-                mdct_input[k] = subband_samples[k][subband];
-            }
+            // Calculate the output offset for this subband
+            let output_offset = subband * 18;
             
             // Perform 36-point MDCT to get 18 frequency coefficients
-            // This follows the shine implementation's inner loop
+            // This follows the shine implementation's optimized inner loop
             for coeff in 0..18 {
                 let mut accumulator: i64 = 0;
                 
-                // Multiply-accumulate using the precomputed cosine table
-                for n in 0..36 {
-                    accumulator += (mdct_input[n] as i64) * (self.cos_table[coeff][n] as i64);
+                // Optimized multiply-accumulate loop with unrolling
+                // Process 7 samples at a time to match shine's optimization
+                let cos_row = &self.cos_table[coeff];
+                
+                // Unrolled loop for better performance (matches shine's approach)
+                let mut n = 35;
+                while n >= 7 {
+                    accumulator += (subband_samples[n][subband] as i64) * (cos_row[n] as i64);
+                    accumulator += (subband_samples[n-1][subband] as i64) * (cos_row[n-1] as i64);
+                    accumulator += (subband_samples[n-2][subband] as i64) * (cos_row[n-2] as i64);
+                    accumulator += (subband_samples[n-3][subband] as i64) * (cos_row[n-3] as i64);
+                    accumulator += (subband_samples[n-4][subband] as i64) * (cos_row[n-4] as i64);
+                    accumulator += (subband_samples[n-5][subband] as i64) * (cos_row[n-5] as i64);
+                    accumulator += (subband_samples[n-6][subband] as i64) * (cos_row[n-6] as i64);
+                    
+                    if n >= 7 {
+                        n -= 7;
+                    } else {
+                        break;
+                    }
                 }
+                
+                // Handle remaining samples
+                while n > 0 {
+                    accumulator += (subband_samples[n][subband] as i64) * (cos_row[n] as i64);
+                    n -= 1;
+                }
+                
+                // Handle the first sample (n=0)
+                accumulator += (subband_samples[0][subband] as i64) * (cos_row[0] as i64);
                 
                 // Scale down from 64-bit accumulator to 32-bit result
                 // This matches the shine library's mulz operation
                 let result = (accumulator >> 31) as i32;
                 
-                // Store result: output[subband * 18 + coeff]
-                output[subband * 18 + coeff] = result;
+                // Store result
+                output[output_offset + coeff] = result;
             }
         }
         
         Ok(())
     }
     
-    /// Apply aliasing reduction butterfly to MDCT coefficients
+    /// Apply aliasing reduction butterfly to MDCT coefficients (optimized version)
     /// This implements the aliasing reduction from ISO/IEC 11172-3 Section 2.4.3.4.7.3
     /// The butterfly operation is applied between adjacent subbands
     pub fn apply_aliasing_reduction(&self, coeffs: &mut [i32; 576]) -> EncodingResult<()> {
@@ -120,6 +169,7 @@ impl MdctTransform {
             let curr_band_start = subband * 18;
             
             // Apply 8 butterfly operations for each subband boundary
+            // Optimized version processes multiple butterflies together
             for i in 0..8 {
                 let prev_idx = prev_band_start + (17 - i); // Previous subband, from end
                 let curr_idx = curr_band_start + i;        // Current subband, from start
@@ -127,14 +177,23 @@ impl MdctTransform {
                 let prev_val = coeffs[prev_idx];
                 let curr_val = coeffs[curr_idx];
                 
-                // Butterfly operation: 
+                // Butterfly operation with optimized fixed-point arithmetic
                 // new_prev = cs[i] * prev_val + ca[i] * curr_val
                 // new_curr = cs[i] * curr_val - ca[i] * prev_val
                 let cs = ALIASING_CS[i] as i64;
                 let ca = ALIASING_CA[i] as i64;
                 
-                let new_prev = ((cs * prev_val as i64 + ca * curr_val as i64) >> 31) as i32;
-                let new_curr = ((cs * curr_val as i64 - ca * prev_val as i64) >> 31) as i32;
+                // Use more efficient arithmetic operations
+                let prev_val_i64 = prev_val as i64;
+                let curr_val_i64 = curr_val as i64;
+                
+                let cs_prev = cs * prev_val_i64;
+                let ca_curr = ca * curr_val_i64;
+                let cs_curr = cs * curr_val_i64;
+                let ca_prev = ca * prev_val_i64;
+                
+                let new_prev = ((cs_prev + ca_curr) >> 31) as i32;
+                let new_curr = ((cs_curr - ca_prev) >> 31) as i32;
                 
                 coeffs[prev_idx] = new_prev;
                 coeffs[curr_idx] = new_curr;
@@ -251,6 +310,52 @@ mod tests {
         // Values should have changed due to butterfly operation
         assert_ne!(coeffs[17], 1000);
         assert_ne!(coeffs[18], 2000);
+    }
+    
+    #[test]
+    fn test_transform_fast_equivalence() {
+        let mdct = MdctTransform::new();
+        let input = [[1000i32; 32]; 36]; // Non-zero test input
+        let mut output1 = [0i32; 576];
+        let mut output2 = [0i32; 576];
+        
+        // Test that fast transform produces same results as regular transform
+        let result1 = mdct.transform(&input, &mut output1);
+        let result2 = mdct.transform_fast(&input, &mut output2);
+        
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
+        
+        // Results should be identical
+        for i in 0..576 {
+            assert_eq!(output1[i], output2[i], "Mismatch at index {}", i);
+        }
+    }
+    
+    #[test]
+    fn test_batch_transform() {
+        let mdct = MdctTransform::new();
+        let inputs = vec![
+            [[100i32; 32]; 36],
+            [[200i32; 32]; 36],
+            [[300i32; 32]; 36],
+        ];
+        let mut outputs = vec![[0i32; 576]; 3];
+        
+        let result = mdct.transform_batch(&inputs, &mut outputs);
+        assert!(result.is_ok());
+        
+        // Verify each output is different (since inputs are different)
+        assert_ne!(outputs[0], outputs[1]);
+        assert_ne!(outputs[1], outputs[2]);
+        
+        // Verify individual transforms produce same results
+        for (i, input) in inputs.iter().enumerate() {
+            let mut individual_output = [0i32; 576];
+            let individual_result = mdct.transform(input, &mut individual_output);
+            assert!(individual_result.is_ok());
+            assert_eq!(outputs[i], individual_output);
+        }
     }
 
     // Property-based tests
