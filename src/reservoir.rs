@@ -115,11 +115,7 @@ impl BitReservoir {
         }
         
         // Calculate over-allocation
-        let over_bits = if self.size > self.max_size {
-            self.size - self.max_size
-        } else {
-            0
-        };
+        let over_bits = self.size.saturating_sub(self.max_size);
         
         self.size = self.size.saturating_sub(over_bits);
         let mut stuffing_bits = over_bits;

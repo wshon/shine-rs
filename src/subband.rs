@@ -105,14 +105,14 @@ impl SubbandFilter {
             return Err(crate::error::EncodingError::InvalidInputLength {
                 expected: 32,
                 actual: pcm_samples.len(),
-            }.into());
+            });
         }
         
         if channel >= self.history.len() {
             return Err(crate::error::EncodingError::InvalidChannelIndex {
                 channel,
                 max_channels: self.history.len(),
-            }.into());
+            });
         }
         
         // Step 1: Replace 32 oldest samples with 32 new samples
@@ -232,7 +232,7 @@ impl SubbandFilter {
     /// Scalar version of polyphase filter (always available)
     #[inline]
     fn apply_polyphase_filter_scalar(&self, windowed: &[i32; 64], output: &mut [i32; 32]) {
-        for i in 0..SBLIMIT {
+        for (i, output_item) in output.iter_mut().enumerate().take(SBLIMIT) {
             let mut sum = 0i64;
             
             // Multiply windowed samples by filter coefficients
@@ -322,7 +322,7 @@ impl SubbandFilter {
             sum += (coeffs[0] as i64) * (windowed[0] as i64);
             
             // Convert back from fixed point
-            output[i] = (sum >> 32) as i32;
+            *output_item = (sum >> 32) as i32;
         }
     }
     
@@ -330,7 +330,7 @@ impl SubbandFilter {
     #[cfg(target_arch = "x86_64")]
     #[inline]
     unsafe fn apply_polyphase_filter_simd(&self, windowed: &[i32; 64], output: &mut [i32; 32]) {
-        for i in 0..SBLIMIT {
+        for (i, output_item) in output.iter_mut().enumerate().take(SBLIMIT) {
             let coeffs = &self.filter_coeffs[i];
             let mut sum = _mm_setzero_si128();
             
@@ -355,7 +355,7 @@ impl SubbandFilter {
             
             // Extract the final sum and convert from fixed point
             let result = _mm_cvtsi128_si64(final_sum);
-            output[i] = (result >> 32) as i32;
+            *output_item = (result >> 32) as i32;
         }
     }
     

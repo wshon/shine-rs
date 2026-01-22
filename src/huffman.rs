@@ -407,8 +407,8 @@ impl HuffmanEncoder {
         table: &HuffmanTable,
         output: &mut BitstreamWriter
     ) -> EncodingResult<usize> {
-        let abs_x = x.abs() as u32;
-        let abs_y = y.abs() as u32;
+        let abs_x = x.unsigned_abs();
+        let abs_y = y.unsigned_abs();
         
         // Check if values are within table range
         if abs_x > table.xlen || abs_y > table.ylen {
@@ -537,8 +537,8 @@ impl HuffmanEncoder {
     
     /// Calculate bits required for encoding a pair with a specific table
     fn calculate_pair_bits(&self, x: i32, y: i32, table: &HuffmanTable) -> usize {
-        let abs_x = x.abs() as u32;
-        let abs_y = y.abs() as u32;
+        let abs_x = x.unsigned_abs();
+        let abs_y = y.unsigned_abs();
         
         // Check if values are within table range
         if abs_x > table.xlen || abs_y > table.ylen {

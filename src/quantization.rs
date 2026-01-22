@@ -24,7 +24,7 @@ pub struct QuantizationLoop {
 }
 
 /// Granule information structure
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GranuleInfo {
     /// Length of part2_3 data in bits
     pub part2_3_length: u32,
@@ -58,28 +58,7 @@ pub struct GranuleInfo {
     pub address3: u32,
 }
 
-impl Default for GranuleInfo {
-    fn default() -> Self {
-        Self {
-            part2_3_length: 0,
-            big_values: 0,
-            global_gain: 0,
-            scalefac_compress: 0,
-            table_select: [0; 3],
-            region0_count: 0,
-            region1_count: 0,
-            preflag: false,
-            scalefac_scale: false,
-            count1table_select: false,
-            quantizer_step_size: 0,
-            count1: 0,
-            part2_length: 0,
-            address1: 0,
-            address2: 0,
-            address3: 0,
-        }
-    }
-}
+
 
 impl QuantizationLoop {
     /// Create a new quantization loop
