@@ -24,7 +24,7 @@ pub struct QuantizationLoop {
 }
 
 /// Granule information structure
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct GranuleInfo {
     /// Length of part2_3 data in bits
     pub part2_3_length: u32,
@@ -56,6 +56,29 @@ pub struct GranuleInfo {
     pub address1: u32,
     pub address2: u32,
     pub address3: u32,
+}
+
+impl Default for GranuleInfo {
+    fn default() -> Self {
+        Self {
+            part2_3_length: 0,
+            big_values: 0,
+            global_gain: 210,
+            scalefac_compress: 0,
+            table_select: [1, 1, 1], // Use table 1 as default (table 0 doesn't exist)
+            region0_count: 0,
+            region1_count: 0,
+            preflag: false,
+            scalefac_scale: false,
+            count1table_select: false,
+            quantizer_step_size: 0,
+            count1: 0,
+            part2_length: 0,
+            address1: 0,
+            address2: 0,
+            address3: 0,
+        }
+    }
 }
 
 
@@ -479,26 +502,51 @@ impl QuantizationLoop {
     }
     
     /// Choose optimal Huffman table for a region
+    /// Following shine's new_choose_table logic exactly
     fn choose_huffman_table(&self, coeffs: &[i32; GRANULE_SIZE], start: usize, end: usize) -> u32 {
         let max_val = coeffs[start..end].iter().map(|&x| x.abs()).max().unwrap_or(0);
         
-        // Simplified table selection based on maximum value
+        // Following shine's logic: return 0 for all-zero regions
         if max_val == 0 {
-            0 // Table 0 for all zeros
-        } else if max_val <= 1 {
-            1 // Table 1 for small values
-        } else if max_val <= 2 {
-            2 // Table 2
-        } else if max_val <= 3 {
-            5 // Table 5
-        } else if max_val <= 5 {
-            7 // Table 7
-        } else if max_val <= 7 {
-            10 // Table 10
-        } else if max_val <= 15 {
-            13 // Table 13
+            return 0; // Table 0 indicates no encoding needed (all zeros)
+        }
+        
+        // Following shine's new_choose_table logic exactly
+        if max_val < 15 {
+            // Try tables with no linbits (tables 0-14)
+            // Find first table where xlen > max_val
+            for i in (1..15).rev() { // Iterate from 14 down to 1 (shine uses i--)
+                if i == 4 || i == 14 {
+                    continue; // Skip tables that don't exist
+                }
+                
+                // Get xlen from our table definition
+                let xlen = match i {
+                    1 => 2,   // Table 1: xlen=2
+                    2 => 3,   // Table 2: xlen=3  
+                    3 => 3,   // Table 3: xlen=3
+                    5 => 4,   // Table 5: xlen=4
+                    6 => 4,   // Table 6: xlen=4
+                    7 => 6,   // Table 7: xlen=6
+                    8 => 6,   // Table 8: xlen=6
+                    9 => 6,   // Table 9: xlen=6
+                    10 => 8,  // Table 10: xlen=8
+                    11 => 8,  // Table 11: xlen=8
+                    12 => 8,  // Table 12: xlen=8
+                    13 => 16, // Table 13: xlen=16
+                    _ => continue,
+                };
+                
+                if xlen > max_val as u32 {
+                    return i as u32;
+                }
+            }
+            
+            // If no table found, use table 1 as fallback
+            return 1;
         } else {
-            15 // Table 15 with escape sequences
+            // For max_val >= 15, use escape tables (15-31)
+            return 15; // Table 15 with escape sequences
         }
     }
     
@@ -506,17 +554,17 @@ impl QuantizationLoop {
     fn big_values_bitcount(&self, coeffs: &[i32; GRANULE_SIZE], info: &GranuleInfo) -> usize {
         let mut bits = 0;
         
-        // Region 0
+        // Region 0 - following shine's logic: skip if table is 0
         if info.table_select[0] != 0 && info.address1 > 0 {
             bits += self.count_region_bits(coeffs, 0, info.address1 as usize, info.table_select[0]);
         }
         
-        // Region 1
+        // Region 1 - following shine's logic: skip if table is 0
         if info.table_select[1] != 0 && info.address2 > info.address1 {
             bits += self.count_region_bits(coeffs, info.address1 as usize, info.address2 as usize, info.table_select[1]);
         }
         
-        // Region 2
+        // Region 2 - following shine's logic: skip if table is 0
         if info.table_select[2] != 0 && info.address3 > info.address2 {
             bits += self.count_region_bits(coeffs, info.address2 as usize, info.address3 as usize, info.table_select[2]);
         }
@@ -526,6 +574,11 @@ impl QuantizationLoop {
     
     /// Count bits for a specific region with given Huffman table
     fn count_region_bits(&self, coeffs: &[i32; GRANULE_SIZE], start: usize, end: usize, table: u32) -> usize {
+        // Following shine's logic: return 0 if table is 0
+        if table == 0 {
+            return 0;
+        }
+        
         let mut bits = 0;
         let mut i = start;
         
@@ -548,14 +601,18 @@ impl QuantizationLoop {
     
     /// Estimate bits needed for a coefficient pair
     fn estimate_pair_bits(&self, x: i32, y: i32, table: u32) -> usize {
+        // Following shine's logic: return 0 if table is 0
+        if table == 0 {
+            return 0;
+        }
+        
         // Simplified estimation - in practice would use actual Huffman tables
         let max_val = x.max(y);
         
         match table {
-            0 => if x == 0 && y == 0 { 0 } else { 100 }, // Invalid for non-zero
-            1..=4 => if max_val <= 1 { 2 } else { 100 }, // Small value tables
+            1..=3 => if max_val <= 1 { 2 } else { 100 }, // Small value tables (skip table 4)
             5..=9 => if max_val <= 3 { 4 } else { 100 }, // Medium value tables
-            10..=14 => if max_val <= 7 { 6 } else { 100 }, // Large value tables
+            10..=13 => if max_val <= 7 { 6 } else { 100 }, // Large value tables (skip table 14)
             15..=31 => {
                 // Tables with escape sequences
                 let base_bits = 8;

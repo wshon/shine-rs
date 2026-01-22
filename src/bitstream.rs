@@ -4,6 +4,7 @@
 //! including frame headers, side information, and encoded audio data.
 
 use crate::config::{Config, MpegVersion, StereoMode, Emphasis};
+use crate::quantization::GranuleInfo;
 
 /// Bitstream writer for MP3 frame data
 pub struct BitstreamWriter {
@@ -413,31 +414,6 @@ pub struct SideInfo {
     pub scfsi: [[bool; 4]; 2],
     /// Granule information for each granule*channel
     pub granules: Vec<GranuleInfo>,
-}
-
-/// Information for a single granule
-#[derive(Debug, Clone, Default)]
-pub struct GranuleInfo {
-    /// Length of part 2 + part 3 in bits
-    pub part2_3_length: u32,
-    /// Number of big value pairs
-    pub big_values: u32,
-    /// Global gain for quantization
-    pub global_gain: u32,
-    /// Scale factor compression index
-    pub scalefac_compress: u32,
-    /// Huffman table selection for 3 regions
-    pub table_select: [u32; 3],
-    /// Region 0 count
-    pub region0_count: u32,
-    /// Region 1 count
-    pub region1_count: u32,
-    /// Pre-emphasis flag (MPEG-1 only)
-    pub preflag: bool,
-    /// Scale factor scale flag
-    pub scalefac_scale: bool,
-    /// Count1 table selection
-    pub count1table_select: bool,
 }
 
 impl Default for BitstreamWriter {
@@ -986,6 +962,12 @@ mod tests {
                     preflag: false,
                     scalefac_scale: false,
                     count1table_select: false,
+                    quantizer_step_size: 0,
+                    count1: 0,
+                    part2_length: 0,
+                    address1: 0,
+                    address2: 0,
+                    address3: 0,
                 });
             }
             
@@ -1029,6 +1011,12 @@ mod tests {
                     preflag,
                     scalefac_scale,
                     count1table_select,
+                    quantizer_step_size: 0,
+                    count1: 0,
+                    part2_length: 0,
+                    address1: 0,
+                    address2: 0,
+                    address3: 0,
                 }
             }).boxed()
         }

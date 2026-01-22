@@ -12,6 +12,13 @@ inclusion: always
 - 算法步骤和数据流应镜像shine的实现逻辑
 - 数值精度要求与shine保持一致，特别是量化和MDCT计算
 
+### 问题调试规范
+- **优先查看 shine 原始实现** - 遇到算法问题时，第一时间查看 `ref/shine/src/lib/` 中对应的C语言实现
+- **不要擅自调整算法** - 发现问题时不要凭经验修改，必须参考shine的具体实现逻辑
+- **逐行对比实现** - 将Rust实现与C实现逐行对比，确保逻辑完全一致
+- **保持数据结构对应** - 确保Rust的数据结构与C结构体在内存布局和访问模式上保持一致
+- **验证边界条件** - 特别关注shine如何处理边界值、错误情况和特殊输入
+
 ### 模块组织架构
 - **核心模块**: `bitstream`, `encoder`, `huffman`, `mdct`, `quantization`, `reservoir`, `subband`, `tables`
 - **配置模块**: `config` - 编码参数和设置

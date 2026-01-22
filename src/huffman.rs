@@ -41,9 +41,10 @@ impl HuffmanEncoder {
         // Big values are encoded in pairs, so we process 2*big_values coefficients
         let big_values_end = std::cmp::min(big_values * 2, 576);
         
-        // Determine region boundaries based on scale factor band indices
-        let region0_end = std::cmp::min(self.get_region_end(0, info.region0_count as usize), big_values_end);
-        let region1_end = std::cmp::min(self.get_region_end(region0_end, info.region1_count as usize), big_values_end);
+        // Use the region boundaries calculated by the quantization loop
+        let region0_end = std::cmp::min(info.address1 as usize, big_values_end);
+        let region1_end = std::cmp::min(info.address2 as usize, big_values_end);
+        let region2_end = std::cmp::min(info.address3 as usize, big_values_end);
         
         // Encode region 0
         if region0_end > 0 {
@@ -58,9 +59,9 @@ impl HuffmanEncoder {
         }
         
         // Encode region 2
-        if big_values_end > region1_end {
+        if region2_end > region1_end {
             let table_index = info.table_select[2] as usize;
-            bits_written += self.encode_region(quantized, region1_end, big_values_end, table_index, output)?;
+            bits_written += self.encode_region(quantized, region1_end, region2_end, table_index, output)?;
         }
         
         Ok(bits_written)
@@ -125,8 +126,12 @@ impl HuffmanEncoder {
         let mut best_table = 1; // Start with table 1
         let mut min_bits = usize::MAX;
         
-        // Try each available Huffman table
+        // Try each available Huffman table (skip tables 0, 4, and 14 which are None)
         for table_index in 1..self.tables.len() {
+            if table_index == 4 || table_index == 14 {
+                continue; // Skip unavailable tables
+            }
+            
             if let Some(table) = &self.tables[table_index] {
                 let bits = self.calculate_bits_for_region(region_values, table);
                 if bits < min_bits {
@@ -159,8 +164,12 @@ impl HuffmanEncoder {
         let mut best_table = None;
         let mut min_bits = usize::MAX;
         
-        // Try each available Huffman table
+        // Try each available Huffman table (skip tables 0, 4, and 14 which are None)
         for table_index in 1..self.tables.len() {
+            if table_index == 4 || table_index == 14 {
+                continue; // Skip unavailable tables
+            }
+            
             if let Some(table) = &self.tables[table_index] {
                 let bits = self.calculate_bits_for_region(region_values, table);
                 if bits <= max_bits && bits < min_bits {
@@ -194,7 +203,10 @@ impl HuffmanEncoder {
         // Calculate bits for region 0
         if region0_end > 0 {
             let table_index = info.table_select[0] as usize;
-            if table_index < self.tables.len() {
+            if table_index == 0 {
+                // Table 0 means no encoding needed (all zeros)
+                // Don't add any bits
+            } else if table_index < self.tables.len() {
                 if let Some(table) = &self.tables[table_index] {
                     let region_values = &quantized[0..region0_end];
                     let bits = self.calculate_bits_for_region(region_values, table);
@@ -209,7 +221,10 @@ impl HuffmanEncoder {
         // Calculate bits for region 1
         if region1_end > region0_end {
             let table_index = info.table_select[1] as usize;
-            if table_index < self.tables.len() {
+            if table_index == 0 {
+                // Table 0 means no encoding needed (all zeros)
+                // Don't add any bits
+            } else if table_index < self.tables.len() {
                 if let Some(table) = &self.tables[table_index] {
                     let region_values = &quantized[region0_end..region1_end];
                     let bits = self.calculate_bits_for_region(region_values, table);
@@ -224,7 +239,10 @@ impl HuffmanEncoder {
         // Calculate bits for region 2
         if big_values_end > region1_end {
             let table_index = info.table_select[2] as usize;
-            if table_index < self.tables.len() {
+            if table_index == 0 {
+                // Table 0 means no encoding needed (all zeros)
+                // Don't add any bits
+            } else if table_index < self.tables.len() {
                 if let Some(table) = &self.tables[table_index] {
                     let region_values = &quantized[region1_end..big_values_end];
                     let bits = self.calculate_bits_for_region(region_values, table);
@@ -371,6 +389,11 @@ impl HuffmanEncoder {
         table_index: usize,
         output: &mut BitstreamWriter
     ) -> EncodingResult<usize> {
+        // Following shine's logic: return 0 bits if table is 0 (no encoding needed)
+        if table_index == 0 {
+            return Ok(0);
+        }
+        
         if table_index >= self.tables.len() {
             return Err(EncodingError::HuffmanError(
                 format!("Invalid Huffman table index: {}", table_index)
@@ -379,9 +402,11 @@ impl HuffmanEncoder {
         
         let table = match &self.tables[table_index] {
             Some(t) => t,
-            None => return Err(EncodingError::HuffmanError(
-                format!("Huffman table {} is not available", table_index)
-            )),
+            None => {
+                // If table is not available, treat as table 0 (no encoding)
+                eprintln!("Warning: Huffman table {} is not available, skipping region", table_index);
+                return Ok(0);
+            }
         };
         
         let mut bits_written = 0;
@@ -418,7 +443,7 @@ impl HuffmanEncoder {
         }
         
         // Calculate table index safely
-        let table_idx = match abs_x.checked_mul(table.ylen + 1) {
+        let table_idx = match abs_x.checked_mul(table.ylen) {
             Some(product) => match product.checked_add(abs_y) {
                 Some(idx) => idx as usize,
                 None => return Err(EncodingError::HuffmanError(
@@ -432,7 +457,8 @@ impl HuffmanEncoder {
         
         if table_idx >= table.codes.len() {
             return Err(EncodingError::HuffmanError(
-                format!("Table index {} out of bounds", table_idx)
+                format!("Huffman code index {} out of bounds for table with {} entries (values: {}, {})", 
+                       table_idx, table.codes.len(), abs_x, abs_y)
             ));
         }
         
@@ -545,8 +571,8 @@ impl HuffmanEncoder {
             return usize::MAX; // Cannot encode with this table
         }
         
-        // Calculate table index safely
-        let table_idx = match abs_x.checked_mul(table.ylen + 1) {
+        // Calculate table index safely - following shine's logic: idx = (x * ylen) + y
+        let table_idx = match abs_x.checked_mul(table.ylen) {
             Some(product) => match product.checked_add(abs_y) {
                 Some(idx) => idx as usize,
                 None => return usize::MAX,
@@ -715,9 +741,10 @@ mod tests {
         let result = encoder.encode_region(&quantized, 0, 10, 100, &mut output);
         assert!(result.is_err());
         
-        // Test with table 0 (which doesn't exist)
+        // Test with table 0 (which should return 0 bits, not error, following shine's logic)
         let result = encoder.encode_region(&quantized, 0, 10, 0, &mut output);
-        assert!(result.is_err());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 0);
     }
 
     #[test]
