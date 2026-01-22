@@ -28,7 +28,7 @@ fn test_huffman_count1_all_zeros() {
     println!("  count1: {}", granule_info.count1);
     println!("  count1table_select: {}", granule_info.count1table_select);
     
-    let result = huffman.encode_count1(&quantized, &granule_info, &mut writer);
+    let result = huffman.encode_count1(&quantized, &quantized, &granule_info, &mut writer);
     match result {
         Ok(bits) => {
             println!("Count1 encoding succeeded: {} bits", bits);
@@ -93,7 +93,7 @@ fn test_huffman_count1_single_quadruple() {
         granule_info.count1 = 1; // Just one quadruple
         granule_info.count1table_select = false; // Use table A
         
-        let result = huffman.encode_count1(&quantized, &granule_info, &mut writer);
+        let result = huffman.encode_count1(&quantized, &quantized, &granule_info, &mut writer);
         match result {
             Ok(bits) => {
                 println!("  Bits used: {}", bits);
@@ -140,7 +140,7 @@ fn test_huffman_big_values_all_zeros() {
     granule_info.address3 = 0;
     
     println!("Testing big values with all zeros...");
-    let result = huffman.encode_big_values(&quantized, &granule_info, &mut writer);
+    let result = huffman.encode_big_values(&quantized, &quantized, &granule_info, &mut writer);
     match result {
         Ok(bits) => {
             println!("Big values encoding: {} bits", bits);

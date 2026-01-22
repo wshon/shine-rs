@@ -29,8 +29,15 @@ impl HuffmanEncoder {
     /// 
     /// Encodes the big values region of quantized coefficients using
     /// the appropriate Huffman tables selected in the granule info.
+    /// 
+    /// # Arguments
+    /// * `original_coeffs` - Original MDCT coefficients (for sign information)
+    /// * `quantized` - Quantized coefficients (absolute values only)
+    /// * `info` - Granule information with table selections
+    /// * `output` - Bitstream writer for output
     pub fn encode_big_values(
         &self,
+        original_coeffs: &[i32; 576],
         quantized: &[i32; 576],
         info: &GranuleInfo,
         output: &mut BitstreamWriter
@@ -49,19 +56,19 @@ impl HuffmanEncoder {
         // Encode region 0
         if region0_end > 0 {
             let table_index = info.table_select[0] as usize;
-            bits_written += self.encode_region(quantized, 0, region0_end, table_index, output)?;
+            bits_written += self.encode_region(original_coeffs, quantized, 0, region0_end, table_index, output)?;
         }
         
         // Encode region 1
         if region1_end > region0_end {
             let table_index = info.table_select[1] as usize;
-            bits_written += self.encode_region(quantized, region0_end, region1_end, table_index, output)?;
+            bits_written += self.encode_region(original_coeffs, quantized, region0_end, region1_end, table_index, output)?;
         }
         
         // Encode region 2
         if region2_end > region1_end {
             let table_index = info.table_select[2] as usize;
-            bits_written += self.encode_region(quantized, region1_end, region2_end, table_index, output)?;
+            bits_written += self.encode_region(original_coeffs, quantized, region1_end, region2_end, table_index, output)?;
         }
         
         Ok(bits_written)
@@ -71,8 +78,15 @@ impl HuffmanEncoder {
     /// 
     /// Encodes the count1 region (values of ±1 or 0) using the
     /// specialized count1 Huffman tables.
+    /// 
+    /// # Arguments
+    /// * `original_coeffs` - Original MDCT coefficients (for sign information)
+    /// * `quantized` - Quantized coefficients (absolute values only)
+    /// * `info` - Granule information with count1 settings
+    /// * `output` - Bitstream writer for output
     pub fn encode_count1(
         &self,
+        original_coeffs: &[i32; 576],
         quantized: &[i32; 576],
         info: &GranuleInfo,
         output: &mut BitstreamWriter
@@ -93,15 +107,22 @@ impl HuffmanEncoder {
         // Following shine's exact loop structure
         let mut pos = big_values_end;
         while pos < count1_end && pos + 3 < 576 {
-            let v = [
+            let quantized_values = [
                 quantized[pos],
                 quantized[pos + 1], 
                 quantized[pos + 2],
                 quantized[pos + 3]
             ];
             
-            // Encode the quadruple (no need to check range - count1 already validated this)
-            bits_written += self.encode_count1_quadruple(&v, table, output)?;
+            let original_values = [
+                original_coeffs[pos],
+                original_coeffs[pos + 1], 
+                original_coeffs[pos + 2],
+                original_coeffs[pos + 3]
+            ];
+            
+            // Encode the quadruple with sign information
+            bits_written += self.encode_count1_quadruple(&quantized_values, &original_values, table, output)?;
             pos += 4;
         }
         
@@ -504,6 +525,7 @@ impl HuffmanEncoder {
     /// Encode a region using the specified Huffman table
     fn encode_region(
         &self,
+        original_coeffs: &[i32; 576],
         quantized: &[i32; 576],
         start: usize,
         end: usize,
@@ -535,10 +557,17 @@ impl HuffmanEncoder {
         
         // Process pairs of coefficients
         while pos + 1 < end && pos + 1 < 576 {
-            let x = quantized[pos];
-            let y = quantized[pos + 1];
+            // Use quantized values for magnitude, original values for sign
+            let quantized_x = quantized[pos];
+            let quantized_y = quantized[pos + 1];
+            let original_x = original_coeffs[pos];
+            let original_y = original_coeffs[pos + 1];
             
-            bits_written += self.encode_pair(x, y, table, output)?;
+            // Create signed quantized values: quantized magnitude with original sign
+            let signed_x = if original_x >= 0 { quantized_x } else { -quantized_x };
+            let signed_y = if original_y >= 0 { quantized_y } else { -quantized_y };
+            
+            bits_written += self.encode_pair(signed_x, signed_y, table, output)?;
             pos += 2;
         }
         
@@ -622,16 +651,17 @@ impl HuffmanEncoder {
     /// Encode a quadruple of count1 values
     fn encode_count1_quadruple(
         &self,
-        values: &[i32; 4],
+        quantized_values: &[i32; 4],
+        original_values: &[i32; 4],
         table: &HuffmanTable,
         output: &mut BitstreamWriter
     ) -> EncodingResult<usize> {
-        // Convert values to count1 format (0, 1 for abs values)
+        // Convert quantized values to count1 format (0, 1 for abs values)
         let v: [u32; 4] = [
-            if values[0] != 0 { 1 } else { 0 },
-            if values[1] != 0 { 1 } else { 0 },
-            if values[2] != 0 { 1 } else { 0 },
-            if values[3] != 0 { 1 } else { 0 },
+            if quantized_values[0] != 0 { 1 } else { 0 },
+            if quantized_values[1] != 0 { 1 } else { 0 },
+            if quantized_values[2] != 0 { 1 } else { 0 },
+            if quantized_values[3] != 0 { 1 } else { 0 },
         ];
         
         // Calculate table index for count1 table
@@ -650,10 +680,10 @@ impl HuffmanEncoder {
         // Write the Huffman code
         output.write_bits(code, length);
         
-        // Write sign bits for non-zero values
-        for &value in values {
-            if value != 0 {
-                output.write_bits(if value < 0 { 1 } else { 0 }, 1);
+        // Write sign bits for non-zero values using original coefficients
+        for i in 0..4 {
+            if quantized_values[i] != 0 {
+                output.write_bits(if original_values[i] < 0 { 1 } else { 0 }, 1);
                 bits_written += 1;
             }
         }
@@ -822,7 +852,7 @@ mod tests {
         info.region0_count = 5;
         info.region1_count = 3;
         
-        let result = encoder.encode_big_values(&quantized, &info, &mut output);
+        let result = encoder.encode_big_values(&quantized, &quantized, &info, &mut output);
         
         // Should succeed with all-zero input
         assert!(result.is_ok());
@@ -845,7 +875,7 @@ mod tests {
         info.big_values = 50; // Count1 region starts after big values
         info.count1table_select = false; // Use table A
         
-        let result = encoder.encode_count1(&quantized, &info, &mut output);
+        let result = encoder.encode_count1(&quantized, &quantized, &info, &mut output);
         
         // Should succeed
         assert!(result.is_ok());
@@ -859,11 +889,11 @@ mod tests {
         let quantized = [0i32; 576];
         
         // Test with invalid table index
-        let result = encoder.encode_region(&quantized, 0, 10, 100, &mut output);
+        let result = encoder.encode_region(&quantized, &quantized, 0, 10, 100, &mut output);
         assert!(result.is_err());
         
         // Test with table 0 (which should return 0 bits, not error, following shine's logic)
-        let result = encoder.encode_region(&quantized, 0, 10, 0, &mut output);
+        let result = encoder.encode_region(&quantized, &quantized, 0, 10, 0, &mut output);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), 0);
     }
@@ -1137,7 +1167,7 @@ mod tests {
             let encoder = HuffmanEncoder::new();
             let mut output = BitstreamWriter::new(1000);
             
-            let result = encoder.encode_big_values(&quantized, &info, &mut output);
+            let result = encoder.encode_big_values(&quantized, &quantized, &info, &mut output);
             
             // Encoding should either succeed or fail gracefully
             match result {
@@ -1175,7 +1205,7 @@ mod tests {
                 quantized[i] = if i % 3 == 0 { 1 } else if i % 3 == 1 { -1 } else { 0 };
             }
             
-            let result = encoder.encode_count1(&quantized, &info, &mut output);
+            let result = encoder.encode_count1(&quantized, &quantized, &info, &mut output);
             
             // Count1 encoding should succeed for valid count1 values
             prop_assert!(result.is_ok(), "Count1 encoding should succeed for ±1,0 values");

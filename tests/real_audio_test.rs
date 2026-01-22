@@ -7,6 +7,7 @@ use rust_mp3_encoder::{Mp3Encoder, Config};
 use rust_mp3_encoder::config::{WaveConfig, MpegConfig, Channels, StereoMode, Emphasis};
 use std::fs::{File, remove_file};
 use std::io::{Read, Write};
+use std::process::Command;
 
 /// Clean up old MP3 files before running tests
 fn cleanup_output_files() {
@@ -22,6 +23,73 @@ fn cleanup_output_files() {
                     }
                 }
             }
+        }
+    }
+}
+
+/// Validate MP3 file using FFmpeg
+/// This function runs FFmpeg to decode the MP3 file and ensures no errors occur
+fn validate_mp3_with_ffmpeg(mp3_path: &str) -> Result<(), String> {
+    println!("Validating MP3 file with FFmpeg: {}", mp3_path);
+    
+    // Run FFmpeg to decode the MP3 file to /dev/null (Windows: NUL)
+    let null_device = if cfg!(windows) { "NUL" } else { "/dev/null" };
+    
+    let output = Command::new("ffmpeg")
+        .args(&[
+            "-v", "error",           // Only show errors
+            "-i", mp3_path,          // Input MP3 file
+            "-f", "null",            // Output to null
+            "-y",                    // Overwrite output
+            null_device              // Null device
+        ])
+        .output();
+    
+    match output {
+        Ok(result) => {
+            if result.status.success() {
+                println!("✅ FFmpeg validation passed for {}", mp3_path);
+                Ok(())
+            } else {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                let error_msg = format!("❌ FFmpeg validation failed for {}: {}", mp3_path, stderr);
+                println!("{}", error_msg);
+                Err(error_msg)
+            }
+        },
+        Err(e) => {
+            let error_msg = format!("❌ Failed to run FFmpeg: {}. Make sure FFmpeg is installed and in PATH.", e);
+            println!("{}", error_msg);
+            Err(error_msg)
+        }
+    }
+}
+
+/// Get MP3 duration using FFprobe
+fn get_mp3_duration(mp3_path: &str) -> Result<f64, String> {
+    let output = Command::new("ffprobe")
+        .args(&[
+            "-v", "quiet",
+            "-show_entries", "format=duration",
+            "-of", "csv=p=0",
+            mp3_path
+        ])
+        .output();
+    
+    match output {
+        Ok(result) => {
+            if result.status.success() {
+                let duration_str = String::from_utf8_lossy(&result.stdout);
+                let duration: f64 = duration_str.trim().parse()
+                    .map_err(|e| format!("Failed to parse duration: {}", e))?;
+                Ok(duration)
+            } else {
+                let stderr = String::from_utf8_lossy(&result.stderr);
+                Err(format!("FFprobe failed: {}", stderr))
+            }
+        },
+        Err(e) => {
+            Err(format!("Failed to run FFprobe: {}", e))
         }
     }
 }
@@ -123,7 +191,7 @@ fn test_encode_real_wav_file() {
             match encoder.encode_frame_interleaved(chunk) {
                 Ok(frame_data) => {
                     mp3_data.extend_from_slice(frame_data);
-                    println!("Encoded frame: {} bytes", frame_data.len());
+                    // println!("Encoded frame: {} bytes", frame_data.len());
                 },
                 Err(e) => {
                     panic!("Failed to encode frame: {:?}", e);
@@ -178,12 +246,25 @@ fn test_encode_real_wav_file() {
     assert!(sync_count > 0, "Should find at least one MP3 sync word");
     
     // Write output file for manual verification
-    let mut output_file = File::create("tests/output/encoded_output.mp3")
+    let output_path = "tests/output/encoded_output.mp3";
+    let mut output_file = File::create(output_path)
         .expect("Failed to create output file");
     output_file.write_all(&mp3_data)
         .expect("Failed to write MP3 data");
     
-    println!("MP3 file written to tests/output/encoded_output.mp3");
+    println!("MP3 file written to {}", output_path);
+    
+    // Validate with FFmpeg - this must not fail
+    validate_mp3_with_ffmpeg(output_path)
+        .expect("FFmpeg validation must pass - MP3 file should be decodable without errors");
+    
+    // Optional: Check duration if FFprobe is available
+    if let Ok(duration) = get_mp3_duration(output_path) {
+        println!("MP3 duration: {:.2} seconds", duration);
+        // The duration should be close to the original WAV duration
+        assert!(duration > 10.0 && duration < 15.0, 
+                "Duration should be approximately 12 seconds, got {:.2}", duration);
+    }
 }
 
 #[test]
@@ -238,12 +319,24 @@ fn test_encode_mono_configuration() {
     assert!(!mp3_data.is_empty(), "Mono MP3 output should not be empty");
     
     // Write mono output
-    let mut output_file = File::create("tests/output/mono_output.mp3")
+    let output_path = "tests/output/mono_output.mp3";
+    let mut output_file = File::create(output_path)
         .expect("Failed to create mono output file");
     output_file.write_all(&mp3_data)
         .expect("Failed to write mono MP3 data");
     
-    println!("Mono MP3 file written to tests/output/mono_output.mp3");
+    println!("Mono MP3 file written to {}", output_path);
+    
+    // Validate with FFmpeg - this must not fail
+    validate_mp3_with_ffmpeg(output_path)
+        .expect("FFmpeg validation must pass for mono MP3 file");
+    
+    // Optional: Check duration
+    if let Ok(duration) = get_mp3_duration(output_path) {
+        println!("Mono MP3 duration: {:.2} seconds", duration);
+        assert!(duration > 0.8 && duration < 1.2, 
+                "Duration should be approximately 1 second, got {:.2}", duration);
+    }
 }
 
 #[test]
@@ -309,5 +402,17 @@ fn test_different_sample_rates() {
             .expect("Failed to write test MP3 data");
         
         println!("Test file written: {}", filename);
+        
+        // Validate with FFmpeg - this must not fail
+        validate_mp3_with_ffmpeg(&filename)
+            .unwrap_or_else(|e| panic!("FFmpeg validation failed for {} Hz: {}", sample_rate, e));
+        
+        // Optional: Check duration
+        if let Ok(duration) = get_mp3_duration(&filename) {
+            println!("Duration for {} Hz: {:.2} seconds", sample_rate, duration);
+            assert!(duration > 0.4 && duration < 0.6, 
+                    "Duration should be approximately 0.5 seconds for {} Hz, got {:.2}", 
+                    sample_rate, duration);
+        }
     }
 }

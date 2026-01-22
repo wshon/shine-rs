@@ -160,7 +160,7 @@ fn test_frame_header_analysis() {
             let frame_data = encoder.encode_frame(chunk)
                 .expect("Failed to encode frame");
             mp3_data.extend_from_slice(frame_data);
-            println!("Encoded frame: {} bytes", frame_data.len());
+            // println!("Encoded frame: {} bytes", frame_data.len());
         }
     }
     

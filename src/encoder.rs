@@ -487,12 +487,14 @@ impl Mp3Encoder {
         
         // Step 6: Huffman encoding (write directly to bitstream)
         let _big_values_bits = self.huffman.encode_big_values(
+            &mdct_coeffs,
             &quantized_coeffs, 
             granule_info, 
             &mut self.bitstream
         )?;
         
         let _count1_bits = self.huffman.encode_count1(
+            &mdct_coeffs,
             &quantized_coeffs, 
             granule_info, 
             &mut self.bitstream

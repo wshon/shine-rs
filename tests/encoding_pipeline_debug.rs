@@ -117,7 +117,7 @@ fn test_debug_huffman_encoding() {
     granule_info.address3 = 0;
     
     println!("Testing big values encoding...");
-    let big_values_result = huffman.encode_big_values(&quantized, &granule_info, &mut writer);
+    let big_values_result = huffman.encode_big_values(&quantized, &quantized, &granule_info, &mut writer);
     match big_values_result {
         Ok(bits) => {
             println!("Big values encoding: {} bits", bits);
@@ -128,7 +128,7 @@ fn test_debug_huffman_encoding() {
     }
     
     println!("Testing count1 encoding...");
-    let count1_result = huffman.encode_count1(&quantized, &granule_info, &mut writer);
+    let count1_result = huffman.encode_count1(&quantized, &quantized, &granule_info, &mut writer);
     match count1_result {
         Ok(bits) => {
             println!("Count1 encoding: {} bits", bits);

@@ -161,8 +161,8 @@ impl QuantizationLoop {
                 (dbl.sqrt().sqrt() * dbl.sqrt()) as i32 // dbl^(3/4)
             };
             
-            // Apply sign
-            output[i] = if mdct_coeffs[i] < 0 { -quantized } else { quantized };
+            // CRITICAL FIX: Store only absolute values, signs are handled separately in MP3
+            output[i] = quantized;
             
             // Track maximum value
             if quantized > max_value {
@@ -426,7 +426,8 @@ impl QuantizationLoop {
             if *coeff != 0 {
                 let abs_val = coeff.abs();
                 let quantized = ((abs_val as f32) * scale).round() as i32;
-                *coeff = if *coeff < 0 { -quantized } else { quantized };
+                // CRITICAL FIX: Store only absolute values, signs are handled separately in MP3
+                *coeff = quantized;
             }
         }
     }
@@ -820,7 +821,7 @@ mod tests {
         }
 
         #[test]
-        fn test_quantization_sign_preservation(
+        fn test_quantization_absolute_values_only(
             mdct_coeffs in mdct_coeffs_strategy(),
             step_size in step_size_strategy()
         ) {
@@ -831,14 +832,10 @@ mod tests {
             
             quantizer.quantize(&mdct_coeffs, step_size, &mut output);
             
-            // Property: Sign of coefficients should be preserved
+            // Property: Quantized values should be absolute values only (MP3 standard)
             for i in 0..GRANULE_SIZE {
-                if mdct_coeffs[i] != 0 && output[i] != 0 {
-                    prop_assert_eq!(
-                        mdct_coeffs[i].signum(), 
-                        output[i].signum(), 
-                        "Sign should be preserved"
-                    );
+                if output[i] != 0 {
+                    prop_assert!(output[i] >= 0, "Quantized values should be non-negative");
                 }
             }
         }
