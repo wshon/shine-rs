@@ -905,6 +905,11 @@ mod tests {
                 scalefac_scale: false,
                 count1table_select,
                 quantizer_step_size: 0,
+                count1: 0,
+                part2_length: 0,
+                address1: 0,
+                address2: 0,
+                address3: 0,
             }
         }
     }
