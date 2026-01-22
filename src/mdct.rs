@@ -148,8 +148,9 @@ impl MdctTransform {
                 accumulator += (subband_samples[0][subband] as i64) * (cos_row[0] as i64);
                 
                 // Scale down from 64-bit accumulator to 32-bit result
-                // This matches the shine library's mulz operation
-                let result = (accumulator >> 31) as i32;
+                // Following shine's mul macro: (int32_t)((((int64_t)a) * ((int64_t)b)) >> 32)
+                // This is the key fix - use 32-bit shift like shine, not 31-bit
+                let result = (accumulator >> 32) as i32;
                 
                 // Store result
                 output[output_offset + coeff] = result;
@@ -192,8 +193,8 @@ impl MdctTransform {
                 let cs_curr = cs * curr_val_i64;
                 let ca_prev = ca * prev_val_i64;
                 
-                let new_prev = ((cs_prev + ca_curr) >> 31) as i32;
-                let new_curr = ((cs_curr - ca_prev) >> 31) as i32;
+                let new_prev = ((cs_prev + ca_curr) >> 32) as i32;
+                let new_curr = ((cs_curr - ca_prev) >> 32) as i32;
                 
                 coeffs[prev_idx] = new_prev;
                 coeffs[curr_idx] = new_curr;

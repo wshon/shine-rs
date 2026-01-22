@@ -373,8 +373,9 @@ impl Mp3Encoder {
         self.prepare_side_info(&mut side_info, channels);
         
         // Step 7: Process each channel through the encoding pipeline with correct bit allocation
+        // Following shine's iteration: for (ch = config->wave.channels; ch--;)
         for ch in 0..channels {
-            self.encode_channel(ch, samples_per_frame, &mut side_info, mean_bits)?;
+            self.encode_channel(ch as i32, samples_per_frame, &mut side_info, mean_bits as i32)?;
         }
         
         // Step 8: Write side information
@@ -461,7 +462,9 @@ impl Mp3Encoder {
     }
     
     /// Encode a single channel through the complete pipeline
-    fn encode_channel(&mut self, channel: usize, samples_per_frame: usize, side_info: &mut SideInfo, mean_bits: usize) -> Result<()> {
+    /// Following shine's shine_iteration_loop logic (ref/shine/src/lib/l3loop.c:100-170)
+    /// channel: int (shine ch), mean_bits: int (shine type)
+    fn encode_channel(&mut self, channel: i32, samples_per_frame: usize, side_info: &mut SideInfo, mean_bits: i32) -> Result<()> {
         use crate::config::MpegVersion;
         
         // Determine number of granules based on MPEG version
@@ -474,10 +477,10 @@ impl Mp3Encoder {
         
         // Process each granule for this channel
         for granule in 0..granules_per_frame {
-            let granule_index = granule * (self.config.wave.channels as usize) + channel;
+            let granule_index = (granule as usize) * (self.config.wave.channels as usize) + (channel as usize);
             
             if granule_index < side_info.granules.len() {
-                self.encode_granule(channel, granule, samples_per_granule, 
+                self.encode_granule(channel, granule as i32, samples_per_granule, 
                                   &mut side_info.granules[granule_index], mean_bits)?;
             }
         }
@@ -486,20 +489,25 @@ impl Mp3Encoder {
     }
     
     /// Encode a single granule (portion of a channel's data)
-    fn encode_granule(&mut self, channel: usize, granule: usize, samples_per_granule: usize, 
-                     granule_info: &mut GranuleInfo, mean_bits: usize) -> Result<()> {
+    /// Following shine's shine_iteration_loop logic (ref/shine/src/lib/l3loop.c:100-170)
+    /// channel: int (shine ch), granule: int (shine gr), mean_bits: int (shine type)
+    fn encode_granule(&mut self, channel: i32, granule: i32, samples_per_granule: usize, 
+                     granule_info: &mut GranuleInfo, mean_bits: i32) -> Result<()> {
         // Step 1: Extract PCM samples for this granule
-        let granule_start = granule * samples_per_granule;
+        // Convert shine types to Rust array indices
+        let channel_idx = channel as usize;
+        let granule_idx = granule as usize;
+        let granule_start = granule_idx * samples_per_granule;
         let granule_end = granule_start + samples_per_granule;
         
-        if granule_end > self.buffer[channel].len() {
+        if granule_end > self.buffer[channel_idx].len() {
             return Err(EncoderError::InputData(InputDataError::InvalidLength {
                 expected: granule_end,
-                actual: self.buffer[channel].len(),
+                actual: self.buffer[channel_idx].len(),
             }));
         }
         
-        let granule_samples = &self.buffer[channel][granule_start..granule_end];
+        let granule_samples = &self.buffer[channel_idx][granule_start..granule_end];
         
         // Step 2: Subband filtering (32 samples at a time)
         let mut subband_samples = [[0i32; 32]; 36]; // 36 granules of 32 subbands each
@@ -521,7 +529,7 @@ impl Mp3Encoder {
                 }
             }
             
-            self.subband.filter(&chunk_32, &mut subband_samples[i], channel)?;
+            self.subband.filter(&chunk_32, &mut subband_samples[i], channel_idx)?;
         }
         
         // Step 3: MDCT transform
@@ -533,28 +541,32 @@ impl Mp3Encoder {
         
         // Step 5: Calculate max_bits per granule following shine's logic exactly
         // In shine: max_bits = shine_max_reservoir_bits(&config->pe[ch][gr], config);
-        // For now, use mean_bits per channel as a simple approximation
-        let channels = self.config.wave.channels as usize;
-        let max_bits = mean_bits / channels;
+        // max_bits: int (shine type)
+        let channels = self.config.wave.channels as i32; // Following shine's int type
+        let mean_bits_per_channel = mean_bits / channels;
         
         // Calculate perceptual entropy for bit allocation (simplified)
         let perceptual_entropy = self.calculate_perceptual_entropy(&mdct_coeffs);
         let adjusted_max_bits = self.reservoir.max_reservoir_bits(perceptual_entropy, channels as u8);
-        let final_max_bits = std::cmp::min(max_bits, adjusted_max_bits as usize);
+        
+        // Following shine's logic: both values are int, take minimum
+        let final_max_bits = std::cmp::min(mean_bits_per_channel, adjusted_max_bits);
         
         let mut quantized_coeffs = [0i32; 576];
         
         // Step 6: Quantization and encoding with correct bit budget
+        // Following shine's logic: max_bits is int type
         let bits_used = self.quantizer.quantize_and_encode(
             &mdct_coeffs, 
-            final_max_bits, 
+            final_max_bits, // Already i32 type, no conversion needed
             granule_info, 
             &mut quantized_coeffs,
             self.config.wave.sample_rate
         )?;
         
         // Step 7: Adjust bit reservoir after quantization
-        self.reservoir.adjust_reservoir(bits_used as i32, channels as u8);
+        // Following shine's logic: bits_used is int type
+        self.reservoir.adjust_reservoir(bits_used, channels as u8);
         
         // Step 8: Huffman encoding (write directly to bitstream)
         let _big_values_bits = self.huffman.encode_big_values(

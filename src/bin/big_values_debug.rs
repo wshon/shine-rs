@@ -5,7 +5,6 @@
 
 use rust_mp3_encoder::{Mp3Encoder, Config};
 use rust_mp3_encoder::config::{WaveConfig, MpegConfig, Channels, StereoMode, Emphasis};
-use std::env;
 
 /// Test with minimal input and detailed big_values logging
 fn test_with_big_values_logging() -> Result<(), Box<dyn std::error::Error>> {
