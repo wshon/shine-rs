@@ -235,7 +235,12 @@ impl QuantizationLoop {
         // Step 5: Count big values bits
         let bigv_bits = self.big_values_bitcount(quantized, granule_info);
         
-        count1_bits + bigv_bits
+        // Check for encoding failure
+        if bigv_bits == usize::MAX {
+            return usize::MAX;
+        }
+        
+        count1_bits.saturating_add(bigv_bits)
     }
     
     /// Quantize MDCT coefficients and encode them
@@ -461,8 +466,8 @@ impl QuantizationLoop {
     fn count1_bitcount(&self, coeffs: &[i32; GRANULE_SIZE], info: &mut GranuleInfo) -> usize {
         use crate::tables::COUNT1_TABLES;
         
-        let mut sum0 = 0;
-        let mut sum1 = 0;
+        let mut sum0 = 0usize;
+        let mut sum1 = 0usize;
         
         // Following shine's exact loop: for (i = cod_info->big_values << 1, k = 0; k < cod_info->count1; i += 4, k++)
         let mut i = (info.big_values << 1) as usize;
@@ -480,21 +485,21 @@ impl QuantizationLoop {
             let p = (v.abs().min(1) + (w.abs().min(1) << 1) + (x.abs().min(1) << 2) + (y.abs().min(1) << 3)) as usize;
             
             // Count sign bits - following shine's logic exactly
-            let mut signbits = 0;
-            if v != 0 { signbits += 1; }
-            if w != 0 { signbits += 1; }
-            if x != 0 { signbits += 1; }
-            if y != 0 { signbits += 1; }
+            let mut signbits = 0usize;
+            if v != 0 { signbits = signbits.saturating_add(1); }
+            if w != 0 { signbits = signbits.saturating_add(1); }
+            if x != 0 { signbits = signbits.saturating_add(1); }
+            if y != 0 { signbits = signbits.saturating_add(1); }
             
-            sum0 += signbits;
-            sum1 += signbits;
+            sum0 = sum0.saturating_add(signbits);
+            sum1 = sum1.saturating_add(signbits);
             
             // Add Huffman table bits - following shine's logic
             if p < COUNT1_TABLES[0].lengths.len() {
-                sum0 += COUNT1_TABLES[0].lengths[p] as usize;
+                sum0 = sum0.saturating_add(COUNT1_TABLES[0].lengths[p] as usize);
             }
             if p < COUNT1_TABLES[1].lengths.len() {
-                sum1 += COUNT1_TABLES[1].lengths[p] as usize;
+                sum1 = sum1.saturating_add(COUNT1_TABLES[1].lengths[p] as usize);
             }
             
             i += 4;
@@ -799,21 +804,33 @@ impl QuantizationLoop {
     /// Count bits needed for big values regions
     /// Following shine's bigv_bitcount function exactly
     fn big_values_bitcount(&self, coeffs: &[i32; GRANULE_SIZE], info: &GranuleInfo) -> usize {
-        let mut bits = 0;
+        let mut bits = 0usize;
         
         // Following shine's logic: if ((table = gi->table_select[0])) bits += count_bit(ix, 0, gi->address1, table);
         if info.table_select[0] != 0 {
-            bits += self.count_bit_region(coeffs, 0, info.address1 as usize, info.table_select[0]);
+            let region_bits = self.count_bit_region(coeffs, 0, info.address1 as usize, info.table_select[0]);
+            if region_bits == usize::MAX {
+                return usize::MAX; // Cannot encode with selected table
+            }
+            bits = bits.saturating_add(region_bits);
         }
         
         // Following shine's logic: if ((table = gi->table_select[1])) bits += count_bit(ix, gi->address1, gi->address2, table);
         if info.table_select[1] != 0 {
-            bits += self.count_bit_region(coeffs, info.address1 as usize, info.address2 as usize, info.table_select[1]);
+            let region_bits = self.count_bit_region(coeffs, info.address1 as usize, info.address2 as usize, info.table_select[1]);
+            if region_bits == usize::MAX {
+                return usize::MAX; // Cannot encode with selected table
+            }
+            bits = bits.saturating_add(region_bits);
         }
         
         // Following shine's logic: if ((table = gi->table_select[2])) bits += count_bit(ix, gi->address2, gi->big_values << 1, table);
         if info.table_select[2] != 0 {
-            bits += self.count_bit_region(coeffs, info.address2 as usize, (info.big_values << 1) as usize, info.table_select[2]);
+            let region_bits = self.count_bit_region(coeffs, info.address2 as usize, (info.big_values << 1) as usize, info.table_select[2]);
+            if region_bits == usize::MAX {
+                return usize::MAX; // Cannot encode with selected table
+            }
+            bits = bits.saturating_add(region_bits);
         }
         
         bits
@@ -832,7 +849,7 @@ impl QuantizationLoop {
             None => return 0,
         };
         
-        let mut bits = 0;
+        let mut bits = 0usize;
         let mut i = start;
         
         // Process pairs of coefficients (following shine's logic)
@@ -849,21 +866,25 @@ impl QuantizationLoop {
             let table_idx = (x as u32 * huffman_table.ylen + y as u32) as usize;
             
             if table_idx < huffman_table.lengths.len() {
-                bits += huffman_table.lengths[table_idx] as usize;
+                bits = bits.saturating_add(huffman_table.lengths[table_idx] as usize);
                 
                 // Add linbits for large values (following shine's logic)
                 if huffman_table.linbits > 0 {
                     if x as u32 > huffman_table.linmax {
-                        bits += huffman_table.linbits as usize;
+                        bits = bits.saturating_add(huffman_table.linbits as usize);
                     }
                     if y as u32 > huffman_table.linmax {
-                        bits += huffman_table.linbits as usize;
+                        bits = bits.saturating_add(huffman_table.linbits as usize);
                     }
                 }
                 
                 // Add sign bits
-                if coeffs[i] != 0 { bits += 1; }
-                if coeffs[i + 1] != 0 { bits += 1; }
+                if coeffs[i] != 0 { 
+                    bits = bits.saturating_add(1); 
+                }
+                if coeffs[i + 1] != 0 { 
+                    bits = bits.saturating_add(1); 
+                }
             } else {
                 return usize::MAX; // Invalid table index
             }

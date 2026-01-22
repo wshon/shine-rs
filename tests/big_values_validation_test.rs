@@ -215,12 +215,3 @@ impl<'a> BitReader<'a> {
         Ok(())
     }
 }
-            println!("✓ No suspicious big_values found in side info");
-        } else {
-            println!("⚠ Found potentially invalid big_values:");
-            for (byte_pos, bit_offset, value) in suspicious_values {
-                println!("  At byte {}, bit offset {}: {}", byte_pos, bit_offset, value);
-            }
-        }
-    }
-}
