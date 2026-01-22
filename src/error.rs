@@ -100,6 +100,10 @@ pub enum EncodingError {
     #[error("Invalid input length: expected {expected} samples, got {actual}")]
     InvalidInputLength { expected: usize, actual: usize },
     
+    /// Invalid data length for processing
+    #[error("Invalid data length: expected {expected}, got {actual}")]
+    InvalidDataLength { expected: usize, actual: usize },
+    
     /// Invalid channel index
     #[error("Invalid channel index {channel}: maximum supported channels is {max_channels}")]
     InvalidChannelIndex { channel: usize, max_channels: usize },
