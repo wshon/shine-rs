@@ -87,7 +87,7 @@ fn mulz(value: i32) -> i32 {
 /// Calculates the analysis filterbank coefficients and rounds to the
 /// 9th decimal place accuracy of the filterbank tables in the ISO
 /// document. The coefficients are stored in the fl array.
-pub fn subband_initialise(subband: &mut SubbandState) {
+pub fn shine_subband_initialise(subband: &mut SubbandState) {
     // Initialize channel offsets and sample buffers (matches shine implementation)
     for i in 0..MAX_CHANNELS {
         subband.off[i] = 0;
@@ -128,7 +128,7 @@ pub fn subband_initialise(subband: &mut SubbandState) {
 ///    produce the windowed sample z
 /// 3. The windowed samples z are filtered by the digital filter matrix
 ///    to produce the subband samples s
-pub fn window_filter_subband(
+pub fn shine_window_filter_subband(
     buffer: &mut &[i16],
     s: &mut [i32; SBLIMIT],
     ch: usize,
@@ -254,7 +254,7 @@ mod tests {
             _unit in Just(())
         ) {
             let mut subband = SubbandState::new();
-            subband_initialise(&mut subband);
+            shine_subband_initialise(&mut subband);
             
             // Verify that coefficients are initialized (non-zero for most entries)
             let mut non_zero_count = 0;
@@ -280,12 +280,12 @@ mod tests {
             channel in 0usize..MAX_CHANNELS,
         ) {
             let mut subband = SubbandState::new();
-            subband_initialise(&mut subband);
+            shine_subband_initialise(&mut subband);
             
             let mut buffer = samples.as_slice();
             let mut s = [0i32; SBLIMIT];
             
-            window_filter_subband(&mut buffer, &mut s, channel, &mut subband, 1);
+            shine_window_filter_subband(&mut buffer, &mut s, channel, &mut subband, 1);
             
             // Verify that subband samples are generated
             let mut has_non_zero = false;
@@ -329,10 +329,10 @@ mod tests {
             let mut subband = SubbandState::new();
             
             // Test multiple initializations produce same result
-            subband_initialise(&mut subband);
+            shine_subband_initialise(&mut subband);
             let fl_copy1 = subband.fl;
             
-            subband_initialise(&mut subband);
+            shine_subband_initialise(&mut subband);
             let fl_copy2 = subband.fl;
             
             prop_assert_eq!(fl_copy1, fl_copy2, "Multiple initializations should be identical");
