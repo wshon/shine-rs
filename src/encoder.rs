@@ -15,10 +15,10 @@ use crate::Result;
 /// for MP3 encoding while maintaining compatibility with shine's implementation.
 #[allow(dead_code)]
 pub struct Mp3Encoder {
-    /// Shine global configuration containing all encoding state
-    config: ShineGlobalConfig,
-    /// Public-facing logical configuration (high-level API)
-    public_config: Config,
+    /// Internal global configuration containing all encoding state (shine_global_config)
+    global_config: ShineGlobalConfig,
+    /// Public API configuration (shine_config_t equivalent)
+    config: Config,
     /// Output frame buffer
     frame_buffer: Vec<u8>,
     /// Samples accumulated in buffer
@@ -42,7 +42,7 @@ impl Mp3Encoder {
         config.validate()?;
 
         // Keep a public copy of the high-level configuration for API consumers
-        let public_config = config.clone();
+        let config = config.clone();
 
         // Create shine global configuration (low-level state)
         let mut shine_config = ShineGlobalConfig::new(config.clone())?;
@@ -86,8 +86,8 @@ impl Mp3Encoder {
         println!("  Target frame size: {} bytes", whole_slots_per_frame);
 
         Ok(Self {
-            config: shine_config,
-            public_config,
+            global_config: shine_config,
+            config,
             frame_buffer: Vec::with_capacity(2048),
             samples_in_buffer: 0,
             whole_slots_per_frame,
@@ -107,8 +107,8 @@ impl Mp3Encoder {
     /// * `Ok(&[u8])` - Encoded MP3 frame data
     /// * `Err(EncoderError)` - Encoding error
     pub fn encode_frame(&mut self, pcm_data: &[i16]) -> Result<&[u8]> {
-        let channels = self.config.wave.channels as usize;
-        let samples_per_frame = self.public_config.samples_per_frame();
+        let channels = self.global_config.wave.channels as usize;
+        let samples_per_frame = self.config.samples_per_frame();
         let expected_samples = samples_per_frame * channels;
         
         // Validate input length
@@ -121,7 +121,7 @@ impl Mp3Encoder {
         
         // Clear frame buffer for new frame
         self.frame_buffer.clear();
-        self.config.bs.reset();
+        self.global_config.bs.reset();
         
         // De-interleave PCM data into channel buffers
         self.deinterleave_pcm(pcm_data, channels, samples_per_frame);
@@ -145,8 +145,8 @@ impl Mp3Encoder {
     /// * `Ok(&[u8])` - Encoded MP3 frame data
     /// * `Err(EncoderError)` - Encoding error
     pub fn encode_frame_interleaved(&mut self, pcm_data: &[i16]) -> Result<&[u8]> {
-        let channels = self.config.wave.channels as usize;
-        let samples_per_frame = self.public_config.samples_per_frame();
+        let channels = self.global_config.wave.channels as usize;
+        let samples_per_frame = self.config.samples_per_frame();
         let expected_samples = samples_per_frame * channels;
         
         // Validate input length
@@ -159,7 +159,7 @@ impl Mp3Encoder {
         
         // Clear frame buffer for new frame
         self.frame_buffer.clear();
-        self.config.bs.reset();
+        self.global_config.bs.reset();
         
         // De-interleave PCM data into channel buffers
         self.deinterleave_pcm_interleaved(pcm_data, channels, samples_per_frame);
@@ -184,8 +184,8 @@ impl Mp3Encoder {
     /// * `Ok(None)` - Data was buffered, no frame produced yet
     /// * `Err(EncoderError)` - Encoding error
     pub fn encode_samples(&mut self, pcm_data: &[i16]) -> Result<Option<&[u8]>> {
-        let channels = self.config.wave.channels as usize;
-        let samples_per_frame = self.public_config.samples_per_frame();
+        let channels = self.global_config.wave.channels as usize;
+        let samples_per_frame = self.config.samples_per_frame();
         let samples_per_channel = pcm_data.len() / channels;
         
         // Validate input is properly aligned to channels
@@ -203,7 +203,7 @@ impl Mp3Encoder {
             
             for sample_idx in channel_start..channel_end {
                 if sample_idx < pcm_data.len() {
-                    self.config.buffer[ch].push(pcm_data[sample_idx]);
+                    self.global_config.buffer[ch].push(pcm_data[sample_idx]);
                 }
             }
         }
@@ -214,14 +214,14 @@ impl Mp3Encoder {
         if self.samples_in_buffer >= samples_per_frame {
             // Clear frame buffer for new frame
             self.frame_buffer.clear();
-            self.config.bs.reset();
+            self.global_config.bs.reset();
             
             // Encode the frame through the complete pipeline
             self.encode_frame_pipeline(channels, samples_per_frame)?;
             
             // Remove encoded samples from buffer
             for ch in 0..channels {
-                self.config.buffer[ch].drain(0..samples_per_frame);
+                self.global_config.buffer[ch].drain(0..samples_per_frame);
             }
             self.samples_in_buffer -= samples_per_frame;
             
@@ -241,8 +241,8 @@ impl Mp3Encoder {
     /// * `Ok(&[u8])` - Encoded MP3 frame data
     /// * `Err(EncoderError)` - Encoding error
     pub fn encode(&mut self, pcm_data: &[i16]) -> Result<&[u8]> {
-        let channels = self.config.wave.channels as usize;
-        let samples_per_frame = self.public_config.samples_per_frame();
+        let channels = self.global_config.wave.channels as usize;
+        let samples_per_frame = self.config.samples_per_frame();
         let expected_samples = samples_per_frame * channels;
         
         // Validate input length
@@ -255,7 +255,7 @@ impl Mp3Encoder {
         
         // Clear frame buffer for new frame
         self.frame_buffer.clear();
-        self.config.bs.reset();
+        self.global_config.bs.reset();
         
         // De-interleave PCM data into channel buffers
         self.deinterleave_pcm_interleaved(pcm_data, channels, samples_per_frame);
@@ -283,29 +283,29 @@ impl Mp3Encoder {
             return Ok(&self.frame_buffer);
         }
         
-        let channels = self.config.wave.channels as usize;
-        let samples_per_frame = self.public_config.samples_per_frame();
+        let channels = self.global_config.wave.channels as usize;
+        let samples_per_frame = self.config.samples_per_frame();
         
         // If we have partial data, pad it to a complete frame
         if self.samples_in_buffer < samples_per_frame {
             for ch in 0..channels {
                 // Pad with zeros to complete the frame
-                while self.config.buffer[ch].len() < samples_per_frame {
-                    self.config.buffer[ch].push(0);
+                while self.global_config.buffer[ch].len() < samples_per_frame {
+                    self.global_config.buffer[ch].push(0);
                 }
             }
         }
         
         // Clear frame buffer for new frame
         self.frame_buffer.clear();
-        self.config.bs.reset();
+        self.global_config.bs.reset();
         
         // Encode the final frame through the complete pipeline
         self.encode_frame_pipeline(channels, samples_per_frame)?;
         
         // Clear the buffer after flushing
         self.samples_in_buffer = 0;
-        for channel_buffer in &mut self.config.buffer {
+        for channel_buffer in &mut self.global_config.buffer {
             channel_buffer.clear();
         }
         
@@ -314,51 +314,51 @@ impl Mp3Encoder {
     
     /// Get the number of samples per frame for this configuration
     pub fn samples_per_frame(&self) -> usize {
-        match self.config.mpeg.version {
-            1 => 1152, // MPEG-1
-            _ => 576,  // MPEG-2/2.5
+        match self.config.mpeg_version() {
+            crate::config::MpegVersion::Mpeg1 => 1152, // MPEG-1
+            crate::config::MpegVersion::Mpeg2 | crate::config::MpegVersion::Mpeg25 => 576,  // MPEG-2/2.5
         }
     }
     
     /// Get the encoder configuration
     pub fn config(&self) -> &crate::shine_config::ShineGlobalConfig {
-        &self.config
+        &self.global_config
     }
     
     /// Get the public configuration
     pub fn public_config(&self) -> &Config {
-        &self.public_config
+        &self.config
     }
     
     /// Reset the encoder state
     pub fn reset(&mut self) {
         // Reset shine configuration state
-        for ch in 0..self.config.wave.channels as usize {
-            self.config.buffer[ch].clear();
+        for ch in 0..self.global_config.wave.channels as usize {
+            self.global_config.buffer[ch].clear();
         }
         self.frame_buffer.clear();
         self.samples_in_buffer = 0;
         
         // Reset side info
-        self.config.side_info = crate::shine_config::ShineSideInfo::default();
+        self.global_config.side_info = crate::shine_config::ShineSideInfo::default();
         
         // Reset bitstream
-        self.config.bs.reset();
+        self.global_config.bs.reset();
     }
     
     /// De-interleave non-interleaved PCM data into channel buffers
     /// For non-interleaved data: [ch0_sample0, ch0_sample1, ..., ch1_sample0, ch1_sample1, ...]
     fn deinterleave_pcm(&mut self, pcm_data: &[i16], channels: usize, samples_per_frame: usize) {
         for ch in 0..channels {
-            self.config.buffer[ch].clear();
-            self.config.buffer[ch].reserve(samples_per_frame);
+            self.global_config.buffer[ch].clear();
+            self.global_config.buffer[ch].reserve(samples_per_frame);
             
             let channel_start = ch * samples_per_frame;
             let channel_end = channel_start + samples_per_frame;
             
             for sample_idx in channel_start..channel_end {
                 if sample_idx < pcm_data.len() {
-                    self.config.buffer[ch].push(pcm_data[sample_idx]);
+                    self.global_config.buffer[ch].push(pcm_data[sample_idx]);
                 }
             }
         }
@@ -368,15 +368,15 @@ impl Mp3Encoder {
     /// For interleaved data: [L, R, L, R, L, R, ...]
     fn deinterleave_pcm_interleaved(&mut self, pcm_data: &[i16], channels: usize, samples_per_frame: usize) {
         for ch in 0..channels {
-            self.config.buffer[ch].clear();
-            self.config.buffer[ch].reserve(samples_per_frame);
+            self.global_config.buffer[ch].clear();
+            self.global_config.buffer[ch].reserve(samples_per_frame);
         }
         
         for sample_idx in 0..samples_per_frame {
             for ch in 0..channels {
                 let interleaved_idx = sample_idx * channels + ch;
                 if interleaved_idx < pcm_data.len() {
-                    self.config.buffer[ch].push(pcm_data[interleaved_idx]);
+                    self.global_config.buffer[ch].push(pcm_data[interleaved_idx]);
                 }
             }
         }
@@ -406,11 +406,11 @@ impl Mp3Encoder {
         let target_frame_bytes = bits_per_frame / 8;
         
         // Step 3: Calculate mean_bits (lines 161-162)
-        let granules_per_frame = match self.public_config.mpeg_version() {
+        let granules_per_frame = match self.config.mpeg_version() {
             crate::config::MpegVersion::Mpeg1 => 2,
             crate::config::MpegVersion::Mpeg2 | crate::config::MpegVersion::Mpeg25 => 1,
         };
-        let sideinfo_len = if self.public_config.mpeg_version() == crate::config::MpegVersion::Mpeg1 {
+        let sideinfo_len = if self.config.mpeg_version() == crate::config::MpegVersion::Mpeg1 {
             8 * if channels == 1 { 4 + 17 } else { 4 + 32 }
         } else {
             8 * if channels == 1 { 4 + 9 } else { 4 + 17 }
@@ -430,10 +430,10 @@ impl Mp3Encoder {
         self.shine_format_bitstream(padding, target_frame_bytes)?;
         
         // Step 7: Return data (lines 172-176)
-        let encoded_data = self.config.bs.flush();
+        let encoded_data = self.global_config.bs.flush();
         self.frame_buffer.clear();
         self.frame_buffer.extend_from_slice(encoded_data);
-        self.config.bs.reset();
+        self.global_config.bs.reset();
         
         Ok(&self.frame_buffer)
     }
@@ -447,7 +447,7 @@ impl Mp3Encoder {
     fn shine_mdct_sub(&mut self, channels: usize) -> Result<()> {
         use crate::config::MpegVersion;
         
-        let granules_per_frame = match self.public_config.mpeg_version() {
+        let granules_per_frame = match self.config.mpeg_version() {
             MpegVersion::Mpeg1 => 2,
             MpegVersion::Mpeg2 | MpegVersion::Mpeg25 => 1,
         };
@@ -473,14 +473,14 @@ impl Mp3Encoder {
                     let mut pcm_chunk = [0i16; 32];
                     for i in 0..32 {
                         let sample_idx = sample_start + i;
-                        if sample_idx < self.config.buffer[ch].len() {
-                            pcm_chunk[i] = self.config.buffer[ch][sample_idx];
+                        if sample_idx < self.global_config.buffer[ch].len() {
+                            pcm_chunk[i] = self.global_config.buffer[ch][sample_idx];
                         }
                     }
                     
                     // Apply subband filter to get subband samples
                     // TODO: Implement actual subband filter method
-                    // self.config.subband.filter(&pcm_chunk, &mut subband_samples[k], ch);;;
+                    // self.global_config.subband.filter(&pcm_chunk, &mut subband_samples[k], ch);;;
                     
                     // Process k+1 if within bounds
                     if k + 1 < 18 {
@@ -488,14 +488,14 @@ impl Mp3Encoder {
                         let mut pcm_chunk = [0i16; 32];
                         for i in 0..32 {
                             let sample_idx = sample_start + i;
-                            if sample_idx < self.config.buffer[ch].len() {
-                                pcm_chunk[i] = self.config.buffer[ch][sample_idx];
+                            if sample_idx < self.global_config.buffer[ch].len() {
+                                pcm_chunk[i] = self.global_config.buffer[ch][sample_idx];
                             }
                         }
                         
                         // Apply subband filter to get subband samples
                         // TODO: Implement actual subband filter method
-                        // self.config.subband.filter(&pcm_chunk, &mut subband_samples[k + 1], ch);;;
+                        // self.global_config.subband.filter(&pcm_chunk, &mut subband_samples[k + 1], ch);;;
                         
                         // Compensate for inversion in analysis filter (every odd index of band AND k)
                         // for (band = 1; band < 32; band += 2)
@@ -507,13 +507,13 @@ impl Mp3Encoder {
                 }
                 
                 // Apply MDCT transform to get frequency domain coefficients
-                let mut mdct_coeffs = [0i32; 576];
+                let mdct_coeffs = [0i32; 576];
                 // TODO: Implement actual MDCT transform method
-                // self.config.mdct.transform(&subband_samples, &mut mdct_coeffs)?;;
+                // self.global_config.mdct.transform(&subband_samples, &mut mdct_coeffs)?;;
                 
                 // Store MDCT coefficients following shine's structure
                 // config->mdct_freq[ch][gr] = mdct_coeffs
-                self.config.mdct_freq[ch][gr] = mdct_coeffs;
+                self.global_config.mdct_freq[ch][gr] = mdct_coeffs;
             }
         }
         
@@ -532,7 +532,7 @@ impl Mp3Encoder {
     fn shine_iteration_loop(&mut self, channels: usize, _mean_bits: i32) -> Result<()> {
         use crate::config::MpegVersion;
         
-        let granules_per_frame = match self.public_config.mpeg_version() {
+        let granules_per_frame = match self.config.mpeg_version() {
             MpegVersion::Mpeg1 => 2,
             MpegVersion::Mpeg2 | MpegVersion::Mpeg25 => 1,
         };
@@ -551,7 +551,7 @@ impl Mp3Encoder {
                 let ix = &mut [0i32; 576]; // quantized coefficients
                 
                 // Get a mutable reference to the mdct_freq array
-                let mdct_freq = &mut self.config.mdct_freq[ch][gr];
+                let mdct_freq = &mut self.global_config.mdct_freq[ch][gr];
                 
                 // Use a copy of the mdct_freq data for xr
                 let xr_copy = *mdct_freq;
@@ -585,7 +585,7 @@ impl Mp3Encoder {
                 
                 // if (config->mpeg.version == MPEG_I)
                 //   calc_scfsi(&l3_xmin, ch, gr, config);
-                if matches!(self.public_config.mpeg_version(), MpegVersion::Mpeg1) {
+                if matches!(self.config.mpeg_version(), MpegVersion::Mpeg1) {
                     // Calculate scale factor selection information following shine's calc_scfsi
                     self.calc_scfsi(&l3_xmin, ch, gr)?;
                 }
@@ -716,11 +716,11 @@ impl Mp3Encoder {
     fn shine_format_bitstream(&mut self, padding: bool, target_frame_bytes: usize) -> Result<()> {
         use crate::config::MpegVersion;
         
-        let granules_per_frame = match self.public_config.mpeg_version() {
+        let granules_per_frame = match self.config.mpeg_version() {
             MpegVersion::Mpeg1 => 2,
             MpegVersion::Mpeg2 | MpegVersion::Mpeg25 => 1,
         };
-        let channels = self.config.wave.channels as usize;
+        let channels = self.global_config.wave.channels as usize;
         
         // Following shine's shine_format_bitstream exactly (ref/shine/src/lib/l3bitstream.c:32-100)
         
@@ -751,14 +751,14 @@ impl Mp3Encoder {
     /// (ref/shine/src/lib/l3bitstream.c:70-100)
     fn encode_side_info(&mut self, padding: bool) -> Result<()> {
         // Write frame header first
-        self.config.bs.write_frame_header(&self.public_config, padding);
+        self.global_config.bs.write_frame_header(&self.config, padding);
         
         // Create side information structure with actual granule data
         let mut side_info = crate::bitstream::SideInfo::default();
         side_info.granules = self.current_granule_info.clone();
         
         // Write side information structure
-        self.config.bs.write_side_info(&side_info, &self.public_config);
+        self.global_config.bs.write_side_info(&side_info, &self.config);
         
         Ok(())
     }
@@ -767,7 +767,7 @@ impl Mp3Encoder {
     /// (ref/shine/src/lib/l3bitstream.c:48-68)
     fn encode_main_data(&mut self, granules_per_frame: usize, channels: usize, target_frame_bytes: usize) -> Result<()> {
         // Calculate how many bytes we need to write to reach target frame size
-        let current_bytes = self.config.bs.bits_written() / 8;
+        let current_bytes = self.global_config.bs.bits_written() / 8;
         let _remaining_bytes = if target_frame_bytes > current_bytes {
             target_frame_bytes - current_bytes
         } else {
@@ -785,7 +785,7 @@ impl Mp3Encoder {
                 
                 // Write some minimal scale factor data to create valid frame structure
                 for _sfb in 0..21 { // 21 scale factor bands for long blocks
-                    self.config.bs.write_bits(0, 4); // 4 bits per scale factor
+                    self.global_config.bs.write_bits(0, 4); // 4 bits per scale factor
                 }
                 
                 // Write Huffman encoded spectral data
@@ -795,7 +795,7 @@ impl Mp3Encoder {
         }
         
         // Fill remaining bytes to reach target frame size
-        let bytes_written_after_scalefactors = self.config.bs.bits_written() / 8;
+        let bytes_written_after_scalefactors = self.global_config.bs.bits_written() / 8;
         let still_remaining = if target_frame_bytes > bytes_written_after_scalefactors {
             target_frame_bytes - bytes_written_after_scalefactors
         } else {
@@ -804,7 +804,7 @@ impl Mp3Encoder {
         
         // Write padding data to reach exact target frame size
         for _i in 0..still_remaining {
-            self.config.bs.write_bits(0, 8);
+            self.global_config.bs.write_bits(0, 8);
         }
         
         Ok(())
