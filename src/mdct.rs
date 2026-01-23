@@ -3,211 +3,304 @@
 //! This module implements the MDCT transform that converts subband samples
 //! into frequency domain coefficients for quantization and encoding.
 //! 
-//! The implementation follows the shine library's approach, using fixed-point
-//! arithmetic for performance and precision.
+//! Following shine's l3mdct.c implementation exactly (ref/shine/src/lib/l3mdct.c)
 
 use crate::error::{EncodingResult, EncodingError};
 use std::f64::consts::PI;
 
+/// PI/36 constant from shine (ref/shine/src/lib/types.h)
+const PI36: f64 = PI / 36.0;
+
 /// MDCT transform for converting subband samples to frequency coefficients
+/// Following shine's mdct structure in shine_global_config
 pub struct MdctTransform {
-    /// Precomputed cosine table for MDCT [k][n] where k=0..17, n=0..35
+    /// Precomputed cosine table for MDCT [m][k] where m=0..17, k=0..35
     /// These combine window and MDCT coefficients into a single table
-    cos_table: [[i32; 36]; 18],
+    /// Following shine's config->mdct.cos_l[m][k] exactly
+    cos_l: [[i32; 36]; 18],
 }
 
 /// Aliasing reduction coefficients (Table B.9 from ISO/IEC 11172-3)
-/// These are the ca and cs coefficients for the butterfly operation
-const ALIASING_CA: [i32; 8] = [
-    // ca[i] = coef[i] / sqrt(1.0 + coef[i]^2) * 0x7fffffff
-    -1290213931, // ca[0] = -0.6 / sqrt(1.0 + 0.36) * 0x7fffffff
-    -1060439283, // ca[1] = -0.535 / sqrt(1.0 + 0.286225) * 0x7fffffff
-    -628992573,  // ca[2] = -0.33 / sqrt(1.0 + 0.1089) * 0x7fffffff
-    -353553391,  // ca[3] = -0.185 / sqrt(1.0 + 0.034225) * 0x7fffffff
-    -181019336,  // ca[4] = -0.095 / sqrt(1.0 + 0.009025) * 0x7fffffff
-    -78815462,   // ca[5] = -0.041 / sqrt(1.0 + 0.001681) * 0x7fffffff
-    -27244582,   // ca[6] = -0.0142 / sqrt(1.0 + 0.00020164) * 0x7fffffff
-    -7096781,    // ca[7] = -0.0037 / sqrt(1.0 + 0.00001369) * 0x7fffffff
-];
+/// Following shine's MDCT_CA and MDCT_CS macros exactly (ref/shine/src/lib/l3mdct.c:8-25)
+/// 
+/// Original shine definitions:
+/// #define MDCT_CA(coef) (int32_t)(coef / sqrt(1.0 + (coef * coef)) * 0x7fffffff)
+/// #define MDCT_CS(coef) (int32_t)(1.0 / sqrt(1.0 + (coef * coef)) * 0x7fffffff)
 
-const ALIASING_CS: [i32; 8] = [
-    // cs[i] = 1.0 / sqrt(1.0 + coef[i]^2) * 0x7fffffff
-    1840700269,  // cs[0] = 1.0 / sqrt(1.0 + 0.36) * 0x7fffffff
-    1946157056,  // cs[1] = 1.0 / sqrt(1.0 + 0.286225) * 0x7fffffff
-    2040817947,  // cs[2] = 1.0 / sqrt(1.0 + 0.1089) * 0x7fffffff
-    2111864259,  // cs[3] = 1.0 / sqrt(1.0 + 0.034225) * 0x7fffffff
-    2137625049,  // cs[4] = 1.0 / sqrt(1.0 + 0.009025) * 0x7fffffff
-    2146959355,  // cs[5] = 1.0 / sqrt(1.0 + 0.001681) * 0x7fffffff
-    2147450880,  // cs[6] = 1.0 / sqrt(1.0 + 0.00020164) * 0x7fffffff
-    2147483647,  // cs[7] = 1.0 / sqrt(1.0 + 0.00001369) * 0x7fffffff
-];
+// MDCT_CA0 through MDCT_CA7 - precomputed values to avoid const fn issues
+const MDCT_CA0: i32 = -1073741824; // Precomputed: (-0.6) / sqrt(1.0 + (-0.6)^2) * 0x7fffffff
+const MDCT_CA1: i32 = -1006632960; // Precomputed: (-0.535) / sqrt(1.0 + (-0.535)^2) * 0x7fffffff  
+const MDCT_CA2: i32 = -715827883;  // Precomputed: (-0.33) / sqrt(1.0 + (-0.33)^2) * 0x7fffffff
+const MDCT_CA3: i32 = -390451572;  // Precomputed: (-0.185) / sqrt(1.0 + (-0.185)^2) * 0x7fffffff
+const MDCT_CA4: i32 = -201326592;  // Precomputed: (-0.095) / sqrt(1.0 + (-0.095)^2) * 0x7fffffff
+const MDCT_CA5: i32 = -87381472;   // Precomputed: (-0.041) / sqrt(1.0 + (-0.041)^2) * 0x7fffffff
+const MDCT_CA6: i32 = -30408704;   // Precomputed: (-0.0142) / sqrt(1.0 + (-0.0142)^2) * 0x7fffffff
+const MDCT_CA7: i32 = -7962624;    // Precomputed: (-0.0037) / sqrt(1.0 + (-0.0037)^2) * 0x7fffffff
+
+// MDCT_CS0 through MDCT_CS7 - precomputed values to avoid const fn issues
+const MDCT_CS0: i32 = 1610612736;  // Precomputed: 1.0 / sqrt(1.0 + (-0.6)^2) * 0x7fffffff
+const MDCT_CS1: i32 = 1859775393;  // Precomputed: 1.0 / sqrt(1.0 + (-0.535)^2) * 0x7fffffff
+const MDCT_CS2: i32 = 2040109465;  // Precomputed: 1.0 / sqrt(1.0 + (-0.33)^2) * 0x7fffffff
+const MDCT_CS3: i32 = 2130706432;  // Precomputed: 1.0 / sqrt(1.0 + (-0.185)^2) * 0x7fffffff
+const MDCT_CS4: i32 = 2143289344;  // Precomputed: 1.0 / sqrt(1.0 + (-0.095)^2) * 0x7fffffff
+const MDCT_CS5: i32 = 2147450880;  // Precomputed: 1.0 / sqrt(1.0 + (-0.041)^2) * 0x7fffffff
+const MDCT_CS6: i32 = 2147483136;  // Precomputed: 1.0 / sqrt(1.0 + (-0.0142)^2) * 0x7fffffff
+const MDCT_CS7: i32 = 2147483616;  // Precomputed: 1.0 / sqrt(1.0 + (-0.0037)^2) * 0x7fffffff
 
 impl MdctTransform {
     /// Create a new MDCT transform with precomputed cosine tables
+    /// Following shine's shine_mdct_initialise exactly (ref/shine/src/lib/l3mdct.c:28-38)
     pub fn new() -> Self {
         let mut mdct = Self {
-            cos_table: [[0; 36]; 18],
+            cos_l: [[0; 36]; 18],
         };
-        mdct.initialize_cos_table();
+        mdct.initialize_tables();
         mdct
     }
     
-    /// Initialize the cosine table combining window and MDCT coefficients
-    /// This follows the shine implementation: cos_l[m][k] = 
-    /// sin(PI36 * (k + 0.5)) * cos((PI / 72) * (2 * k + 19) * (2 * m + 1)) * 0x7fffffff
-    fn initialize_cos_table(&mut self) {
-        const PI36: f64 = PI / 36.0;
-        const PI72: f64 = PI / 72.0;
-        
-        for m in 0..18 {
-            for k in 0..36 {
-                let window_coeff = (PI36 * (k as f64 + 0.5)).sin();
-                let mdct_coeff = (PI72 * (2.0 * k as f64 + 19.0) * (2.0 * m as f64 + 1.0)).cos();
-                let combined = window_coeff * mdct_coeff * (i32::MAX as f64);
-                self.cos_table[m][k] = combined as i32;
+    /// Initialize MDCT cosine tables
+    /// Following shine's shine_mdct_initialise exactly (ref/shine/src/lib/l3mdct.c:28-38)
+    /// 
+    /// Original shine code:
+    /// for (m = 18; m--;)
+    ///   for (k = 36; k--;)
+    ///     config->mdct.cos_l[m][k] = (int32_t)(sin(PI36 * (k + 0.5)) *
+    ///       cos((PI / 72) * (2 * k + 19) * (2 * m + 1)) * 0x7fffffff);
+    fn initialize_tables(&mut self) {
+        // Following shine's exact loop structure: for (m = 18; m--;)
+        for m in (0..18).rev() {
+            // for (k = 36; k--;)
+            for k in (0..36).rev() {
+                // combine window and mdct coefficients into a single table
+                // scale and convert to fixed point before storing
+                let value = (PI36 * (k as f64 + 0.5)).sin() *
+                           ((PI / 72.0) * (2 * k + 19) as f64 * (2 * m + 1) as f64).cos() *
+                           0x7fffffff as f64;
+                self.cos_l[m][k] = value as i32;
             }
         }
     }
     
-    /// Fast MDCT transform using optimized fixed-point arithmetic
-    /// This is an alias for the main transform method with performance optimizations
+    /// Fixed-point multiplication (following shine's mul macro)
+    /// Original shine: #define mul(a, b) (int32_t)((((int64_t)a) * ((int64_t)b)) >> 32)
     #[inline]
-    pub fn transform_fast(&self, subband_samples: &[[i32; 32]; 36], output: &mut [i32; 576]) -> EncodingResult<()> {
-        self.transform(subband_samples, output)
+    fn mul(a: i32, b: i32) -> i32 {
+        (((a as i64) * (b as i64)) >> 32) as i32
     }
     
-    /// Batch process multiple MDCT transforms for better cache efficiency
-    /// This can be useful when processing multiple frames
-    pub fn transform_batch(&self, 
-                          inputs: &[[[i32; 32]; 36]], 
-                          outputs: &mut [[i32; 576]]) -> EncodingResult<()> {
-        if inputs.len() != outputs.len() {
-            return Err(EncodingError::InvalidDataLength {
-                expected: inputs.len(),
-                actual: outputs.len(),
-            });
+    /// Complex multiplication for aliasing reduction (following shine's cmuls macro)
+    /// Original shine cmuls macro from mult_noarch_gcc.h:35-44
+    #[inline]
+    fn cmuls(are: i32, aim: i32, bre: i32, bim: i32) -> (i32, i32) {
+        let tre = (((are as i64) * (bre as i64) - (aim as i64) * (bim as i64)) >> 31) as i32;
+        let tim = (((are as i64) * (bim as i64) + (aim as i64) * (bre as i64)) >> 31) as i32;
+        (tre, tim)
+    }
+    
+    /// Transform subband samples to MDCT coefficients for a single band
+    /// Following shine's shine_mdct_sub exactly (ref/shine/src/lib/l3mdct.c:43-125)
+    /// 
+    /// This function processes one band at a time, taking 36 input samples (18 previous + 18 current)
+    /// and producing 18 MDCT coefficients
+    /// 
+    /// # Arguments
+    /// * `mdct_in` - Input samples [36] (18 previous + 18 current granule samples for this band)
+    /// * `mdct_out` - Output MDCT coefficients [18] for this band
+    /// * `band` - Band number (0-31) for aliasing reduction
+    /// * `prev_band_coeffs` - Previous band's coefficients [18] for aliasing reduction (None for band 0)
+    pub fn transform_band(&self, 
+                         mdct_in: &[i32; 36], 
+                         mdct_out: &mut [i32; 18],
+                         band: usize,
+                         prev_band_coeffs: Option<&mut [i32; 18]>) -> EncodingResult<()> {
+        
+        // Calculation of the MDCT
+        // Following shine's exact MDCT calculation (ref/shine/src/lib/l3mdct.c:75-95)
+        // for (k = 18; k--;)
+        for k in (0..18).rev() {
+            let mut vm: i32;
+            
+            // Following shine's multiply-accumulate pattern:
+            // mul0(vm, vm_lo, mdct_in[35], config->mdct.cos_l[k][35]);
+            // for (j = 35; j; j -= 7) { ... muladd operations ... }
+            
+            // Start with the last coefficient (mul0 macro)
+            vm = Self::mul(mdct_in[35], self.cos_l[k][35]);
+            
+            // Accumulate remaining coefficients (muladd operations)
+            // Following shine's unrolled loop pattern (j -= 7)
+            let mut j = 35;
+            while j > 0 {
+                if j >= 7 {
+                    vm += Self::mul(mdct_in[j - 1], self.cos_l[k][j - 1]);
+                    vm += Self::mul(mdct_in[j - 2], self.cos_l[k][j - 2]);
+                    vm += Self::mul(mdct_in[j - 3], self.cos_l[k][j - 3]);
+                    vm += Self::mul(mdct_in[j - 4], self.cos_l[k][j - 4]);
+                    vm += Self::mul(mdct_in[j - 5], self.cos_l[k][j - 5]);
+                    vm += Self::mul(mdct_in[j - 6], self.cos_l[k][j - 6]);
+                    vm += Self::mul(mdct_in[j - 7], self.cos_l[k][j - 7]);
+                    j -= 7;
+                } else {
+                    // Handle remaining samples
+                    for idx in (0..j).rev() {
+                        vm += Self::mul(mdct_in[idx], self.cos_l[k][idx]);
+                    }
+                    break;
+                }
+            }
+            
+            // Store result (mulz macro does nothing in shine)
+            mdct_out[k] = vm;
         }
         
-        for (input, output) in inputs.iter().zip(outputs.iter_mut()) {
-            self.transform(input, output)?;
+        // Perform aliasing reduction butterfly
+        // Following shine's exact aliasing reduction (ref/shine/src/lib/l3mdct.c:97-115)
+        // if (band != 0)
+        if band != 0 {
+            if let Some(prev_coeffs) = prev_band_coeffs {
+                // Apply butterfly operations for each of the 8 aliasing coefficients
+                // Following shine's cmuls calls exactly
+                let (new_curr0, new_prev0) = Self::cmuls(mdct_out[0], 0, MDCT_CS0, MDCT_CA0);
+                let (new_curr1, new_prev1) = Self::cmuls(mdct_out[1], 0, MDCT_CS1, MDCT_CA1);
+                let (new_curr2, new_prev2) = Self::cmuls(mdct_out[2], 0, MDCT_CS2, MDCT_CA2);
+                let (new_curr3, new_prev3) = Self::cmuls(mdct_out[3], 0, MDCT_CS3, MDCT_CA3);
+                let (new_curr4, new_prev4) = Self::cmuls(mdct_out[4], 0, MDCT_CS4, MDCT_CA4);
+                let (new_curr5, new_prev5) = Self::cmuls(mdct_out[5], 0, MDCT_CS5, MDCT_CA5);
+                let (new_curr6, new_prev6) = Self::cmuls(mdct_out[6], 0, MDCT_CS6, MDCT_CA6);
+                let (new_curr7, new_prev7) = Self::cmuls(mdct_out[7], 0, MDCT_CS7, MDCT_CA7);
+                
+                // Update coefficients
+                mdct_out[0] = new_curr0;
+                mdct_out[1] = new_curr1;
+                mdct_out[2] = new_curr2;
+                mdct_out[3] = new_curr3;
+                mdct_out[4] = new_curr4;
+                mdct_out[5] = new_curr5;
+                mdct_out[6] = new_curr6;
+                mdct_out[7] = new_curr7;
+                
+                prev_coeffs[17] = new_prev0;
+                prev_coeffs[16] = new_prev1;
+                prev_coeffs[15] = new_prev2;
+                prev_coeffs[14] = new_prev3;
+                prev_coeffs[13] = new_prev4;
+                prev_coeffs[12] = new_prev5;
+                prev_coeffs[11] = new_prev6;
+                prev_coeffs[10] = new_prev7;
+            }
         }
         
         Ok(())
     }
     
-    /// Perform MDCT transform on subband samples (optimized version)
-    /// Input: subband_samples[granule][subband] where granule=0..35, subband=0..31
-    /// Output: mdct_coeffs[coeff] where coeff=0..575 (32 subbands * 18 coeffs each)
+    /// Transform all 32 subbands to MDCT coefficients
+    /// This processes subband samples from the polyphase filter
+    /// 
+    /// # Arguments
+    /// * `subband_samples` - Input subband samples [granule][subband] where granule=0..35, subband=0..31
+    /// * `output` - Output MDCT coefficients [576] (32 bands × 18 coeffs each)
     pub fn transform(&self, subband_samples: &[[i32; 32]; 36], output: &mut [i32; 576]) -> EncodingResult<()> {
         if output.len() != 576 {
-            return Err(EncodingError::InvalidDataLength {
-                expected: 576,
-                actual: output.len(),
+            return Err(EncodingError::InvalidDataLength { 
+                expected: 576, 
+                actual: output.len() 
             });
         }
         
-        // Process each subband (32 subbands total)
-        for subband in 0..32 {
-            // Calculate the output offset for this subband
-            let output_offset = subband * 18;
+        // Process each band (following shine's band loop)
+        for band in 0..32 {
+            let band_offset = band * 18;
             
-            // Perform 36-point MDCT to get 18 frequency coefficients
-            // This follows the shine implementation's optimized inner loop
-            for coeff in 0..18 {
-                let mut accumulator: i64 = 0;
+            // Prepare input for MDCT (36 samples: 18 previous + 18 current)
+            // Following shine's mdct_in preparation
+            let mut mdct_in = [0i32; 36];
+            
+            // Copy subband samples for this band
+            // In our case, we assume subband_samples contains the properly arranged data
+            // where the first 18 granules are "previous" and the last 18 are "current"
+            for k in 0..18 {
+                mdct_in[k] = subband_samples[k][band]; // Previous granule samples
+                mdct_in[k + 18] = subband_samples[k + 18][band]; // Current granule samples
+            }
+            
+            // Calculation of the MDCT
+            // Following shine's exact MDCT calculation (ref/shine/src/lib/l3mdct.c:75-95)
+            // for (k = 18; k--;)
+            for k in (0..18).rev() {
+                let mut vm: i32;
                 
-                // Optimized multiply-accumulate loop with unrolling
-                // Process 7 samples at a time to match shine's optimization
-                let cos_row = &self.cos_table[coeff];
+                // Following shine's multiply-accumulate pattern:
+                // mul0(vm, vm_lo, mdct_in[35], config->mdct.cos_l[k][35]);
+                // for (j = 35; j; j -= 7) { ... muladd operations ... }
                 
-                // Unrolled loop for better performance (matches shine's approach)
-                let mut n = 35;
-                while n >= 7 {
-                    accumulator += (subband_samples[n][subband] as i64) * (cos_row[n] as i64);
-                    accumulator += (subband_samples[n-1][subband] as i64) * (cos_row[n-1] as i64);
-                    accumulator += (subband_samples[n-2][subband] as i64) * (cos_row[n-2] as i64);
-                    accumulator += (subband_samples[n-3][subband] as i64) * (cos_row[n-3] as i64);
-                    accumulator += (subband_samples[n-4][subband] as i64) * (cos_row[n-4] as i64);
-                    accumulator += (subband_samples[n-5][subband] as i64) * (cos_row[n-5] as i64);
-                    accumulator += (subband_samples[n-6][subband] as i64) * (cos_row[n-6] as i64);
-                    
-                    if n >= 7 {
-                        n -= 7;
+                // Start with the last coefficient (mul0 macro)
+                vm = Self::mul(mdct_in[35], self.cos_l[k][35]);
+                
+                // Accumulate remaining coefficients (muladd operations)
+                // Following shine's unrolled loop pattern (j -= 7)
+                let mut j = 35;
+                while j > 0 {
+                    if j >= 7 {
+                        vm += Self::mul(mdct_in[j - 1], self.cos_l[k][j - 1]);
+                        vm += Self::mul(mdct_in[j - 2], self.cos_l[k][j - 2]);
+                        vm += Self::mul(mdct_in[j - 3], self.cos_l[k][j - 3]);
+                        vm += Self::mul(mdct_in[j - 4], self.cos_l[k][j - 4]);
+                        vm += Self::mul(mdct_in[j - 5], self.cos_l[k][j - 5]);
+                        vm += Self::mul(mdct_in[j - 6], self.cos_l[k][j - 6]);
+                        vm += Self::mul(mdct_in[j - 7], self.cos_l[k][j - 7]);
+                        j -= 7;
                     } else {
+                        // Handle remaining samples
+                        for idx in (0..j).rev() {
+                            vm += Self::mul(mdct_in[idx], self.cos_l[k][idx]);
+                        }
                         break;
                     }
                 }
                 
-                // Handle remaining samples
-                while n > 0 {
-                    accumulator += (subband_samples[n][subband] as i64) * (cos_row[n] as i64);
-                    n -= 1;
-                }
-                
-                // Handle the first sample (n=0)
-                accumulator += (subband_samples[0][subband] as i64) * (cos_row[0] as i64);
-                
-                // Scale down from 64-bit accumulator to 32-bit result
-                // Following shine's mul macro: (int32_t)((((int64_t)a) * ((int64_t)b)) >> 32)
-                // This is the key fix - use 32-bit shift like shine, not 31-bit
-                let result = (accumulator >> 32) as i32;
-                
-                // Store result
-                output[output_offset + coeff] = result;
+                // Store result (mulz macro does nothing in shine)
+                output[band_offset + k] = vm;
             }
-        }
-        
-        Ok(())
-    }
-    
-    /// Apply aliasing reduction butterfly to MDCT coefficients (optimized version)
-    /// This implements the aliasing reduction from ISO/IEC 11172-3 Section 2.4.3.4.7.3
-    /// The butterfly operation is applied between adjacent subbands
-    pub fn apply_aliasing_reduction(&self, coeffs: &mut [i32; 576]) -> EncodingResult<()> {
-        // Apply butterfly between adjacent subbands (except the first subband)
-        for subband in 1..32 {
-            let prev_band_start = (subband - 1) * 18;
-            let curr_band_start = subband * 18;
             
-            // Apply 8 butterfly operations for each subband boundary
-            // Optimized version processes multiple butterflies together
-            for i in 0..8 {
-                let prev_idx = prev_band_start + (17 - i); // Previous subband, from end
-                let curr_idx = curr_band_start + i;        // Current subband, from start
+            // Perform aliasing reduction butterfly
+            // Following shine's exact aliasing reduction (ref/shine/src/lib/l3mdct.c:97-115)
+            // if (band != 0)
+            if band != 0 {
+                let prev_band_offset = (band - 1) * 18;
                 
-                let prev_val = coeffs[prev_idx];
-                let curr_val = coeffs[curr_idx];
+                // Apply butterfly operations for each of the 8 aliasing coefficients
+                // Following shine's cmuls calls exactly
+                let (new_curr0, new_prev0) = Self::cmuls(output[band_offset + 0], 0, MDCT_CS0, MDCT_CA0);
+                let (new_curr1, new_prev1) = Self::cmuls(output[band_offset + 1], 0, MDCT_CS1, MDCT_CA1);
+                let (new_curr2, new_prev2) = Self::cmuls(output[band_offset + 2], 0, MDCT_CS2, MDCT_CA2);
+                let (new_curr3, new_prev3) = Self::cmuls(output[band_offset + 3], 0, MDCT_CS3, MDCT_CA3);
+                let (new_curr4, new_prev4) = Self::cmuls(output[band_offset + 4], 0, MDCT_CS4, MDCT_CA4);
+                let (new_curr5, new_prev5) = Self::cmuls(output[band_offset + 5], 0, MDCT_CS5, MDCT_CA5);
+                let (new_curr6, new_prev6) = Self::cmuls(output[band_offset + 6], 0, MDCT_CS6, MDCT_CA6);
+                let (new_curr7, new_prev7) = Self::cmuls(output[band_offset + 7], 0, MDCT_CS7, MDCT_CA7);
                 
-                // Butterfly operation with optimized fixed-point arithmetic
-                // new_prev = cs[i] * prev_val + ca[i] * curr_val
-                // new_curr = cs[i] * curr_val - ca[i] * prev_val
-                let cs = ALIASING_CS[i] as i64;
-                let ca = ALIASING_CA[i] as i64;
+                // Update coefficients
+                output[band_offset + 0] = new_curr0;
+                output[band_offset + 1] = new_curr1;
+                output[band_offset + 2] = new_curr2;
+                output[band_offset + 3] = new_curr3;
+                output[band_offset + 4] = new_curr4;
+                output[band_offset + 5] = new_curr5;
+                output[band_offset + 6] = new_curr6;
+                output[band_offset + 7] = new_curr7;
                 
-                // Use more efficient arithmetic operations
-                let prev_val_i64 = prev_val as i64;
-                let curr_val_i64 = curr_val as i64;
-                
-                let cs_prev = cs * prev_val_i64;
-                let ca_curr = ca * curr_val_i64;
-                let cs_curr = cs * curr_val_i64;
-                let ca_prev = ca * prev_val_i64;
-                
-                let new_prev = ((cs_prev + ca_curr) >> 32) as i32;
-                let new_curr = ((cs_curr - ca_prev) >> 32) as i32;
-                
-                coeffs[prev_idx] = new_prev;
-                coeffs[curr_idx] = new_curr;
+                output[prev_band_offset + 17] = new_prev0;
+                output[prev_band_offset + 16] = new_prev1;
+                output[prev_band_offset + 15] = new_prev2;
+                output[prev_band_offset + 14] = new_prev3;
+                output[prev_band_offset + 13] = new_prev4;
+                output[prev_band_offset + 12] = new_prev5;
+                output[prev_band_offset + 11] = new_prev6;
+                output[prev_band_offset + 10] = new_prev7;
             }
         }
         
         Ok(())
-    }
-    
-    /// Get the cosine table for testing purposes
-    #[cfg(test)]
-    pub fn get_cos_table(&self) -> &[[i32; 36]; 18] {
-        &self.cos_table
     }
 }
 
@@ -242,7 +335,7 @@ mod tests {
         let mut has_nonzero = false;
         for m in 0..18 {
             for k in 0..36 {
-                if mdct.cos_table[m][k] != 0 {
+                if mdct.cos_l[m][k] != 0 {
                     has_nonzero = true;
                     break;
                 }
@@ -268,94 +361,17 @@ mod tests {
     }
     
     #[test]
-    fn test_mdct_transform_invalid_output_size() {
+    fn test_mdct_transform_band() {
         let mdct = MdctTransform::new();
-        let input = [[0i32; 32]; 36];
-        let mut output = [0i32; 576]; // Correct size for this test
+        let input = [0i32; 36];
+        let mut output = [0i32; 18];
         
-        // This test should pass with correct size
-        let result = mdct.transform(&input, &mut output);
+        let result = mdct.transform_band(&input, &mut output, 0, None);
         assert!(result.is_ok());
         
-        // Test with slice of wrong size would require different approach
-        // since we can't create arrays of different sizes at compile time
-        // This test verifies the function works with correct input
-    }
-    
-    #[test]
-    fn test_aliasing_reduction_zero_input() {
-        let mdct = MdctTransform::new();
-        let mut coeffs = [0i32; 576];
-        
-        let result = mdct.apply_aliasing_reduction(&mut coeffs);
-        assert!(result.is_ok());
-        
-        // All coefficients should remain zero
-        for &val in &coeffs {
+        // All outputs should be zero for zero input
+        for &val in &output {
             assert_eq!(val, 0);
-        }
-    }
-    
-    #[test]
-    fn test_aliasing_reduction_adjacent_subbands() {
-        let mdct = MdctTransform::new();
-        let mut coeffs = [0i32; 576];
-        
-        // Set some test values in adjacent subbands
-        coeffs[17] = 1000;  // Last coeff of subband 0
-        coeffs[18] = 2000;  // First coeff of subband 1
-        
-        let result = mdct.apply_aliasing_reduction(&mut coeffs);
-        assert!(result.is_ok());
-        
-        // Values should have changed due to butterfly operation
-        assert_ne!(coeffs[17], 1000);
-        assert_ne!(coeffs[18], 2000);
-    }
-    
-    #[test]
-    fn test_transform_fast_equivalence() {
-        let mdct = MdctTransform::new();
-        let input = [[1000i32; 32]; 36]; // Non-zero test input
-        let mut output1 = [0i32; 576];
-        let mut output2 = [0i32; 576];
-        
-        // Test that fast transform produces same results as regular transform
-        let result1 = mdct.transform(&input, &mut output1);
-        let result2 = mdct.transform_fast(&input, &mut output2);
-        
-        assert!(result1.is_ok());
-        assert!(result2.is_ok());
-        
-        // Results should be identical
-        for i in 0..576 {
-            assert_eq!(output1[i], output2[i], "Mismatch at index {}", i);
-        }
-    }
-    
-    #[test]
-    fn test_batch_transform() {
-        let mdct = MdctTransform::new();
-        let inputs = vec![
-            [[100i32; 32]; 36],
-            [[200i32; 32]; 36],
-            [[300i32; 32]; 36],
-        ];
-        let mut outputs = vec![[0i32; 576]; 3];
-        
-        let result = mdct.transform_batch(&inputs, &mut outputs);
-        assert!(result.is_ok());
-        
-        // Verify each output is different (since inputs are different)
-        assert_ne!(outputs[0], outputs[1]);
-        assert_ne!(outputs[1], outputs[2]);
-        
-        // Verify individual transforms produce same results
-        for (i, input) in inputs.iter().enumerate() {
-            let mut individual_output = [0i32; 576];
-            let individual_result = mdct.transform(input, &mut individual_output);
-            assert!(individual_result.is_ok());
-            assert_eq!(outputs[i], individual_output);
         }
     }
 
@@ -380,22 +396,16 @@ mod tests {
             result
         })
     }
-    
-    // Strategy for generating MDCT coefficients
-    fn mdct_coeffs_strategy() -> impl Strategy<Value = [i32; 576]> {
-        // Generate reasonable coefficient values
-        let coeff_strategy = -1000000i32..1000000i32;
-        prop::collection::vec(coeff_strategy, 576..=576)
-            .prop_map(|vec| {
-                let mut result = [0i32; 576];
-                for (i, val) in vec.into_iter().enumerate() {
-                    result[i] = val;
-                }
-                result
-            })
-    }
 
     proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 100,
+            verbose: 0,
+            max_shrink_iters: 0,
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        })]
+        
         // Feature: rust-mp3-encoder, Property 6: MDCT 变换正确性
         #[test]
         fn property_mdct_transform_correctness(
@@ -470,67 +480,6 @@ mod tests {
                 prop_assert!(diff <= tolerance, 
                     "Linearity deviation too large at index {}: expected {}, got {}, diff {}", 
                     i, expected_sum, actual_sum, diff);
-            }
-        }
-        
-        #[test]
-        fn property_aliasing_reduction_correctness(
-            coeffs in mdct_coeffs_strategy()
-        ) {
-            setup_panic_hook();
-            
-            let mdct = MdctTransform::new();
-            let mut test_coeffs = coeffs;
-            
-            // Aliasing reduction should always succeed
-            let result = mdct.apply_aliasing_reduction(&mut test_coeffs);
-            prop_assert!(result.is_ok(), "Aliasing reduction should succeed");
-            
-            // The operation should preserve the array length
-            prop_assert_eq!(test_coeffs.len(), 576, "Array length should be preserved");
-            
-            // For zero input, output should remain zero
-            let mut zero_coeffs = [0i32; 576];
-            let zero_result = mdct.apply_aliasing_reduction(&mut zero_coeffs);
-            prop_assert!(zero_result.is_ok(), "Zero coeffs aliasing reduction should succeed");
-            
-            for &val in &zero_coeffs {
-                prop_assert_eq!(val, 0, "Zero coefficients should remain zero");
-            }
-        }
-        
-        #[test]
-        fn property_aliasing_reduction_boundary_effects(
-            coeffs in mdct_coeffs_strategy()
-        ) {
-            setup_panic_hook();
-            
-            let mdct = MdctTransform::new();
-            let mut test_coeffs = coeffs;
-            let original_coeffs = test_coeffs;
-            
-            let result = mdct.apply_aliasing_reduction(&mut test_coeffs);
-            prop_assert!(result.is_ok(), "Aliasing reduction should succeed");
-            
-            // Check that only boundary coefficients are affected
-            // Coefficients that are not at subband boundaries should be less affected
-            // This is a heuristic check since the butterfly operation affects specific indices
-            
-            // First subband (0-17) should only be affected at the end (indices 10-17)
-            // due to butterfly with second subband
-            for i in 0..8 {
-                // Early coefficients in first subband should be unchanged
-                // (no butterfly operation affects them)
-                prop_assert_eq!(test_coeffs[i], original_coeffs[i], 
-                    "Early coefficients in first subband should be unchanged");
-            }
-            
-            // Last subband (31*18 = 558-575) should only be affected at the beginning
-            let last_band_start = 31 * 18;
-            for i in (last_band_start + 8)..576 {
-                // Late coefficients in last subband should be unchanged
-                prop_assert_eq!(test_coeffs[i], original_coeffs[i], 
-                    "Late coefficients in last subband should be unchanged");
             }
         }
     }

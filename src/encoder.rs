@@ -83,7 +83,7 @@ impl Mp3Encoder {
         println!("  Target frame size: {} bytes", whole_slots_per_frame);
         
         Ok(Self {
-            subband: SubbandFilter::new(channels),
+            subband: SubbandFilter::new(),
             mdct: MdctTransform::new(),
             quantizer: QuantizationLoop::new(),
             huffman: HuffmanEncoder::new(),
@@ -532,12 +532,9 @@ impl Mp3Encoder {
             self.subband.filter(&chunk_32, &mut subband_samples[i], channel_idx)?;
         }
         
-        // Step 3: MDCT transform
+        // Step 3: MDCT transform (includes aliasing reduction)
         let mut mdct_coeffs = [0i32; 576];
         self.mdct.transform(&subband_samples, &mut mdct_coeffs)?;
-        
-        // Step 4: Apply aliasing reduction
-        self.mdct.apply_aliasing_reduction(&mut mdct_coeffs)?;
         
         // Step 5: Calculate max_bits per granule following shine's logic exactly
         // In shine: max_bits = shine_max_reservoir_bits(&config->pe[ch][gr], config);
@@ -556,7 +553,7 @@ impl Mp3Encoder {
         
         // Step 6: Quantization and encoding with correct bit budget
         // Following shine's logic: max_bits is int type
-        let bits_used = self.quantizer.quantize_and_encode(
+        let _bits_used = self.quantizer.quantize_and_encode(
             &mdct_coeffs, 
             final_max_bits, // Already i32 type, no conversion needed
             granule_info, 
@@ -565,8 +562,8 @@ impl Mp3Encoder {
         )?;
         
         // Step 7: Adjust bit reservoir after quantization
-        // Following shine's logic: bits_used is int type
-        self.reservoir.adjust_reservoir(bits_used, channels as u8);
+        // Following shine's logic: use part2_3_length from granule info
+        self.reservoir.adjust_reservoir(granule_info.part2_3_length, channels as u8);
         
         // Step 8: Huffman encoding (write directly to bitstream)
         // Note: quantized_coeffs now contains signed values (quantized magnitude with original sign)

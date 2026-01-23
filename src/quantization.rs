@@ -129,66 +129,62 @@ impl QuantizationLoop {
     /// Original shine signature: int quantize(int ix[GRANULE_SIZE], int stepsize, shine_global_config *config)
     /// - ix: int array (quantized output) - corresponds to our output parameter
     /// - stepsize: int (quantization step size) - matches our stepsize parameter
+    /// - config: shine_global_config* (contains xr array and tables) - corresponds to our mdct_coeffs and internal tables
     /// - return: int (maximum quantized value) - matches our return type
-    pub fn quantize(&self, mdct_coeffs: &[i32; GRANULE_SIZE], stepsize: i32, output: &mut [i32; GRANULE_SIZE]) -> i32 {
+    /// 
+    /// CRITICAL: This function modifies the ix array in-place, just like shine
+    pub fn quantize(&self, ix: &mut [i32; GRANULE_SIZE], stepsize: i32, xr: &[i32; GRANULE_SIZE]) -> i32 {
         let mut max_value = 0;
         
         // Get the step size from the table - following shine's logic exactly
         // Original shine: scalei = config->l3loop.steptabi[stepsize + 127]; /* 2**(-stepsize/4) */
-        // stepsize: int, steptabi: int32_t array, scalei: int32_t
-        let step_index = (stepsize + 127).clamp(0, 255) as usize; // Convert to usize only for array indexing
-        let scalei = self.step_table_i32[step_index]; // scalei: int32_t (matches shine)
+        let step_index = (stepsize + 127).clamp(0, 255) as usize;
+        let scalei = self.step_table_i32[step_index];
         
         // Find maximum absolute value for quick check - following shine's xrmax logic
-        // Original shine: xrmax is int32_t, mdct_coeffs corresponds to config->l3loop.xr (int32_t*)
-        let xrmax = mdct_coeffs.iter().map(|&x| x.abs()).max().unwrap_or(0); // xrmax: i32 (matches shine's int32_t)
+        // Original shine: xrmax is calculated beforehand and stored in config->l3loop.xrmax
+        let xrmax = xr.iter().map(|&x| x.abs()).max().unwrap_or(0);
         
         // Quick check to see if ixmax will be less than 8192 - following shine's logic exactly
         // Original shine: if ((mulr(config->l3loop.xrmax, scalei)) > 165140) /* 8192**(4/3) */
-        // mulr returns int32_t, comparison with int constant 165140
-        if Self::multiply_and_round(xrmax, scalei) > 165140 { // 8192^(4/3) - all int32_t types
+        if Self::multiply_and_round(xrmax, scalei) > 165140 {
             return 16384; // Following shine: no point in continuing, stepsize not big enough
         }
         
         // Main quantization loop - following shine's logic exactly
         // Original shine: for (i = 0, max = 0; i < GRANULE_SIZE; i++)
-        // i: int, max: int, GRANULE_SIZE: const int (576)
         for i in 0..GRANULE_SIZE {
-            let abs_coeff = mdct_coeffs[i].abs(); // abs_coeff: i32 (matches shine's labs() result)
+            let abs_coeff = xr[i].abs();
             
             if abs_coeff == 0 {
-                output[i] = 0;
+                ix[i] = 0;
                 continue;
             }
             
             // Following shine's calculation exactly:
             // Original shine: ln = mulr(labs(config->l3loop.xr[i]), scalei);
-            // ln: int32_t, labs(): int32_t, mulr(): int32_t
-            let ln = Self::multiply_and_round(abs_coeff, scalei); // ln: i32 (matches shine's int32_t)
+            let ln = Self::multiply_and_round(abs_coeff, scalei);
             
             let quantized = if ln < 10000 {
                 // Following shine: ln < 10000 catches most values
                 // Original shine: ix[i] = config->l3loop.int2idx[ln]; /* quick look up method */
-                // int2idx: int array, ln used as array index
-                self.int2idx[ln as usize] as i32 // Convert to usize only for array indexing, result is int
+                self.int2idx[ln as usize] as i32
             } else {
                 // Following shine: outside table range so have to do it using floats
                 // Original shine: scale = config->l3loop.steptab[stepsize + 127]; /* 2**(-stepsize/4) */
-                // steptab: double array
-                let scale = self.step_table[step_index]; // scale: f32 (corresponds to shine's double)
+                let scale = self.step_table[step_index];
                 let dbl = (abs_coeff as f64) * (scale as f64) * 4.656612875e-10; // 0x7fffffff
-                (dbl.sqrt().sqrt() * dbl.sqrt()) as i32 // dbl^(3/4), result: int
+                (dbl.sqrt().sqrt() * dbl.sqrt()) as i32 // dbl^(3/4)
             };
             
             // Following shine's comment: "note. ix cannot be negative"
             // Store only absolute values, signs are handled separately in MP3
-            output[i] = quantized; // output[i]: int (matches shine's ix[i])
+            ix[i] = quantized;
             
             // Following shine: calculate ixmax while we're here
             // Original shine: if (max < ix[i]) max = ix[i];
-            // max: int, ix[i]: int
             if quantized > max_value {
-                max_value = quantized; // max_value: i32 (matches shine's int max)
+                max_value = quantized;
             }
         }
         
@@ -224,7 +220,7 @@ impl QuantizationLoop {
         while low <= high {
             let mid = (low + high) / 2;
             let mut temp_output = [0i32; GRANULE_SIZE];
-            let max_quantized = self.quantize(mdct_coeffs, mid, &mut temp_output);
+            let max_quantized = self.quantize(&mut temp_output, mid, mdct_coeffs);
             
             if max_quantized > 8192 {
                 // Step size too small, increase it
@@ -300,7 +296,7 @@ impl QuantizationLoop {
         // CRITICAL FIX: The outer_loop already calculated the optimal quantization
         // and updated side_info accordingly. We need to quantize with the final
         // step size to get the coefficients that match the side_info.
-        let max_quantized = self.quantize(mdct_coeffs, side_info.quantizer_step_size, output);
+        let max_quantized = self.quantize(output, side_info.quantizer_step_size, mdct_coeffs);
         
         if max_quantized > 8192 {
             return Err(EncodingError::QuantizationFailed);
@@ -381,7 +377,7 @@ impl QuantizationLoop {
             //   ; /* within table range? */
             loop {
                 info.quantizer_step_size += 1;
-                let max_quantized = self.quantize(original_coeffs, info.quantizer_step_size, quantized_coeffs);
+                let max_quantized = self.quantize(quantized_coeffs, info.quantizer_step_size, original_coeffs);
                 if max_quantized <= 8192 {
                     break;
                 }
@@ -432,7 +428,7 @@ impl QuantizationLoop {
         
         // Quantize coefficients with the selected step size
         let mut quantized = [0i32; GRANULE_SIZE];
-        self.quantize(mdct_coeffs, info.quantizer_step_size, &mut quantized);
+        self.quantize(&mut quantized, info.quantizer_step_size, mdct_coeffs);
         
         // Following shine's logic: bits = shine_inner_loop(ix, huff_bits, cod_info, gr, ch, config);
         let bits = self.inner_loop(mdct_coeffs, &mut quantized, huffman_bits, info, sample_rate);
@@ -465,7 +461,7 @@ impl QuantizationLoop {
             // Following shine's logic exactly:
             // if (quantize(ix, next + half, config) > 8192)
             //   bit = 100000; /* fail */
-            let max_quantized = self.quantize(mdct_coeffs, next + half, &mut temp_coeffs);
+            let max_quantized = self.quantize(&mut temp_coeffs, next + half, mdct_coeffs);
             
             let bit = if max_quantized > 8192 {
                 100000 // fail - following shine's logic exactly
@@ -1126,8 +1122,8 @@ mod tests {
             let mut output2 = [0i32; GRANULE_SIZE];
             
             // Test with two different step sizes
-            let max1 = quantizer.quantize(&mdct_coeffs, step_size, &mut output1);
-            let max2 = quantizer.quantize(&mdct_coeffs, step_size + 4, &mut output2);
+            let max1 = quantizer.quantize(&mut output1, step_size, &mdct_coeffs);
+            let max2 = quantizer.quantize(&mut output2, step_size + 4, &mdct_coeffs);
             
             // Property: Larger step size should generally produce smaller quantized values
             if max1 > 0 && max2 > 0 {
@@ -1149,7 +1145,7 @@ mod tests {
             let quantizer = QuantizationLoop::new();
             let mut output = [0i32; GRANULE_SIZE];
             
-            quantizer.quantize(&mdct_coeffs, step_size, &mut output);
+            quantizer.quantize(&mut output, step_size, &mdct_coeffs);
             
             // Property: Zero input coefficients should produce zero output
             for i in 0..GRANULE_SIZE {
@@ -1169,7 +1165,7 @@ mod tests {
             let quantizer = QuantizationLoop::new();
             let mut output = [0i32; GRANULE_SIZE];
             
-            quantizer.quantize(&mdct_coeffs, step_size, &mut output);
+            quantizer.quantize(&mut output, step_size, &mdct_coeffs);
             
             // Property: Quantized values should be absolute values only (MP3 standard)
             for i in 0..GRANULE_SIZE {
@@ -1199,8 +1195,8 @@ mod tests {
             prop_assert!(max_bits > 0, "Max bits should be positive");
             
             // Property 2: Frame operations should maintain consistency
-            let mut side_info = SideInfo::default();
-            let stuffing_bits = reservoir.frame_end(&mut side_info, channels);
+            let _side_info = SideInfo::default();
+            let stuffing_bits = reservoir.frame_end(channels)?;
             
             // Stuffing bits should be reasonable
             prop_assert!(stuffing_bits >= 0, "Stuffing bits should be non-negative");
@@ -1227,7 +1223,7 @@ mod tests {
             let zero_coeffs = [0i32; GRANULE_SIZE];
             let mut output = [0i32; GRANULE_SIZE];
             
-            let max_val = quantizer.quantize(&zero_coeffs, 0, &mut output);
+            let max_val = quantizer.quantize(&mut output, 0, &zero_coeffs);
             
             assert_eq!(max_val, 0);
             assert!(output.iter().all(|&x| x == 0));
