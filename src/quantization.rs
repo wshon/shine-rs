@@ -7,8 +7,9 @@
 //! The implementation strictly follows the shine reference implementation
 //! in ref/shine/src/lib/l3loop.c
 
-use crate::types::{ShineGlobalConfig, MAX_CHANNELS, MAX_GRANULES, GRANULE_SIZE, SBLIMIT};
+use crate::types::{ShineGlobalConfig, MAX_CHANNELS, MAX_GRANULES, GRANULE_SIZE, GrInfo};
 use crate::tables::{SHINE_SCALE_FACT_BAND_INDEX, SHINE_SLEN1_TAB, SHINE_SLEN2_TAB};
+use crate::huffman::SHINE_HUFFMAN_TABLE;
 use std::f64::consts::LN_2;
 
 /// Constants from shine (matches l3loop.c exactly)
@@ -21,71 +22,6 @@ const EN_SCFSI_BAND_KRIT: i32 = 10;
 const XM_SCFSI_BAND_KRIT: i32 = 10;
 
 /// Granule information structure following shine's gr_info exactly
-/// (ref/shine/src/lib/types.h:114-133)
-#[repr(C)]
-#[derive(Debug, Clone)]
-pub struct GranuleInfo {
-    /// Length of part2_3 data in bits
-    pub part2_3_length: u32,
-    /// Number of big values (must be <= 288 per MP3 standard)
-    pub big_values: u32,
-    /// Number of count1 quadruples
-    pub count1: u32,
-    /// Global gain value
-    pub global_gain: u32,
-    /// Scale factor compression
-    pub scalefac_compress: u32,
-    /// Huffman table selection [region]
-    pub table_select: [u32; 3],
-    /// Region 0 count
-    pub region0_count: u32,
-    /// Region 1 count
-    pub region1_count: u32,
-    /// Pre-emphasis flag
-    pub preflag: u32,
-    /// Scale factor scale
-    pub scalefac_scale: u32,
-    /// Count1 table selection
-    pub count1table_select: u32,
-    /// Part2 length in bits
-    pub part2_length: u32,
-    /// Scale factor band limit for long blocks
-    pub sfb_lmax: u32,
-    /// Region addresses for Huffman coding
-    pub address1: u32,
-    pub address2: u32,
-    pub address3: u32,
-    /// Quantizer step size (signed to match shine's int)
-    pub quantizer_step_size: i32,
-    /// Scale factor lengths [slen_type]
-    pub slen: [u32; 4],
-}
-
-impl Default for GranuleInfo {
-    fn default() -> Self {
-        Self {
-            part2_3_length: 0,
-            big_values: 0,
-            count1: 0,
-            global_gain: 210,
-            scalefac_compress: 0,
-            table_select: [0, 0, 0],
-            region0_count: 0,
-            region1_count: 0,
-            preflag: 0,
-            scalefac_scale: 0,
-            count1table_select: 0,
-            part2_length: 0,
-            sfb_lmax: SFB_LMAX as u32 - 1,
-            address1: 0,
-            address2: 0,
-            address3: 0,
-            quantizer_step_size: 0,
-            slen: [0, 0, 0, 0],
-        }
-    }
-}
-
 /// Psychoacoustic minimum structure
 #[derive(Debug)]
 pub struct ShinePsyXmin {
@@ -128,9 +64,9 @@ fn labs(x: i32) -> i32 {
 pub fn shine_inner_loop(
     ix: &mut [i32; GRANULE_SIZE],
     max_bits: i32,
-    cod_info: &mut GranuleInfo,
-    gr: i32,
-    ch: i32,
+    cod_info: &mut GrInfo,
+    _gr: i32,
+    _ch: i32,
     config: &mut ShineGlobalConfig,
 ) -> i32 {
     let mut bits: i32;
@@ -426,11 +362,11 @@ fn part2_length(gr: i32, ch: i32, config: &mut ShineGlobalConfig) -> i32 {
 /// Calculate allowed distortion for each scalefactor band
 /// Corresponds to calc_xmin() in l3loop.c
 fn calc_xmin(
-    ratio: &crate::types::ShinePsyRatio,
-    cod_info: &mut GranuleInfo,
-    l3_xmin: &mut ShinePsyXmin,
-    gr: i32,
-    ch: i32,
+    _ratio: &crate::types::ShinePsyRatio,
+    cod_info: &mut GrInfo,
+    _l3_xmin: &mut ShinePsyXmin,
+    _gr: i32,
+    _ch: i32,
 ) {
     for sfb in (0..cod_info.sfb_lmax as usize).rev() {
         // note. xmin will always be zero with no psychoacoustic model
@@ -521,7 +457,7 @@ fn ix_max(ix: &[i32; GRANULE_SIZE], begin: u32, end: u32) -> i32 {
 
 /// Calculate run length encoding information
 /// Corresponds to calc_runlen() in l3loop.c
-fn calc_runlen(ix: &mut [i32; GRANULE_SIZE], cod_info: &mut GranuleInfo) {
+fn calc_runlen(ix: &mut [i32; GRANULE_SIZE], cod_info: &mut GrInfo) {
     let mut i = GRANULE_SIZE;
     let mut rzero = 0;
 
@@ -552,7 +488,7 @@ fn calc_runlen(ix: &mut [i32; GRANULE_SIZE], cod_info: &mut GranuleInfo) {
 
 /// Count bits for count1 region
 /// Corresponds to count1_bitcount() in l3loop.c
-fn count1_bitcount(ix: &[i32; GRANULE_SIZE], cod_info: &mut GranuleInfo) -> i32 {
+fn count1_bitcount(ix: &[i32; GRANULE_SIZE], cod_info: &mut GrInfo) -> i32 {
     let mut sum0 = 0;
     let mut sum1 = 0;
 
@@ -578,12 +514,9 @@ fn count1_bitcount(ix: &[i32; GRANULE_SIZE], cod_info: &mut GranuleInfo) -> i32 
         sum0 += signbits;
         sum1 += signbits;
 
-        if p < COUNT1_TABLES[0].lengths.len() {
-            sum0 += COUNT1_TABLES[0].lengths[p] as i32;
-        }
-        if p < COUNT1_TABLES[1].lengths.len() {
-            sum1 += COUNT1_TABLES[1].lengths[p] as i32;
-        }
+        // Use huffman tables 32 and 33 for count1 (matches shine exactly)
+        sum0 += SHINE_HUFFMAN_TABLE[32].hlen[p] as i32;
+        sum1 += SHINE_HUFFMAN_TABLE[33].hlen[p] as i32;
 
         i += 4;
     }
@@ -599,7 +532,7 @@ fn count1_bitcount(ix: &[i32; GRANULE_SIZE], cod_info: &mut GranuleInfo) -> i32 
 
 /// Subdivide big values region into regions for different Huffman tables
 /// Corresponds to subdivide() in l3loop.c
-fn subdivide(cod_info: &mut GranuleInfo, config: &mut ShineGlobalConfig) {
+fn subdivide(cod_info: &mut GrInfo, config: &mut ShineGlobalConfig) {
     // Subdivision table from shine (matches exactly)
     const SUBDV_TABLE: [(u32, u32); 23] = [
         (0, 0), // 0 bands
@@ -678,7 +611,7 @@ fn subdivide(cod_info: &mut GranuleInfo, config: &mut ShineGlobalConfig) {
 
 /// Select Huffman code tables for bigvalues regions
 /// Corresponds to bigv_tab_select() in l3loop.c
-fn bigv_tab_select(ix: &[i32; GRANULE_SIZE], cod_info: &mut GranuleInfo) {
+fn bigv_tab_select(ix: &[i32; GRANULE_SIZE], cod_info: &mut GrInfo) {
     cod_info.table_select[0] = 0;
     cod_info.table_select[1] = 0;
     cod_info.table_select[2] = 0;
@@ -710,7 +643,7 @@ fn new_choose_table(ix: &[i32; GRANULE_SIZE], begin: u32, end: u32) -> u32 {
     if max < 15 {
         // try tables with no linbits
         for i in (0..14).rev() {
-            if let Some(table) = &HUFFMAN_TABLES[i] {
+            if let Some(table) = SHINE_HUFFMAN_TABLE.get(i) {
                 if table.xlen > max as u32 {
                     choice[0] = i as u32;
                     break;
@@ -768,7 +701,7 @@ fn new_choose_table(ix: &[i32; GRANULE_SIZE], begin: u32, end: u32) -> u32 {
         let max_linbits = max - 15;
 
         for i in 15..24 {
-            if let Some(table) = &HUFFMAN_TABLES[i] {
+            if let Some(table) = SHINE_HUFFMAN_TABLE.get(i) {
                 if table.linmax >= max_linbits as u32 {
                     choice[0] = i as u32;
                     break;
@@ -777,7 +710,7 @@ fn new_choose_table(ix: &[i32; GRANULE_SIZE], begin: u32, end: u32) -> u32 {
         }
 
         for i in 24..32 {
-            if let Some(table) = &HUFFMAN_TABLES[i] {
+            if let Some(table) = SHINE_HUFFMAN_TABLE.get(i) {
                 if table.linmax >= max_linbits as u32 {
                     choice[1] = i as u32;
                     break;
@@ -797,7 +730,7 @@ fn new_choose_table(ix: &[i32; GRANULE_SIZE], begin: u32, end: u32) -> u32 {
 
 /// Count the number of bits necessary to code the bigvalues region
 /// Corresponds to bigv_bitcount() in l3loop.c
-fn bigv_bitcount(ix: &[i32; GRANULE_SIZE], gi: &GranuleInfo) -> i32 {
+fn bigv_bitcount(ix: &[i32; GRANULE_SIZE], gi: &GrInfo) -> i32 {
     let mut bits = 0;
 
     if gi.table_select[0] != 0 {
@@ -821,11 +754,11 @@ fn count_bit(ix: &[i32; GRANULE_SIZE], start: u32, end: u32, table: u32) -> i32 
     }
 
     let table_idx = table as usize;
-    if table_idx >= HUFFMAN_TABLES.len() {
+    if table_idx >= SHINE_HUFFMAN_TABLE.len() {
         return 0;
     }
 
-    let h = match &HUFFMAN_TABLES[table_idx] {
+    let h = match SHINE_HUFFMAN_TABLE.get(table_idx) {
         Some(table) => table,
         None => return 0,
     };
@@ -851,8 +784,14 @@ fn count_bit(ix: &[i32; GRANULE_SIZE], start: u32, end: u32, table: u32) -> i32 
             }
 
             let idx = (x as u32 * ylen + y as u32) as usize;
-            if idx < h.lengths.len() {
-                sum += h.lengths[idx] as i32;
+            // WARNING: Added safety check - shine assumes hlen is always valid
+            if let Some(hlen) = h.hlen {
+                if idx < hlen.len() {
+                    sum += hlen[idx] as i32;
+                }
+            } else {
+                // WARNING: This branch doesn't exist in shine - added for safety
+                eprintln!("Warning: Missing hlen table for Huffman table {}", table_idx);
             }
 
             if x != 0 {
@@ -872,8 +811,14 @@ fn count_bit(ix: &[i32; GRANULE_SIZE], start: u32, end: u32, table: u32) -> i32 
             let y = ix[i + 1];
 
             let idx = (x as u32 * ylen + y as u32) as usize;
-            if idx < h.lengths.len() {
-                sum += h.lengths[idx] as i32;
+            // WARNING: Added safety check - shine assumes hlen is always valid
+            if let Some(hlen) = h.hlen {
+                if idx < hlen.len() {
+                    sum += hlen[idx] as i32;
+                }
+            } else {
+                // WARNING: This branch doesn't exist in shine - added for safety
+                eprintln!("Warning: Missing hlen table for Huffman table {}", table_idx);
             }
 
             if x != 0 {
@@ -895,7 +840,7 @@ fn count_bit(ix: &[i32; GRANULE_SIZE], start: u32, end: u32, table: u32) -> i32 
 fn bin_search_step_size(
     desired_rate: i32,
     ix: &mut [i32; GRANULE_SIZE],
-    cod_info: &mut GranuleInfo,
+    cod_info: &mut GrInfo,
     config: &mut ShineGlobalConfig,
 ) -> i32 {
     let mut next = -120;
@@ -978,7 +923,7 @@ mod tests {
         #[test]
         fn test_granule_info_default() {
             setup_clean_errors();
-            let gi = GranuleInfo::default();
+            let gi = GrInfo::default();
             
             assert_eq!(gi.part2_3_length, 0);
             assert_eq!(gi.big_values, 0);
@@ -1045,7 +990,7 @@ mod tests {
         fn test_calc_runlen() {
             setup_clean_errors();
             let mut ix = [0i32; GRANULE_SIZE];
-            let mut cod_info = GranuleInfo::default();
+            let mut cod_info = GrInfo::default();
             
             // Test with all zeros
             calc_runlen(&mut ix, &mut cod_info);
@@ -1065,7 +1010,7 @@ mod tests {
         fn test_count1_bitcount() {
             setup_clean_errors();
             let ix = [0i32; GRANULE_SIZE];
-            let mut cod_info = GranuleInfo::default();
+            let mut cod_info = GrInfo::default();
             cod_info.big_values = 0;
             cod_info.count1 = 0;
             
@@ -1148,7 +1093,7 @@ mod tests {
                 setup_clean_errors();
                 let mut ix: [i32; GRANULE_SIZE] = [0; GRANULE_SIZE];
                 ix.copy_from_slice(&values);
-                let mut cod_info = GranuleInfo::default();
+                let mut cod_info = GrInfo::default();
                 
                 calc_runlen(&mut ix, &mut cod_info);
                 
@@ -1247,7 +1192,7 @@ mod tests {
             assert!(max_val > 0, "Should quantize non-zero coefficients");
             
             // Test run length calculation
-            let mut cod_info = GranuleInfo::default();
+            let mut cod_info = GrInfo::default();
             calc_runlen(&mut ix, &mut cod_info);
             assert!(cod_info.big_values <= 288, "Big values within MP3 limit");
             
