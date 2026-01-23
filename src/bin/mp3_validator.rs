@@ -87,16 +87,18 @@ struct Mp3Validator {
     file: File,
     position: usize,
     frame_count: usize,
+    verbose: bool,
 }
 
 impl Mp3Validator {
     /// Create a new MP3 validator
-    fn new(file_path: &Path) -> Result<Self, ValidationError> {
+    fn new(file_path: &Path, verbose: bool) -> Result<Self, ValidationError> {
         let file = File::open(file_path).map_err(ValidationError::IoError)?;
         Ok(Self {
             file,
             position: 0,
             frame_count: 0,
+            verbose,
         })
     }
 
@@ -105,15 +107,24 @@ impl Mp3Validator {
         println!("🔍 开始验证 MP3 文件格式...");
         
         // Step 1: Check file size
+        print!("📏 检查文件大小... ");
         self.check_file_size()?;
+        println!("✅");
         
         // Step 2: Skip ID3v2 tag if present
+        print!("🏷️  检查 ID3 标签... ");
         self.skip_id3v2_tag()?;
+        println!("✅");
         
         // Step 3: Validate frames
+        print!("🎵 验证 MP3 帧... ");
         while !self.is_end_of_file()? {
             self.validate_frame()?;
+            if !self.verbose && self.frame_count % 10 == 0 {
+                print!("{} ", self.frame_count);
+            }
         }
+        println!("✅");
         
         println!("✅ MP3 文件验证成功！共验证了 {} 个帧", self.frame_count);
         Ok(())
@@ -124,13 +135,14 @@ impl Mp3Validator {
         let metadata = self.file.metadata().map_err(ValidationError::IoError)?;
         let file_size = metadata.len() as usize;
         
-        println!("📏 检查文件大小: {} 字节", file_size);
+        if self.verbose {
+            println!("文件大小: {} 字节", file_size);
+        }
         
         if file_size < 4 {
             return Err(ValidationError::InvalidFileSize(file_size));
         }
         
-        println!("✅ 文件大小检查通过");
         Ok(())
     }
 
@@ -146,7 +158,9 @@ impl Mp3Validator {
                       ((buffer[8] as u32 & 0x7F) << 7) |
                       (buffer[9] as u32 & 0x7F);
             
-            println!("🏷️  发现 ID3v2 标签，大小: {} 字节，跳过", size);
+            if self.verbose {
+                println!("发现 ID3v2 标签，大小: {} 字节", size);
+            }
             
             self.file.seek(SeekFrom::Start(10 + size as u64)).map_err(ValidationError::IoError)?;
             self.position = (10 + size) as usize;
@@ -169,7 +183,10 @@ impl Mp3Validator {
     /// Validate a single MP3 frame
     fn validate_frame(&mut self) -> Result<(), ValidationError> {
         self.frame_count += 1;
-        println!("\n🎵 验证第 {} 个帧 (位置: {})", self.frame_count, self.position);
+        
+        if self.verbose {
+            println!("\n🎵 验证第 {} 个帧 (位置: {})", self.frame_count, self.position);
+        }
         
         // Step 1: Parse frame header
         let header = self.parse_frame_header()?;
@@ -186,7 +203,9 @@ impl Mp3Validator {
         // Step 5: Skip to next frame
         self.skip_to_next_frame(frame_size)?;
         
-        println!("✅ 第 {} 个帧验证通过", self.frame_count);
+        if self.verbose {
+            println!("✅ 第 {} 个帧验证通过", self.frame_count);
+        }
         Ok(())
     }
 
@@ -213,9 +232,11 @@ impl Mp3Validator {
             emphasis: (header_u32 & 0x3) as u8,
         };
         
-        println!("📋 帧头解析: sync=0x{:03X}, version={}, layer={}, bitrate_idx={}, sample_rate_idx={}, mode={}", 
-                header.sync_word, header.mpeg_version, header.layer, 
-                header.bitrate_index, header.sample_rate_index, header.channel_mode);
+        if self.verbose {
+            println!("📋 帧头解析: sync=0x{:03X}, version={}, layer={}, bitrate_idx={}, sample_rate_idx={}, mode={}", 
+                    header.sync_word, header.mpeg_version, header.layer, 
+                    header.bitrate_index, header.sample_rate_index, header.channel_mode);
+        }
         
         Ok(header)
     }
@@ -270,7 +291,9 @@ impl Mp3Validator {
             });
         }
 
-        println!("✅ 帧头字段验证通过");
+        if self.verbose {
+            println!("✅ 帧头字段验证通过");
+        }
         Ok(())
     }
 
@@ -291,8 +314,10 @@ impl Mp3Validator {
         // frame_size = (144 * bitrate / sample_rate) + padding
         let frame_size = (144 * bitrate / sample_rate) as usize + if header.padding_bit { 1 } else { 0 };
         
-        println!("📐 计算帧大小: {} 字节 (bitrate={}kbps, sample_rate={}Hz, padding={})", 
-                frame_size, bitrate/1000, sample_rate, header.padding_bit);
+        if self.verbose {
+            println!("📐 计算帧大小: {} 字节 (bitrate={}kbps, sample_rate={}Hz, padding={})", 
+                    frame_size, bitrate/1000, sample_rate, header.padding_bit);
+        }
         
         Ok(frame_size)
     }
@@ -305,7 +330,9 @@ impl Mp3Validator {
             _ => 32, // Stereo/Joint Stereo/Dual Channel: 32 bytes
         };
 
-        println!("📊 验证侧信息: {} 字节", side_info_size);
+        if self.verbose {
+            println!("📊 验证侧信息: {} 字节", side_info_size);
+        }
 
         // Check if we have enough bytes for side info
         let remaining_frame_size = frame_size - 4; // Subtract header size
@@ -324,7 +351,9 @@ impl Mp3Validator {
         // Basic side info validation
         self.validate_side_info_content(&side_info_bytes, header)?;
 
-        println!("✅ 侧信息验证通过");
+        if self.verbose {
+            println!("✅ 侧信息验证通过");
+        }
         Ok(())
     }
 
@@ -333,7 +362,9 @@ impl Mp3Validator {
         // Parse main_data_begin (9 bits)
         let main_data_begin = ((side_info[0] as u16) << 1) | ((side_info[1] as u16) >> 7);
         
-        println!("🔍 主数据开始位置: {}", main_data_begin);
+        if self.verbose {
+            println!("🔍 主数据开始位置: {}", main_data_begin);
+        }
 
         // For mono
         if header.channel_mode == 3 {
@@ -361,7 +392,9 @@ impl Mp3Validator {
             });
         }
 
-        println!("✅ 单声道颗粒信息验证通过");
+        if self.verbose {
+            println!("✅ 单声道颗粒信息验证通过");
+        }
         Ok(())
     }
 
@@ -378,7 +411,9 @@ impl Mp3Validator {
             });
         }
 
-        println!("✅ 立体声颗粒信息验证通过");
+        if self.verbose {
+            println!("✅ 立体声颗粒信息验证通过");
+        }
         Ok(())
     }
 
@@ -397,7 +432,9 @@ impl Mp3Validator {
 
         self.position = frame_start + frame_size;
         
-        println!("⏭️  跳转到下一帧 (位置: {})", self.position);
+        if self.verbose {
+            println!("⏭️  跳转到下一帧 (位置: {})", self.position);
+        }
         Ok(())
     }
 }
@@ -405,13 +442,15 @@ impl Mp3Validator {
 fn main() {
     let args: Vec<String> = env::args().collect();
     
-    if args.len() != 2 {
-        eprintln!("用法: {} <mp3文件路径>", args[0]);
+    if args.len() < 2 || args.len() > 3 {
+        eprintln!("用法: {} <mp3文件路径> [--verbose]", args[0]);
         eprintln!("示例: {} tests/output/encoded_output.mp3", args[0]);
+        eprintln!("      {} tests/output/encoded_output.mp3 --verbose", args[0]);
         std::process::exit(1);
     }
 
     let file_path = Path::new(&args[1]);
+    let verbose = args.len() == 3 && args[2] == "--verbose";
     
     if !file_path.exists() {
         eprintln!("❌ 错误: 文件不存在: {}", file_path.display());
@@ -420,9 +459,11 @@ fn main() {
 
     println!("🎵 MP3 格式验证工具");
     println!("📁 验证文件: {}", file_path.display());
-    println!("{}", "=".repeat(50));
+    if verbose {
+        println!("{}", "=".repeat(50));
+    }
 
-    match Mp3Validator::new(file_path) {
+    match Mp3Validator::new(file_path, verbose) {
         Ok(mut validator) => {
             if let Err(error) = validator.validate() {
                 println!("\n❌ 验证失败:");
