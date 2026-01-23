@@ -597,3 +597,336 @@ fn count1_bitcount(ix: &[i32; GRANULE_SIZE], cod_info: &mut GranuleInfo) -> i32 
         sum1
     }
 }
+
+/// Subdivide big values region into regions for different Huffman tables
+/// Corresponds to subdivide() in l3loop.c
+fn subdivide(cod_info: &mut GranuleInfo, config: &mut ShineGlobalConfig) {
+    // Subdivision table from shine (matches exactly)
+    const SUBDV_TABLE: [(u32, u32); 23] = [
+        (0, 0), // 0 bands
+        (0, 0), // 1 bands
+        (0, 0), // 2 bands
+        (0, 0), // 3 bands
+        (0, 0), // 4 bands
+        (0, 1), // 5 bands
+        (1, 1), // 6 bands
+        (1, 1), // 7 bands
+        (1, 2), // 8 bands
+        (2, 2), // 9 bands
+        (2, 3), // 10 bands
+        (2, 3), // 11 bands
+        (3, 4), // 12 bands
+        (3, 4), // 13 bands
+        (3, 4), // 14 bands
+        (4, 5), // 15 bands
+        (4, 5), // 16 bands
+        (4, 6), // 17 bands
+        (5, 6), // 18 bands
+        (5, 6), // 19 bands
+        (5, 7), // 20 bands
+        (6, 7), // 21 bands
+        (6, 7), // 22 bands
+    ];
+
+    if cod_info.big_values == 0 {
+        // no big_values region
+        cod_info.region0_count = 0;
+        cod_info.region1_count = 0;
+    } else {
+        let samplerate_index = match config.wave.sample_rate {
+            44100 => 0, 48000 => 1, 32000 => 2, 22050 => 3, 24000 => 4,
+            16000 => 5, 11025 => 6, 12000 => 7, 8000 => 8, _ => 0,
+        };
+        let scalefac_band_long = &SCALE_FACT_BAND_INDEX[samplerate_index];
+
+        let bigvalues_region = 2 * cod_info.big_values;
+
+        // Calculate scfb_anz
+        let mut scfb_anz = 0;
+        while (scfb_anz < 22) && (scalefac_band_long[scfb_anz] < bigvalues_region as i32) {
+            scfb_anz += 1;
+        }
+
+        let mut thiscount = SUBDV_TABLE[scfb_anz].0;
+        while thiscount > 0 {
+            if scalefac_band_long[thiscount as usize + 1] <= bigvalues_region as i32 {
+                break;
+            }
+            thiscount -= 1;
+        }
+        cod_info.region0_count = thiscount;
+        cod_info.address1 = scalefac_band_long[thiscount as usize + 1] as u32;
+
+        let mut thiscount = SUBDV_TABLE[scfb_anz].1;
+        while thiscount > 0 {
+            let idx = (cod_info.region0_count + 1 + thiscount) as usize;
+            if idx < 22 && scalefac_band_long[idx + 1] <= bigvalues_region as i32 {
+                break;
+            }
+            thiscount -= 1;
+        }
+        cod_info.region1_count = thiscount;
+        let idx = (cod_info.region0_count + 1 + thiscount) as usize;
+        if idx + 1 < 22 {
+            cod_info.address2 = scalefac_band_long[idx + 1] as u32;
+        } else {
+            cod_info.address2 = bigvalues_region;
+        }
+
+        cod_info.address3 = bigvalues_region;
+    }
+}
+
+/// Select Huffman code tables for bigvalues regions
+/// Corresponds to bigv_tab_select() in l3loop.c
+fn bigv_tab_select(ix: &[i32; GRANULE_SIZE], cod_info: &mut GranuleInfo) {
+    cod_info.table_select[0] = 0;
+    cod_info.table_select[1] = 0;
+    cod_info.table_select[2] = 0;
+
+    if cod_info.address1 > 0 {
+        cod_info.table_select[0] = new_choose_table(ix, 0, cod_info.address1);
+    }
+
+    if cod_info.address2 > cod_info.address1 {
+        cod_info.table_select[1] = new_choose_table(ix, cod_info.address1, cod_info.address2);
+    }
+
+    if (cod_info.big_values << 1) > cod_info.address2 {
+        cod_info.table_select[2] = new_choose_table(ix, cod_info.address2, cod_info.big_values << 1);
+    }
+}
+
+/// Choose the Huffman table that will encode ix[begin..end] with the fewest bits
+/// Corresponds to new_choose_table() in l3loop.c
+fn new_choose_table(ix: &[i32; GRANULE_SIZE], begin: u32, end: u32) -> u32 {
+    let max = ix_max(ix, begin, end);
+    if max == 0 {
+        return 0;
+    }
+
+    let mut choice = [0u32; 2];
+    let mut sum = [0i32; 2];
+
+    if max < 15 {
+        // try tables with no linbits
+        for i in (0..14).rev() {
+            if let Some(table) = &HUFFMAN_TABLES[i] {
+                if table.xlen > max as u32 {
+                    choice[0] = i as u32;
+                    break;
+                }
+            }
+        }
+
+        sum[0] = count_bit(ix, begin, end, choice[0]);
+
+        match choice[0] {
+            2 => {
+                sum[1] = count_bit(ix, begin, end, 3);
+                if sum[1] <= sum[0] {
+                    choice[0] = 3;
+                }
+            }
+            5 => {
+                sum[1] = count_bit(ix, begin, end, 6);
+                if sum[1] <= sum[0] {
+                    choice[0] = 6;
+                }
+            }
+            7 => {
+                sum[1] = count_bit(ix, begin, end, 8);
+                if sum[1] <= sum[0] {
+                    choice[0] = 8;
+                    sum[0] = sum[1];
+                }
+                sum[1] = count_bit(ix, begin, end, 9);
+                if sum[1] <= sum[0] {
+                    choice[0] = 9;
+                }
+            }
+            10 => {
+                sum[1] = count_bit(ix, begin, end, 11);
+                if sum[1] <= sum[0] {
+                    choice[0] = 11;
+                    sum[0] = sum[1];
+                }
+                sum[1] = count_bit(ix, begin, end, 12);
+                if sum[1] <= sum[0] {
+                    choice[0] = 12;
+                }
+            }
+            13 => {
+                sum[1] = count_bit(ix, begin, end, 15);
+                if sum[1] <= sum[0] {
+                    choice[0] = 15;
+                }
+            }
+            _ => {}
+        }
+    } else {
+        // try tables with linbits
+        let max_linbits = max - 15;
+
+        for i in 15..24 {
+            if let Some(table) = &HUFFMAN_TABLES[i] {
+                if table.linmax >= max_linbits as u32 {
+                    choice[0] = i as u32;
+                    break;
+                }
+            }
+        }
+
+        for i in 24..32 {
+            if let Some(table) = &HUFFMAN_TABLES[i] {
+                if table.linmax >= max_linbits as u32 {
+                    choice[1] = i as u32;
+                    break;
+                }
+            }
+        }
+
+        sum[0] = count_bit(ix, begin, end, choice[0]);
+        sum[1] = count_bit(ix, begin, end, choice[1]);
+        if sum[1] < sum[0] {
+            choice[0] = choice[1];
+        }
+    }
+
+    choice[0]
+}
+
+/// Count the number of bits necessary to code the bigvalues region
+/// Corresponds to bigv_bitcount() in l3loop.c
+fn bigv_bitcount(ix: &[i32; GRANULE_SIZE], gi: &GranuleInfo) -> i32 {
+    let mut bits = 0;
+
+    if gi.table_select[0] != 0 {
+        bits += count_bit(ix, 0, gi.address1, gi.table_select[0]);
+    }
+    if gi.table_select[1] != 0 {
+        bits += count_bit(ix, gi.address1, gi.address2, gi.table_select[1]);
+    }
+    if gi.table_select[2] != 0 {
+        bits += count_bit(ix, gi.address2, gi.address3, gi.table_select[2]);
+    }
+
+    bits
+}
+
+/// Count the number of bits necessary to code the subregion
+/// Corresponds to count_bit() in l3loop.c
+fn count_bit(ix: &[i32; GRANULE_SIZE], start: u32, end: u32, table: u32) -> i32 {
+    if table == 0 {
+        return 0;
+    }
+
+    let table_idx = table as usize;
+    if table_idx >= HUFFMAN_TABLES.len() {
+        return 0;
+    }
+
+    let h = match &HUFFMAN_TABLES[table_idx] {
+        Some(table) => table,
+        None => return 0,
+    };
+
+    let mut sum = 0;
+    let ylen = h.ylen;
+    let linbits = h.linbits;
+
+    if table > 15 {
+        // ESC-table is used
+        let mut i = start as usize;
+        while i < end as usize && i + 1 < GRANULE_SIZE {
+            let mut x = ix[i];
+            let mut y = ix[i + 1];
+
+            if x > 14 {
+                x = 15;
+                sum += linbits as i32;
+            }
+            if y > 14 {
+                y = 15;
+                sum += linbits as i32;
+            }
+
+            let idx = (x as u32 * ylen + y as u32) as usize;
+            if idx < h.lengths.len() {
+                sum += h.lengths[idx] as i32;
+            }
+
+            if x != 0 {
+                sum += 1;
+            }
+            if y != 0 {
+                sum += 1;
+            }
+
+            i += 2;
+        }
+    } else {
+        // No ESC-words
+        let mut i = start as usize;
+        while i < end as usize && i + 1 < GRANULE_SIZE {
+            let x = ix[i];
+            let y = ix[i + 1];
+
+            let idx = (x as u32 * ylen + y as u32) as usize;
+            if idx < h.lengths.len() {
+                sum += h.lengths[idx] as i32;
+            }
+
+            if x != 0 {
+                sum += 1;
+            }
+            if y != 0 {
+                sum += 1;
+            }
+
+            i += 2;
+        }
+    }
+
+    sum
+}
+
+/// Binary search for optimal quantizer step size
+/// Corresponds to bin_search_StepSize() in l3loop.c
+fn bin_search_step_size(
+    desired_rate: i32,
+    ix: &mut [i32; GRANULE_SIZE],
+    cod_info: &mut GranuleInfo,
+    config: &mut ShineGlobalConfig,
+) -> i32 {
+    let mut next = -120;
+    let mut count = 120;
+
+    loop {
+        let half = count / 2;
+
+        let bit = if quantize(ix, next + half, config) > 8192 {
+            100000 // fail
+        } else {
+            calc_runlen(ix, cod_info); // rzero,count1,big_values
+            let mut bit = count1_bitcount(ix, cod_info); // count1_table selection
+            subdivide(cod_info, config); // bigvalues sfb division
+            bigv_tab_select(ix, cod_info); // codebook selection
+            bit += bigv_bitcount(ix, cod_info); // bit count
+            bit
+        };
+
+        if bit < desired_rate {
+            count = half;
+        } else {
+            next += half;
+            count -= half;
+        }
+
+        if count <= 1 {
+            break;
+        }
+    }
+
+    next
+}
