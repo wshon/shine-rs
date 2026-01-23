@@ -42,7 +42,7 @@
     - 制定模块重构计划（如果需要）
     - _需求: 2.4, 2.5_
 
-- [x] 2. 核心数据结构一致性检查
+- [-] 2. 核心数据结构一致性检查
   - 对比shine/src/lib/types.h中的所有关键结构体定义
   - 验证gr_info、shine_side_info_t、shine_global_config等结构体字段完全一致
   - 检查字段顺序、类型、大小是否与shine匹配
@@ -52,13 +52,13 @@
 
 - [-] 3. 关键函数实现一致性验证
   - 基于任务1和任务2建立的架构和数据结构基础，逐模块验证函数实现
-  - [x] 3.1 量化模块函数验证 (src/quantization.rs ↔ l3loop.c)
+  - [ ] 3.1 量化模块函数验证 (src/quantization.rs ↔ l3loop.c)
     - 对比quantize、bin_search_StepSize、shine_inner_loop、shine_outer_loop函数
     - 验证量化步长计算、比特分配算法与shine完全一致
     - 确保GrInfo结构体的使用方式与shine一致
     - _需求: 2.1, 2.2, 2.3_
 
-  - [x] 3.2 霍夫曼编码模块函数验证 (src/huffman.rs ↔ huffman.c)
+  - [ ] 3.2 霍夫曼编码模块函数验证 (src/huffman.rs ↔ huffman.c)
     - 对比calc_runlen、subdivide、bigv_tab_select、bigv_bitcount函数
     - 验证码表选择和区域划分算法与shine一致
     - 确保霍夫曼表的使用方式正确
