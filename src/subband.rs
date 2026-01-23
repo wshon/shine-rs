@@ -549,19 +549,25 @@ pub fn shine_window_filter_subband(
     
     // Apply filter bank to produce 32 subband samples
     // This follows shine's filter bank exactly
-    for i in 0..32 {
+    for i in (0..32).rev() {  // i from 31 down to 0 (matches shine's SBLIMIT loop)
         let mut s_value = 0i64;
         
-        // Apply filter coefficients (shine uses optimized loop with 7-step unrolling)
+        // First multiply with j=63 (matches shine's mul0)
+        s_value += (subband_state.fl[i][63] as i64) * (y[63] as i64);
+        
+        // Apply filter coefficients with 7-step unrolling (matches shine's loop)
+        // shine: for (j = 63; j; j -= 7) { muladd(..., fl[i][j-1], y[j-1]); ... muladd(..., fl[i][j-7], y[j-7]); }
         let mut j = 63;
-        s_value += (subband_state.fl[i][j] as i64) * (y[j] as i64);
         while j > 0 {
+            // Apply 7 coefficients at once (shine's muladd operations)
+            // Note: shine accesses j-1, j-2, ..., j-7 in each iteration
             let end = if j >= 7 { j - 7 } else { 0 };
-            for k in ((end + 1)..=j).rev() {
-                s_value += (subband_state.fl[i][k] as i64) * (y[k] as i64);
+            for offset in 1..=(j - end) {
+                if j >= offset {
+                    s_value += (subband_state.fl[i][j - offset] as i64) * (y[j - offset] as i64);
+                }
             }
-            j = end;
-            if j == 0 { break; }
+            j -= 7;
         }
         
         // Convert back to i32 with proper scaling (shine's mulz operation)

@@ -1063,8 +1063,10 @@ impl Mp3Encoder {
         for i in 0..576 {
             // Simple quantization: ix[i] = xr[i] / step_size
             ix[i] = (ix[i] as f32 * scale) as i32;
-            if ix[i].abs() > ixmax {
-                ixmax = ix[i].abs();
+            // Use saturating_abs to avoid overflow when ix[i] == i32::MIN
+            let abs_val = ix[i].saturating_abs();
+            if abs_val > ixmax {
+                ixmax = abs_val;
             }
         }
         

@@ -232,11 +232,11 @@ pub struct ShineGlobalConfig {
     /// Perceptual entropy [channel][granule]
     pub pe: [[f64; MAX_GRANULES]; MAX_CHANNELS],
     /// Quantized coefficients [channel][granule][coefficient]
-    pub l3_enc: [[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS],
+    pub l3_enc: Box<[[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]>,
     /// Subband samples [channel][granule+1][time][subband]
-    pub l3_sb_sample: [[[[i32; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS],
+    pub l3_sb_sample: Box<[[[[i32; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS]>,
     /// MDCT frequency coefficients [channel][granule][coefficient]
-    pub mdct_freq: [[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS],
+    pub mdct_freq: Box<[[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]>,
     /// Bit reservoir size
     pub resv_size: i32,
     /// Maximum reservoir size
@@ -296,9 +296,9 @@ impl ShineGlobalConfig {
             scalefactor: ShineScalefac::default(),
             buffer,
             pe: [[0.0; MAX_GRANULES]; MAX_CHANNELS],
-            l3_enc: [[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS],
-            l3_sb_sample: [[[[0; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS],
-            mdct_freq: [[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS],
+            l3_enc: Box::new([[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]),
+            l3_sb_sample: Box::new([[[[0; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS]),
+            mdct_freq: Box::new([[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]),
             resv_size: 0,
             resv_max: 0,
             l3loop: L3Loop::default(),
@@ -356,8 +356,8 @@ impl ShineGlobalConfig {
         const PI36: f64 = std::f64::consts::PI / 36.0;
         const PI72: f64 = std::f64::consts::PI / 72.0;
         
-        for m in 0..18 {
-            for k in 0..36 {
+        for m in (0..18).rev() {  // m from 17 down to 0 (matches shine)
+            for k in (0..36).rev() {  // k from 35 down to 0 (matches shine)
                 let sin_part = (PI36 * (k as f64 + 0.5)).sin();
                 let cos_part = (PI72 * (2 * k + 19) as f64 * (2 * m + 1) as f64).cos();
                 self.mdct.cos_l[m][k] = (sin_part * cos_part * 0x7fffffff as f64) as i32;
@@ -388,12 +388,12 @@ impl ShineGlobalConfig {
             for j in (0..64).rev() {   // j from 63 down to 0 (matches shine)
                 let filter = 1e9 * ((2 * i + 1) as f64 * (16 - j as i32) as f64 * PI64).cos();
                 let rounded_filter = if filter >= 0.0 {
-                    filter + 0.5
+                    (filter + 0.5).floor()  // 相当于 modf(filter + 0.5, &filter)
                 } else {
-                    filter - 0.5
+                    (filter - 0.5).ceil()   // 相当于 modf(filter - 0.5, &filter)
                 };
                 // Scale and convert to fixed point before storing (matches shine exactly)
-                self.subband.fl[i][j] = (rounded_filter.trunc() * (0x7fffffff as f64 * 1e-9)) as i32;
+                self.subband.fl[i][j] = (rounded_filter * (0x7fffffff as f64 * 1e-9)) as i32;
             }
         }
         

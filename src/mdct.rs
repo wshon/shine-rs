@@ -592,14 +592,14 @@ pub fn shine_mdct_sub(
             // Apply aliasing reduction coefficients (shine's MDCT_CS and MDCT_CA constants)
             // These are the 8 aliasing reduction coefficients from the MP3 standard
             let cs_ca_pairs = [
-                (0x4C1BF829i32, 0x4CF8DE88i32), // CS0, CA0 for -0.6
-                (0x4A934F0Di32, 0x4E213D17i32), // CS1, CA1 for -0.535  
-                (0x46174A27i32, 0x519E4E04i32), // CS2, CA2 for -0.33
-                (0x401D7532i32, 0x553805DBi32), // CS3, CA3 for -0.185
-                (0x392CE0E2i32, 0x5831C2E2i32), // CS4, CA4 for -0.095
-                (0x31B26C4Ei32, 0x5A82799Ai32), // CS5, CA5 for -0.041
-                (0x2991A6C2i32, 0x5C68A299i32), // CS6, CA6 for -0.0142
-                (0x2120FB83i32, 0x5DFE47D0i32), // CS7, CA7 for -0.0037
+                (*MDCT_CS0, *MDCT_CA0), // CS0, CA0 for -0.6
+                (*MDCT_CS1, *MDCT_CA1), // CS1, CA1 for -0.535  
+                (*MDCT_CS2, *MDCT_CA2), // CS2, CA2 for -0.33
+                (*MDCT_CS3, *MDCT_CA3), // CS3, CA3 for -0.185
+                (*MDCT_CS4, *MDCT_CA4), // CS4, CA4 for -0.095
+                (*MDCT_CS5, *MDCT_CA5), // CS5, CA5 for -0.041
+                (*MDCT_CS6, *MDCT_CA6), // CS6, CA6 for -0.0142
+                (*MDCT_CS7, *MDCT_CA7), // CS7, CA7 for -0.0037
             ];
             
             for i in 0..8 {
