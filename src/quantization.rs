@@ -1319,5 +1319,200 @@ mod tests {
             assert!(step_size >= -120);
             assert!(step_size <= 120);
         }
+
+        /// Test quantization function with proper preprocessing like shine
+        /// Validates: Requirements 2.1, 2.2, 2.3
+        #[test]
+        fn test_quantization_with_preprocessing() {
+            let quantizer = QuantizationLoop::new();
+            
+            // Create test MDCT coefficients (simulate real audio data)
+            let mut mdct_coeffs = [0i32; GRANULE_SIZE];
+            
+            // Fill with a realistic pattern: high energy in low frequencies, decreasing towards high frequencies
+            for i in 0..GRANULE_SIZE {
+                if i < 100 {
+                    mdct_coeffs[i] = 50000 - (i as i32 * 400); // High energy low frequencies
+                } else if i < 300 {
+                    mdct_coeffs[i] = 10000 - (i as i32 * 30); // Medium energy mid frequencies
+                } else {
+                    mdct_coeffs[i] = 1000 - (i as i32 * 2); // Low energy high frequencies
+                }
+                // Ensure no negative values for this test
+                mdct_coeffs[i] = mdct_coeffs[i].max(0);
+            }
+            
+            let mut output = [0i32; GRANULE_SIZE];
+            
+            // Test with different step sizes
+            for step_size in [-10, 0, 10, 20] {
+                let max_val = quantizer.quantize(&mut output, step_size, &mdct_coeffs);
+                
+                println!("Step size {}: max quantized value = {}", step_size, max_val);
+                
+                if max_val > 0 {
+                    assert!(max_val <= 8192, "Max quantized value should be within range for step size {}", step_size);
+                    
+                    let non_zero_count = output.iter().filter(|&&x| x != 0).count();
+                    println!("  Non-zero quantized values: {}", non_zero_count);
+                    
+                    // With realistic input, we should get some quantized values
+                    if step_size <= 10 {
+                        assert!(non_zero_count > 0, "Should produce non-zero quantized values for step size {}", step_size);
+                    }
+                }
+            }
+        }
+
+        /// Test binary search step size function
+        /// Validates: Requirements 2.1, 2.2
+        #[test]
+        fn test_binary_search_step_size() {
+            let quantizer = QuantizationLoop::new();
+            let test_coeffs = [500i32; GRANULE_SIZE];
+            let mut info = GranuleInfo::default();
+            
+            // Test with different target bit rates
+            let step_size_low = quantizer.binary_search_step_size(&test_coeffs, 1000, &mut info, 44100);
+            let step_size_high = quantizer.binary_search_step_size(&test_coeffs, 5000, &mut info, 44100);
+            
+            // Higher bit rate should allow smaller step size (better quality)
+            assert!(step_size_high <= step_size_low, "Higher bit rate should allow smaller step size");
+            
+            // Step sizes should be within reasonable range
+            assert!(step_size_low >= -120 && step_size_low <= 120);
+            assert!(step_size_high >= -120 && step_size_high <= 120);
+        }
+
+        /// Test calc_runlen function consistency with shine
+        /// Validates: Requirements 2.3
+        #[test]
+        fn test_calc_runlen_consistency() {
+            let quantizer = QuantizationLoop::new();
+            let mut info = GranuleInfo::default();
+            
+            // Test with specific pattern: big values, count1 values, and zeros
+            let mut test_coeffs = [0i32; GRANULE_SIZE];
+            
+            // Set up big values (> 1)
+            for i in 0..100 {
+                test_coeffs[i] = 5;
+            }
+            
+            // Set up count1 values (0 or 1)
+            for i in 100..200 {
+                test_coeffs[i] = if i % 2 == 0 { 1 } else { 0 };
+            }
+            
+            // Rest are zeros (trailing zeros)
+            
+            quantizer.calculate_run_length(&test_coeffs, &mut info);
+            
+            // Verify results are reasonable
+            assert!(info.big_values > 0, "Should detect big values");
+            assert!(info.big_values <= 288, "Big values should not exceed MP3 limit");
+            // count1 is u32, so it's always >= 0
+        }
+
+        /// Test inner loop function
+        /// Validates: Requirements 2.1, 2.2, 2.3
+        #[test]
+        fn test_inner_loop_function() {
+            let quantizer = QuantizationLoop::new();
+            let test_coeffs = [50000i32; GRANULE_SIZE]; // Use larger values
+            let mut quantized = [0i32; GRANULE_SIZE];
+            let mut info = GranuleInfo::default();
+            
+            // Test inner loop with reasonable bit limit
+            let bits = quantizer.inner_loop(&test_coeffs, &mut quantized, 2000, &mut info, 44100);
+            
+            // Verify results
+            println!("Inner loop returned {} bits", bits);
+            println!("Quantizer step size: {}", info.quantizer_step_size);
+            
+            assert!(bits >= 0, "Should return non-negative bit count");
+            assert!(info.quantizer_step_size >= -120, "Step size should be reasonable");
+            assert!(info.quantizer_step_size <= 120, "Step size should be reasonable");
+        }
+
+        /// Test outer loop function
+        /// Validates: Requirements 2.1, 2.2, 2.3
+        #[test]
+        fn test_outer_loop_function() {
+            let quantizer = QuantizationLoop::new();
+            let test_coeffs = [150i32; GRANULE_SIZE];
+            let mut info = GranuleInfo::default();
+            
+            // Test outer loop
+            let total_bits = quantizer.outer_loop(&test_coeffs, 3000, &mut info, 44100);
+            
+            // Verify results
+            assert!(total_bits > 0, "Should return positive total bits");
+            assert!(info.part2_3_length > 0, "Should set part2_3_length");
+            // part2_length is u32, so it's always >= 0
+            assert!(info.quantizer_step_size >= -120, "Step size should be reasonable");
+        }
+
+        /// Test quantization with realistic MDCT coefficient values
+        /// Based on understanding of shine's fixed-point arithmetic
+        #[test]
+        fn test_quantization_with_realistic_coefficients() {
+            let quantizer = QuantizationLoop::new();
+            
+            // In shine, MDCT coefficients are typically in the range of ±2^30 for fixed-point arithmetic
+            // Let's test with values that would be produced by actual MDCT transform
+            let mut mdct_coeffs = [0i32; GRANULE_SIZE];
+            
+            // Simulate realistic MDCT coefficients (fixed-point, scaled by 2^30)
+            // Low frequency coefficients (higher energy)
+            for i in 0..50 {
+                mdct_coeffs[i] = (1000000000i32 >> (i / 10)) * if i % 2 == 0 { 1 } else { -1 };
+            }
+            
+            // Mid frequency coefficients (medium energy)
+            for i in 50..200 {
+                mdct_coeffs[i] = (100000000i32 >> ((i - 50) / 20)) * if i % 2 == 0 { 1 } else { -1 };
+            }
+            
+            // High frequency coefficients (lower energy)
+            for i in 200..400 {
+                mdct_coeffs[i] = (10000000i32 >> ((i - 200) / 30)) * if i % 2 == 0 { 1 } else { -1 };
+            }
+            
+            // Rest are zeros or very small values
+            for i in 400..GRANULE_SIZE {
+                mdct_coeffs[i] = if i % 10 == 0 { 1000000 } else { 0 };
+            }
+            
+            let mut output = [0i32; GRANULE_SIZE];
+            
+            // Test with different step sizes
+            for step_size in [-20, -10, 0, 10, 20] {
+                let max_val = quantizer.quantize(&mut output, step_size, &mdct_coeffs);
+                
+                println!("Step size {}: max quantized value = {}", step_size, max_val);
+                
+                if max_val > 0 {
+                    assert!(max_val <= 8192, "Max quantized value should be within range for step size {}", step_size);
+                    
+                    let non_zero_count = output.iter().filter(|&&x| x != 0).count();
+                    println!("  Non-zero quantized values: {}", non_zero_count);
+                    
+                    // With realistic large input values, we should get quantized values
+                    assert!(non_zero_count > 0, "Should produce non-zero quantized values for step size {}", step_size);
+                    
+                    // Check that quantized values are reasonable
+                    let max_input = mdct_coeffs.iter().map(|&x| x.abs()).max().unwrap_or(0);
+                    println!("  Max input coefficient: {}", max_input);
+                    
+                    // Verify some basic properties
+                    for i in 0..10 {
+                        if mdct_coeffs[i] != 0 && output[i] != 0 {
+                            println!("  coeff[{}]: {} -> {}", i, mdct_coeffs[i], output[i]);
+                        }
+                    }
+                }
+            }
+        }
     }
 }

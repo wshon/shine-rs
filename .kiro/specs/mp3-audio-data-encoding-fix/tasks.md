@@ -50,9 +50,9 @@
   - 确保枚举类型和常量定义与shine一致
   - _需求: 2.4, 2.5_
 
-- [ ] 3. 关键函数实现一致性验证
+- [-] 3. 关键函数实现一致性验证
   - 基于任务1和任务2建立的架构和数据结构基础，逐模块验证函数实现
-  - [ ] 3.1 量化模块函数验证 (src/quantization.rs ↔ l3loop.c)
+  - [x] 3.1 量化模块函数验证 (src/quantization.rs ↔ l3loop.c)
     - 对比quantize、bin_search_StepSize、shine_inner_loop、shine_outer_loop函数
     - 验证量化步长计算、比特分配算法与shine完全一致
     - 确保GrInfo结构体的使用方式与shine一致

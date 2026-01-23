@@ -5,7 +5,9 @@
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rust_mp3_encoder::{Mp3Encoder, Config};
-use rust_mp3_encoder::mdct::MdctTransform;
+use rust_mp3_encoder::config::{WaveConfig, MpegConfig, StereoMode, Emphasis};
+use rust_mp3_encoder::shine_config::ShineGlobalConfig;
+use rust_mp3_encoder::mdct::shine_mdct_sub;
 
 fn benchmark_encoder_creation(c: &mut Criterion) {
     c.bench_function("encoder_creation", |b| {
@@ -26,54 +28,46 @@ fn benchmark_config_validation(c: &mut Criterion) {
     });
 }
 
+fn create_test_config() -> ShineGlobalConfig {
+    let config = Config {
+        wave: WaveConfig {
+            channels: rust_mp3_encoder::config::Channels::Stereo,
+            sample_rate: 44100,
+        },
+        mpeg: MpegConfig {
+            mode: StereoMode::Stereo,
+            bitrate: 128,
+            emphasis: Emphasis::None,
+            copyright: false,
+            original: true,
+        },
+    };
+    
+    let mut shine_config = ShineGlobalConfig::new(config).unwrap();
+    shine_config.initialize().unwrap();
+    shine_config
+}
+
 fn benchmark_mdct_transform(c: &mut Criterion) {
-    let mdct = MdctTransform::new();
-    let input = [[1000i32; 32]; 36]; // Realistic test data
+    let mut config = create_test_config();
+    
+    // Fill with realistic test data
+    for ch in 0..2 {
+        for gr in 0..2 {
+            for t in 0..18 {
+                for sb in 0..32 {
+                    config.l3_sb_sample[ch][gr][t][sb] = 1000;
+                    config.l3_sb_sample[ch][gr + 1][t][sb] = 1000;
+                }
+            }
+        }
+    }
     
     c.bench_function("mdct_transform", |b| {
         b.iter(|| {
-            let mut output = [0i32; 576];
-            mdct.transform(black_box(&input), black_box(&mut output)).unwrap();
-            black_box(output);
-        })
-    });
-}
-
-fn benchmark_mdct_transform_fast(c: &mut Criterion) {
-    let mdct = MdctTransform::new();
-    let input = [[1000i32; 32]; 36]; // Realistic test data
-    
-    c.bench_function("mdct_transform_fast", |b| {
-        b.iter(|| {
-            let mut output = [0i32; 576];
-            mdct.transform_fast(black_box(&input), black_box(&mut output)).unwrap();
-            black_box(output);
-        })
-    });
-}
-
-fn benchmark_aliasing_reduction(c: &mut Criterion) {
-    let mdct = MdctTransform::new();
-    let coeffs = [1000i32; 576]; // Realistic test data
-    
-    c.bench_function("aliasing_reduction", |b| {
-        b.iter(|| {
-            let mut test_coeffs = coeffs;
-            mdct.apply_aliasing_reduction(black_box(&mut test_coeffs)).unwrap();
-            black_box(test_coeffs);
-        })
-    });
-}
-
-fn benchmark_mdct_batch_transform(c: &mut Criterion) {
-    let mdct = MdctTransform::new();
-    let inputs = vec![[[1000i32; 32]; 36]; 10]; // 10 frames
-    
-    c.bench_function("mdct_batch_transform", |b| {
-        b.iter(|| {
-            let mut outputs = vec![[0i32; 576]; 10];
-            mdct.transform_batch(black_box(&inputs), black_box(&mut outputs)).unwrap();
-            black_box(outputs);
+            let mut test_config = config.clone();
+            shine_mdct_sub(black_box(&mut test_config), black_box(1));
+            black_box(test_config.mdct_freq);
         })
     });
 }
@@ -82,9 +76,6 @@ criterion_group!(
     benches, 
     benchmark_encoder_creation, 
     benchmark_config_validation,
-    benchmark_mdct_transform,
-    benchmark_mdct_transform_fast,
-    benchmark_aliasing_reduction,
-    benchmark_mdct_batch_transform
+    benchmark_mdct_transform
 );
 criterion_main!(benches);

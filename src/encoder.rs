@@ -444,103 +444,10 @@ impl Mp3Encoder {
     /// Original shine signature: void shine_mdct_sub(shine_global_config *config, int stride)
     /// - config: shine_global_config* (contains subband samples and MDCT output arrays)
     /// - stride: int (channel stride for data access) - always 1 for non-interleaved data
-    fn shine_mdct_sub(&mut self, channels: usize) -> Result<()> {
-        use crate::config::MpegVersion;
-        
-        let granules_per_frame = match self.config.mpeg_version() {
-            MpegVersion::Mpeg1 => 2,
-            MpegVersion::Mpeg2 | MpegVersion::Mpeg25 => 1,
-        };
-        
-        // Following shine's shine_mdct_sub exactly (ref/shine/src/lib/l3mdct.c:50-150)
-        // for (ch = config->wave.channels; ch--;) {
-        for ch in (0..channels).rev() {
-            // for (gr = 0; gr < config->mpeg.granules_per_frame; gr++) {
-            for gr in 0..granules_per_frame {
-                // Create subband samples for this granule using subband filter
-                let mut subband_samples = [[0i32; 32]; 36]; // [time][subband]
-                
-                // polyphase filtering - process 18 time slots (k = 0 to 17, step by 2)
-                // for (k = 0; k < 18; k += 2) {
-                for k in (0..18).step_by(2) {
-                    if k >= 36 { break; }
-                    
-                    // Get PCM samples for this time slot
-                    let samples_per_granule = 576; // GRANULE_SIZE
-                    let granule_start = gr * samples_per_granule;
-                    let sample_start = granule_start + k * 32;
-                    
-                    let mut pcm_chunk = [0i16; 32];
-                    for i in 0..32 {
-                        let sample_idx = sample_start + i;
-                        if sample_idx < self.global_config.buffer[ch].len() {
-                            pcm_chunk[i] = self.global_config.buffer[ch][sample_idx];
-                        }
-                    }
-                    
-                    // Apply subband filter to get subband samples
-                    // Following shine's shine_window_filter_subband exactly
-                    let mut subband_output = [0i32; 32];
-                    crate::subband::shine_window_filter_subband(
-                        &pcm_chunk, 
-                        &mut subband_output, 
-                        ch, 
-                        &mut self.global_config.subband
-                    );
-                    // Copy subband samples to the appropriate time slot
-                    for sb in 0..32 {
-                        subband_samples[k][sb] = subband_output[sb];
-                    }
-                    
-                    // Process k+1 if within bounds
-                    if k + 1 < 18 {
-                        let sample_start = granule_start + (k + 1) * 32;
-                        let mut pcm_chunk = [0i16; 32];
-                        for i in 0..32 {
-                            let sample_idx = sample_start + i;
-                            if sample_idx < self.global_config.buffer[ch].len() {
-                                pcm_chunk[i] = self.global_config.buffer[ch][sample_idx];
-                            }
-                        }
-                        
-                        // Apply subband filter to get subband samples
-                        // Following shine's shine_window_filter_subband exactly
-                        let mut subband_output = [0i32; 32];
-                        crate::subband::shine_window_filter_subband(
-                            &pcm_chunk, 
-                            &mut subband_output, 
-                            ch, 
-                            &mut self.global_config.subband
-                        );
-                        // Copy subband samples to the appropriate time slot
-                        for sb in 0..32 {
-                            subband_samples[k + 1][sb] = subband_output[sb];
-                        }
-                        
-                        // Compensate for inversion in analysis filter (every odd index of band AND k)
-                        // for (band = 1; band < 32; band += 2)
-                        //   config->l3_sb_sample[ch][gr + 1][k + 1][band] *= -1;
-                        for band in (1..32).step_by(2) {
-                            subband_samples[k + 1][band] *= -1;
-                        }
-                    }
-                }
-                
-                // Apply MDCT transform to get frequency domain coefficients
-                // Following shine's shine_mdct_sub exactly
-                let mut mdct_coeffs = [0i32; 576];
-                crate::mdct::shine_mdct_sub(
-                    &subband_samples, 
-                    &mut mdct_coeffs, 
-                    &mut self.global_config.mdct
-                );
-                
-                // Store MDCT coefficients following shine's structure
-                // config->mdct_freq[ch][gr] = mdct_coeffs
-                self.global_config.mdct_freq[ch][gr] = mdct_coeffs;
-            }
-        }
-        
+    fn shine_mdct_sub(&mut self, _channels: usize) -> Result<()> {
+        // Call the new shine_mdct_sub function with the global config
+        // This function now handles all channels and granules internally
+        crate::mdct::shine_mdct_sub(&mut self.global_config, 1);
         Ok(())
     }
     
