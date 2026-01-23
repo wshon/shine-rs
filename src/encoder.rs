@@ -93,7 +93,12 @@ impl Mp3Encoder {
         }
         
         self.prepare_frame();
-        self.deinterleave_pcm(pcm_data, channels, samples_per_frame);
+        pcm_utils::deinterleave_pcm_non_interleaved(
+            pcm_data, 
+            channels, 
+            samples_per_frame, 
+            &mut self.global_config.buffer[..channels]
+        );
         self.samples_in_buffer = 0;
         self.encode_frame_pipeline(channels, samples_per_frame)
     }
@@ -112,7 +117,12 @@ impl Mp3Encoder {
         }
         
         self.prepare_frame();
-        self.deinterleave_pcm_interleaved(pcm_data, channels, samples_per_frame);
+        pcm_utils::deinterleave_pcm_interleaved(
+            pcm_data, 
+            channels, 
+            samples_per_frame, 
+            &mut self.global_config.buffer[..channels]
+        );
         self.samples_in_buffer = 0;
         self.encode_frame_pipeline(channels, samples_per_frame)
     }
@@ -228,26 +238,6 @@ impl Mp3Encoder {
         self.global_config.bs.reset();
     }
     
-    /// De-interleave non-interleaved PCM data into channel buffers
-    fn deinterleave_pcm(&mut self, pcm_data: &[i16], channels: usize, samples_per_frame: usize) {
-        pcm_utils::deinterleave_pcm_non_interleaved(
-            pcm_data, 
-            channels, 
-            samples_per_frame, 
-            &mut self.global_config.buffer[..channels]
-        );
-    }
-    
-    /// De-interleave interleaved PCM data into channel buffers
-    fn deinterleave_pcm_interleaved(&mut self, pcm_data: &[i16], channels: usize, samples_per_frame: usize) {
-        pcm_utils::deinterleave_pcm_interleaved(
-            pcm_data, 
-            channels, 
-            samples_per_frame, 
-            &mut self.global_config.buffer[..channels]
-        );
-    }
-    
     /// Main encoding pipeline following shine's encode_buffer_internal
     fn encode_frame_pipeline(&mut self, channels: usize, _samples_per_frame: usize) -> Result<&[u8]> {
         // Step 1: Padding calculation
@@ -279,7 +269,7 @@ impl Mp3Encoder {
         let _mean_bits = (bits_per_frame - sideinfo_len) / granules_per_frame;
         
         // Step 4: Apply MDCT transform
-        self.shine_mdct_sub(channels)?;
+        crate::mdct::shine_mdct_sub(&mut self.global_config, 1);
         
         // Step 5: Bit and noise allocation
         let (granule_info, quantized_coeffs) = self.quantization_loop.encode_granules(
@@ -314,12 +304,6 @@ impl Mp3Encoder {
         self.global_config.bs.reset();
         
         Ok(&self.frame_buffer)
-    }
-    
-    /// Apply MDCT transform to polyphase output
-    fn shine_mdct_sub(&mut self, _channels: usize) -> Result<()> {
-        crate::mdct::shine_mdct_sub(&mut self.global_config, 1);
-        Ok(())
     }
     
 }
@@ -514,8 +498,8 @@ mod tests {
         
         let mut encoder = Mp3Encoder::new(config).unwrap();
         
-        let pcm_data1: Vec<i16> = (0..1152).map(|i| ((i % 100) as i16 * 10)).collect();
-        let pcm_data2: Vec<i16> = (0..1152).map(|i| ((i % 200) as i16 * 20)).collect();
+        let pcm_data1: Vec<i16> = (0..1152).map(|i| (i % 100) as i16 * 10).collect();
+        let pcm_data2: Vec<i16> = (0..1152).map(|i| (i % 200) as i16 * 20).collect();
         
         let result1 = encoder.encode_frame(&pcm_data1);
         assert!(result1.is_ok(), "First encoding should succeed");
