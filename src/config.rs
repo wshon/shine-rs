@@ -255,6 +255,23 @@ impl From<Channels> for usize {
     }
 }
 
+impl From<Channels> for i32 {
+    fn from(channels: Channels) -> Self {
+        channels as i32
+    }
+}
+
+impl From<StereoMode> for i32 {
+    fn from(mode: StereoMode) -> Self {
+        match mode {
+            StereoMode::Stereo => 0,
+            StereoMode::JointStereo => 1,
+            StereoMode::DualChannel => 2,
+            StereoMode::Mono => 3,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

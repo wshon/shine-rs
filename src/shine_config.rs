@@ -129,7 +129,7 @@ impl Default for ShineSideInfo {
             private_bits: 0,
             resv_drain: 0,
             scfsi: [[0; 4]; MAX_CHANNELS],
-            gr: [[GranuleChannel::default(); MAX_CHANNELS]; MAX_GRANULES],
+            gr: core::array::from_fn(|_| core::array::from_fn(|_| GranuleChannel::default())),
         }
     }
 }
