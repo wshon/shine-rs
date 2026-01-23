@@ -173,7 +173,8 @@ impl QuantizationLoop {
                 // Following shine: outside table range so have to do it using floats
                 // Original shine: scale = config->l3loop.steptab[stepsize + 127]; /* 2**(-stepsize/4) */
                 let scale = self.step_table[step_index];
-                let dbl = (abs_coeff as f64) * (scale as f64) * 4.656612875e-10; // 0x7fffffff
+                // Original shine: dbl = ((double)config->l3loop.xrabs[i]) * scale * 4.656612875e-10; /* 0x7fffffff */
+                let dbl = (abs_coeff as f64) * (scale as f64) * (1.0 / 0x7fffffff as f64);
                 (dbl.sqrt().sqrt() * dbl.sqrt()) as i32 // dbl^(3/4)
             };
             

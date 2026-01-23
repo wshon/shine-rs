@@ -7,6 +7,7 @@
 
 use crate::error::{EncodingResult, EncodingError};
 use std::f64::consts::PI;
+use lazy_static::lazy_static;
 
 /// PI/36 constant from shine (ref/shine/src/lib/types.h)
 const PI36: f64 = PI / 36.0;
@@ -27,25 +28,39 @@ pub struct MdctTransform {
 /// #define MDCT_CA(coef) (int32_t)(coef / sqrt(1.0 + (coef * coef)) * 0x7fffffff)
 /// #define MDCT_CS(coef) (int32_t)(1.0 / sqrt(1.0 + (coef * coef)) * 0x7fffffff)
 
-// MDCT_CA0 through MDCT_CA7 - precomputed values to avoid const fn issues
-const MDCT_CA0: i32 = -1073741824; // Precomputed: (-0.6) / sqrt(1.0 + (-0.6)^2) * 0x7fffffff
-const MDCT_CA1: i32 = -1006632960; // Precomputed: (-0.535) / sqrt(1.0 + (-0.535)^2) * 0x7fffffff  
-const MDCT_CA2: i32 = -715827883;  // Precomputed: (-0.33) / sqrt(1.0 + (-0.33)^2) * 0x7fffffff
-const MDCT_CA3: i32 = -390451572;  // Precomputed: (-0.185) / sqrt(1.0 + (-0.185)^2) * 0x7fffffff
-const MDCT_CA4: i32 = -201326592;  // Precomputed: (-0.095) / sqrt(1.0 + (-0.095)^2) * 0x7fffffff
-const MDCT_CA5: i32 = -87381472;   // Precomputed: (-0.041) / sqrt(1.0 + (-0.041)^2) * 0x7fffffff
-const MDCT_CA6: i32 = -30408704;   // Precomputed: (-0.0142) / sqrt(1.0 + (-0.0142)^2) * 0x7fffffff
-const MDCT_CA7: i32 = -7962624;    // Precomputed: (-0.0037) / sqrt(1.0 + (-0.0037)^2) * 0x7fffffff
+/// Calculate MDCT_CA coefficient exactly as in shine's macro
+/// Original shine: #define MDCT_CA(coef) (int32_t)(coef / sqrt(1.0 + (coef * coef)) * 0x7fffffff)
+fn mdct_ca(coef: f64) -> i32 {
+    ((coef / (1.0 + (coef * coef)).sqrt()) * 0x7fffffff as f64) as i32
+}
 
-// MDCT_CS0 through MDCT_CS7 - precomputed values to avoid const fn issues
-const MDCT_CS0: i32 = 1610612736;  // Precomputed: 1.0 / sqrt(1.0 + (-0.6)^2) * 0x7fffffff
-const MDCT_CS1: i32 = 1859775393;  // Precomputed: 1.0 / sqrt(1.0 + (-0.535)^2) * 0x7fffffff
-const MDCT_CS2: i32 = 2040109465;  // Precomputed: 1.0 / sqrt(1.0 + (-0.33)^2) * 0x7fffffff
-const MDCT_CS3: i32 = 2130706432;  // Precomputed: 1.0 / sqrt(1.0 + (-0.185)^2) * 0x7fffffff
-const MDCT_CS4: i32 = 2143289344;  // Precomputed: 1.0 / sqrt(1.0 + (-0.095)^2) * 0x7fffffff
-const MDCT_CS5: i32 = 2147450880;  // Precomputed: 1.0 / sqrt(1.0 + (-0.041)^2) * 0x7fffffff
-const MDCT_CS6: i32 = 2147483136;  // Precomputed: 1.0 / sqrt(1.0 + (-0.0142)^2) * 0x7fffffff
-const MDCT_CS7: i32 = 2147483616;  // Precomputed: 1.0 / sqrt(1.0 + (-0.0037)^2) * 0x7fffffff
+/// Calculate MDCT_CS coefficient exactly as in shine's macro
+/// Original shine: #define MDCT_CS(coef) (int32_t)(1.0 / sqrt(1.0 + (coef * coef)) * 0x7fffffff)
+fn mdct_cs(coef: f64) -> i32 {
+    ((1.0 / (1.0 + (coef * coef)).sqrt()) * 0x7fffffff as f64) as i32
+}
+
+// MDCT aliasing reduction coefficients calculated using shine's exact macros
+// These are computed once at runtime using the exact shine formulas
+lazy_static! {
+    static ref MDCT_CA0: i32 = mdct_ca(-0.6);
+    static ref MDCT_CA1: i32 = mdct_ca(-0.535);
+    static ref MDCT_CA2: i32 = mdct_ca(-0.33);
+    static ref MDCT_CA3: i32 = mdct_ca(-0.185);
+    static ref MDCT_CA4: i32 = mdct_ca(-0.095);
+    static ref MDCT_CA5: i32 = mdct_ca(-0.041);
+    static ref MDCT_CA6: i32 = mdct_ca(-0.0142);
+    static ref MDCT_CA7: i32 = mdct_ca(-0.0037);
+    
+    static ref MDCT_CS0: i32 = mdct_cs(-0.6);
+    static ref MDCT_CS1: i32 = mdct_cs(-0.535);
+    static ref MDCT_CS2: i32 = mdct_cs(-0.33);
+    static ref MDCT_CS3: i32 = mdct_cs(-0.185);
+    static ref MDCT_CS4: i32 = mdct_cs(-0.095);
+    static ref MDCT_CS5: i32 = mdct_cs(-0.041);
+    static ref MDCT_CS6: i32 = mdct_cs(-0.0142);
+    static ref MDCT_CS7: i32 = mdct_cs(-0.0037);
+}
 
 impl MdctTransform {
     /// Create a new MDCT transform with precomputed cosine tables
@@ -160,14 +175,14 @@ impl MdctTransform {
             if let Some(prev_coeffs) = prev_band_coeffs {
                 // Apply butterfly operations for each of the 8 aliasing coefficients
                 // Following shine's cmuls calls exactly
-                let (new_curr0, new_prev0) = Self::cmuls(mdct_out[0], 0, MDCT_CS0, MDCT_CA0);
-                let (new_curr1, new_prev1) = Self::cmuls(mdct_out[1], 0, MDCT_CS1, MDCT_CA1);
-                let (new_curr2, new_prev2) = Self::cmuls(mdct_out[2], 0, MDCT_CS2, MDCT_CA2);
-                let (new_curr3, new_prev3) = Self::cmuls(mdct_out[3], 0, MDCT_CS3, MDCT_CA3);
-                let (new_curr4, new_prev4) = Self::cmuls(mdct_out[4], 0, MDCT_CS4, MDCT_CA4);
-                let (new_curr5, new_prev5) = Self::cmuls(mdct_out[5], 0, MDCT_CS5, MDCT_CA5);
-                let (new_curr6, new_prev6) = Self::cmuls(mdct_out[6], 0, MDCT_CS6, MDCT_CA6);
-                let (new_curr7, new_prev7) = Self::cmuls(mdct_out[7], 0, MDCT_CS7, MDCT_CA7);
+                let (new_curr0, new_prev0) = Self::cmuls(mdct_out[0], 0, *MDCT_CS0, *MDCT_CA0);
+                let (new_curr1, new_prev1) = Self::cmuls(mdct_out[1], 0, *MDCT_CS1, *MDCT_CA1);
+                let (new_curr2, new_prev2) = Self::cmuls(mdct_out[2], 0, *MDCT_CS2, *MDCT_CA2);
+                let (new_curr3, new_prev3) = Self::cmuls(mdct_out[3], 0, *MDCT_CS3, *MDCT_CA3);
+                let (new_curr4, new_prev4) = Self::cmuls(mdct_out[4], 0, *MDCT_CS4, *MDCT_CA4);
+                let (new_curr5, new_prev5) = Self::cmuls(mdct_out[5], 0, *MDCT_CS5, *MDCT_CA5);
+                let (new_curr6, new_prev6) = Self::cmuls(mdct_out[6], 0, *MDCT_CS6, *MDCT_CA6);
+                let (new_curr7, new_prev7) = Self::cmuls(mdct_out[7], 0, *MDCT_CS7, *MDCT_CA7);
                 
                 // Update coefficients
                 mdct_out[0] = new_curr0;
@@ -270,14 +285,14 @@ impl MdctTransform {
                 
                 // Apply butterfly operations for each of the 8 aliasing coefficients
                 // Following shine's cmuls calls exactly
-                let (new_curr0, new_prev0) = Self::cmuls(output[band_offset + 0], 0, MDCT_CS0, MDCT_CA0);
-                let (new_curr1, new_prev1) = Self::cmuls(output[band_offset + 1], 0, MDCT_CS1, MDCT_CA1);
-                let (new_curr2, new_prev2) = Self::cmuls(output[band_offset + 2], 0, MDCT_CS2, MDCT_CA2);
-                let (new_curr3, new_prev3) = Self::cmuls(output[band_offset + 3], 0, MDCT_CS3, MDCT_CA3);
-                let (new_curr4, new_prev4) = Self::cmuls(output[band_offset + 4], 0, MDCT_CS4, MDCT_CA4);
-                let (new_curr5, new_prev5) = Self::cmuls(output[band_offset + 5], 0, MDCT_CS5, MDCT_CA5);
-                let (new_curr6, new_prev6) = Self::cmuls(output[band_offset + 6], 0, MDCT_CS6, MDCT_CA6);
-                let (new_curr7, new_prev7) = Self::cmuls(output[band_offset + 7], 0, MDCT_CS7, MDCT_CA7);
+                let (new_curr0, new_prev0) = Self::cmuls(output[band_offset + 0], 0, *MDCT_CS0, *MDCT_CA0);
+                let (new_curr1, new_prev1) = Self::cmuls(output[band_offset + 1], 0, *MDCT_CS1, *MDCT_CA1);
+                let (new_curr2, new_prev2) = Self::cmuls(output[band_offset + 2], 0, *MDCT_CS2, *MDCT_CA2);
+                let (new_curr3, new_prev3) = Self::cmuls(output[band_offset + 3], 0, *MDCT_CS3, *MDCT_CA3);
+                let (new_curr4, new_prev4) = Self::cmuls(output[band_offset + 4], 0, *MDCT_CS4, *MDCT_CA4);
+                let (new_curr5, new_prev5) = Self::cmuls(output[band_offset + 5], 0, *MDCT_CS5, *MDCT_CA5);
+                let (new_curr6, new_prev6) = Self::cmuls(output[band_offset + 6], 0, *MDCT_CS6, *MDCT_CA6);
+                let (new_curr7, new_prev7) = Self::cmuls(output[band_offset + 7], 0, *MDCT_CS7, *MDCT_CA7);
                 
                 // Update coefficients
                 output[band_offset + 0] = new_curr0;
