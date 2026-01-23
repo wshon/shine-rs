@@ -21,18 +21,6 @@ path = "src/bin/mp3_hexdump.rs"
 name = "wav2mp3"
 path = "src/bin/wav2mp3.rs"
 
-[[bin]]
-name = "debug_encoder"
-path = "src/bin/debug_encoder.rs"
-
-[[bin]]
-name = "deep_debug"
-path = "src/bin/deep_debug.rs"
-
-[[bin]]
-name = "big_values_debug"
-path = "src/bin/big_values_debug.rs"
-
 [dependencies]
 thiserror = "1.0"
 lazy_static = "1.4"
