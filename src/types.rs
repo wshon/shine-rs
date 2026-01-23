@@ -310,12 +310,12 @@ pub struct ShineGlobalConfig {
     pub sideinfo_len: i32,
     pub mean_bits: i32,
     pub ratio: ShinePsyRatio,
-    pub scalefactor: ShineScalefac,
+    pub scalefactor: Box<ShineScalefac>,  // Move to heap
     pub buffer: [*mut i16; MAX_CHANNELS],
-    pub pe: [[f64; MAX_GRANULES]; MAX_CHANNELS],
-    pub l3_enc: [[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS],
-    pub l3_sb_sample: [[[[i32; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS],
-    pub mdct_freq: [[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS],
+    pub pe: Box<[[f64; MAX_GRANULES]; MAX_CHANNELS]>,  // Move to heap
+    pub l3_enc: Box<[[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]>,  // Move to heap
+    pub l3_sb_sample: Box<[[[[i32; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS]>,  // Move to heap
+    pub mdct_freq: Box<[[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]>,  // Move to heap
     pub resv_size: i32,
     pub resv_max: i32,
     pub l3loop: L3Loop,
@@ -357,12 +357,12 @@ impl ShineGlobalConfig {
             sideinfo_len: 0,
             mean_bits: 0,
             ratio: ShinePsyRatio::default(),
-            scalefactor: ShineScalefac::default(),
+            scalefactor: Box::new(ShineScalefac::default()),  // Allocate on heap
             buffer: [std::ptr::null_mut(); MAX_CHANNELS],
-            pe: [[0.0; MAX_GRANULES]; MAX_CHANNELS],
-            l3_enc: [[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS],
-            l3_sb_sample: [[[[0; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS],
-            mdct_freq: [[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS],
+            pe: Box::new([[0.0; MAX_GRANULES]; MAX_CHANNELS]),  // Allocate on heap
+            l3_enc: Box::new([[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]),  // Allocate on heap
+            l3_sb_sample: Box::new([[[[0; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS]),  // Allocate on heap
+            mdct_freq: Box::new([[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]),  // Allocate on heap
             resv_size: 0,
             resv_max: 0,
             l3loop: L3Loop::default(),
