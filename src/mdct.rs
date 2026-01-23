@@ -5,9 +5,10 @@
 //! The implementation strictly follows the shine reference implementation
 //! in ref/shine/src/lib/l3mdct.c
 
-use crate::shine_config::{ShineGlobalConfig, MAX_CHANNELS, MAX_GRANULES, GRANULE_SIZE, SBLIMIT};
-use crate::subband::window_filter_subband;
+use crate::types::{ShineGlobalConfig, MAX_CHANNELS, MAX_GRANULES, GRANULE_SIZE, SBLIMIT};
+use crate::subband::shine_window_filter_subband;
 use std::f64::consts::PI;
+use lazy_static::lazy_static;
 
 /// PI/36 constant for MDCT calculations (matches shine PI36)
 const PI36: f64 = PI / 36.0;
@@ -28,25 +29,27 @@ const fn mdct_cs(coef: f64) -> i32 {
     (1.0 / (1.0 + coef * coef).sqrt() * 0x7fffffff as f64) as i32
 }
 
-/// Aliasing reduction CA coefficients (matches shine MDCT_CA0-7)
-const MDCT_CA0: i32 = mdct_ca(-0.6);
-const MDCT_CA1: i32 = mdct_ca(-0.535);
-const MDCT_CA2: i32 = mdct_ca(-0.33);
-const MDCT_CA3: i32 = mdct_ca(-0.185);
-const MDCT_CA4: i32 = mdct_ca(-0.095);
-const MDCT_CA5: i32 = mdct_ca(-0.041);
-const MDCT_CA6: i32 = mdct_ca(-0.0142);
-const MDCT_CA7: i32 = mdct_ca(-0.0037);
-
-/// Aliasing reduction CS coefficients (matches shine MDCT_CS0-7)
-const MDCT_CS0: i32 = mdct_cs(-0.6);
-const MDCT_CS1: i32 = mdct_cs(-0.535);
-const MDCT_CS2: i32 = mdct_cs(-0.33);
-const MDCT_CS3: i32 = mdct_cs(-0.185);
-const MDCT_CS4: i32 = mdct_cs(-0.095);
-const MDCT_CS5: i32 = mdct_cs(-0.041);
-const MDCT_CS6: i32 = mdct_cs(-0.0142);
-const MDCT_CS7: i32 = mdct_cs(-0.0037);
+lazy_static! {
+    /// Aliasing reduction CA coefficients (matches shine MDCT_CA0-7)
+    static ref MDCT_CA0: i32 = mdct_ca(-0.6);
+    static ref MDCT_CA1: i32 = mdct_ca(-0.535);
+    static ref MDCT_CA2: i32 = mdct_ca(-0.33);
+    static ref MDCT_CA3: i32 = mdct_ca(-0.185);
+    static ref MDCT_CA4: i32 = mdct_ca(-0.095);
+    static ref MDCT_CA5: i32 = mdct_ca(-0.041);
+    static ref MDCT_CA6: i32 = mdct_ca(-0.0142);
+    static ref MDCT_CA7: i32 = mdct_ca(-0.0037);
+    
+    /// Aliasing reduction CS coefficients (matches shine MDCT_CS0-7)
+    static ref MDCT_CS0: i32 = mdct_cs(-0.6);
+    static ref MDCT_CS1: i32 = mdct_cs(-0.535);
+    static ref MDCT_CS2: i32 = mdct_cs(-0.33);
+    static ref MDCT_CS3: i32 = mdct_cs(-0.185);
+    static ref MDCT_CS4: i32 = mdct_cs(-0.095);
+    static ref MDCT_CS5: i32 = mdct_cs(-0.041);
+    static ref MDCT_CS6: i32 = mdct_cs(-0.0142);
+    static ref MDCT_CS7: i32 = mdct_cs(-0.0037);
+}
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations
 

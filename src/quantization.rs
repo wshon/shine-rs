@@ -7,8 +7,8 @@
 //! The implementation strictly follows the shine reference implementation
 //! in ref/shine/src/lib/l3loop.c
 
-use crate::shine_config::{ShineGlobalConfig, MAX_CHANNELS, MAX_GRANULES, GRANULE_SIZE, SBLIMIT};
-use crate::tables::{SCALE_FACT_BAND_INDEX, SLEN1_TAB, SLEN2_TAB, HUFFMAN_TABLES, COUNT1_TABLES};
+use crate::types::{ShineGlobalConfig, MAX_CHANNELS, MAX_GRANULES, GRANULE_SIZE, SBLIMIT};
+use crate::tables::{SHINE_SCALE_FACT_BAND_INDEX, SHINE_SLEN1_TAB, SHINE_SLEN2_TAB};
 use crate::reservoir::shine_max_reservoir_bits;
 use std::f64::consts::LN_2;
 

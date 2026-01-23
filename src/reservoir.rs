@@ -3,7 +3,7 @@
 //! Layer3 bit reservoir: Described in C.1.5.4.2.2 of the IS
 //! This module implements shine's reservoir.c functions exactly
 
-use crate::shine_config::ShineGlobalConfig;
+use crate::types::ShineGlobalConfig;
 use crate::quantization::GranuleInfo;
 
 /// Get maximum reservoir bits for current granule
@@ -103,7 +103,7 @@ pub fn shine_resv_frame_end(config: &mut ShineGlobalConfig) {
          */
         let gi = &mut l3_side.gr[0][0].tt;
 
-        if gi.part2_3_length + stuffing_bits as u32 < 4095 {
+        if gi.part2_3_length + (stuffing_bits as u32) < 4095 {
             gi.part2_3_length += stuffing_bits as u32;
         } else {
             // plan b: distribute throughout the granules

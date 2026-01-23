@@ -4,11 +4,10 @@
 //! in shine's layer3.c. It provides the primary interface for MP3 encoding
 //! including initialization, configuration, and encoding operations.
 
-use crate::error::{ConfigError, EncodingError, EncodingResult};
-use crate::types::{ShineGlobalConfig, PrivShineWave, PrivShineMpeg, ShineSideInfo, GRANULE_SIZE, MAX_CHANNELS};
+use crate::error::{EncodingError, EncodingResult};
+use crate::types::{ShineGlobalConfig, ShineSideInfo, GRANULE_SIZE};
 use crate::tables::{SAMPLERATES, BITRATES};
 use crate::bitstream::BitstreamWriter;
-use std::ptr;
 
 /// Buffer size for bitstream (matches shine BUFFER_SIZE)
 /// (ref/shine/src/lib/bitstream.h:19)
@@ -207,7 +206,7 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 
 /// Internal encoding function (matches shine_encode_buffer_internal)
 /// (ref/shine/src/lib/layer3.c:136-158)
-fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
+fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, _stride: i32) -> EncodingResult<(&[u8], usize)> {
     if config.mpeg.frac_slots_per_frame != 0.0 {
         config.mpeg.padding = if config.mpeg.slot_lag <= (config.mpeg.frac_slots_per_frame - 1.0) { 1 } else { 0 };
         config.mpeg.slot_lag += config.mpeg.padding as f64 - config.mpeg.frac_slots_per_frame;
@@ -234,7 +233,7 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
 
 /// Encode buffer with separate channel arrays (matches shine_encode_buffer)
 /// (ref/shine/src/lib/layer3.c:160-167)
-pub fn shine_encode_buffer(config: &mut ShineGlobalConfig, data: &[*const i16]) -> EncodingResult<(&[u8], usize)> {
+pub fn shine_encode_buffer<'a>(config: &'a mut ShineGlobalConfig, data: &[*const i16]) -> EncodingResult<(&'a [u8], usize)> {
     config.buffer[0] = data[0] as *mut i16;
     if config.wave.channels == 2 {
         config.buffer[1] = data[1] as *mut i16;
@@ -245,7 +244,7 @@ pub fn shine_encode_buffer(config: &mut ShineGlobalConfig, data: &[*const i16]) 
 
 /// Encode buffer with interleaved channels (matches shine_encode_buffer_interleaved)
 /// (ref/shine/src/lib/layer3.c:169-176)
-pub fn shine_encode_buffer_interleaved(config: &mut ShineGlobalConfig, data: *const i16) -> EncodingResult<(&[u8], usize)> {
+pub fn shine_encode_buffer_interleaved<'a>(config: &'a mut ShineGlobalConfig, data: *const i16) -> EncodingResult<(&'a [u8], usize)> {
     config.buffer[0] = data as *mut i16;
     if config.wave.channels == 2 {
         unsafe {
@@ -267,7 +266,7 @@ pub fn shine_flush(config: &mut ShineGlobalConfig) -> (&[u8], usize) {
 
 /// Close encoder and free resources (matches shine_close)
 /// (ref/shine/src/lib/layer3.c:185-188)
-pub fn shine_close(config: Box<ShineGlobalConfig>) {
+pub fn shine_close(_config: Box<ShineGlobalConfig>) {
     // shine_close_bit_stream(&config->bs);
     // free(config);
     // In Rust, the Box will be automatically dropped
