@@ -276,7 +276,7 @@ impl Mp3Encoder {
         } else {
             8 * if channels == 1 { 4 + 9 } else { 4 + 17 }
         };
-        let mean_bits = (bits_per_frame - sideinfo_len) / granules_per_frame;
+        let _mean_bits = (bits_per_frame - sideinfo_len) / granules_per_frame;
         
         // Step 4: Apply MDCT transform
         self.shine_mdct_sub(channels)?;
@@ -300,7 +300,12 @@ impl Mp3Encoder {
         }
         
         // Step 6: Format bitstream
-        self.shine_format_bitstream(padding, target_frame_bytes)?;
+        self.global_config.bs.format_frame(
+            &self.config,
+            &self.current_granule_info,
+            padding,
+            target_frame_bytes,
+        )?;
         
         // Step 7: Return encoded data
         let encoded_data = self.global_config.bs.flush();
@@ -317,68 +322,6 @@ impl Mp3Encoder {
         Ok(())
     }
     
-    /// Format and write the bitstream
-    fn shine_format_bitstream(&mut self, padding: bool, target_frame_bytes: usize) -> Result<()> {
-        use crate::config::MpegVersion;
-        
-        let granules_per_frame = match self.config.mpeg_version() {
-            MpegVersion::Mpeg1 => 2,
-            MpegVersion::Mpeg2 | MpegVersion::Mpeg25 => 1,
-        };
-        let channels = self.global_config.wave.channels as usize;
-        
-        self.encode_side_info(padding)?;
-        self.encode_main_data(granules_per_frame, channels, target_frame_bytes)?;
-        
-        Ok(())
-    }
-    
-    /// Encode side information
-    fn encode_side_info(&mut self, padding: bool) -> Result<()> {
-        self.global_config.bs.write_frame_header(&self.config, padding);
-        
-        let mut side_info = crate::bitstream::SideInfo::default();
-        side_info.granules = self.current_granule_info.clone();
-        
-        self.global_config.bs.write_side_info(&side_info, &self.config);
-        
-        Ok(())
-    }
-    
-    /// Encode main data
-    fn encode_main_data(&mut self, granules_per_frame: usize, channels: usize, target_frame_bytes: usize) -> Result<()> {
-        let current_bytes = self.global_config.bs.bits_written() / 8;
-        let _remaining_bytes = if target_frame_bytes > current_bytes {
-            target_frame_bytes - current_bytes
-        } else {
-            0
-        };
-        
-        for _gr in 0..granules_per_frame {
-            for _ch in 0..channels {
-                // Write scale factors
-                for _sfb in 0..21 {
-                    self.global_config.bs.write_bits(0, 4);
-                }
-            }
-        }
-        
-        // Fill remaining bytes to reach target frame size
-        let bytes_written_after_scalefactors = self.global_config.bs.bits_written() / 8;
-        let still_remaining = if target_frame_bytes > bytes_written_after_scalefactors {
-            target_frame_bytes - bytes_written_after_scalefactors
-        } else {
-            0
-        };
-        
-        for _i in 0..still_remaining {
-            self.global_config.bs.write_bits(0, 8);
-        }
-        
-        Ok(())
-    }
-    
-
 }
 
 #[cfg(test)]
