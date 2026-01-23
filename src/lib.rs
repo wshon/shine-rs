@@ -33,6 +33,7 @@ pub mod encoder;
 pub mod error;
 pub mod shine_config;
 pub mod pcm_utils;
+pub mod data_flow_monitor;
 
 #[cfg(test)]
 pub mod verification_3_4;
