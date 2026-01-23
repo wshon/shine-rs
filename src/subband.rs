@@ -61,11 +61,11 @@ pub fn shine_subband_initialise(subband: &mut Subband) {
     }
 
     // Calculate filterbank coefficients (matches shine implementation exactly)
-    for i in 0..SBLIMIT {
-        for j in 0..64 {
+    for i in (0..SBLIMIT).rev() {  // matches shine: for (i = SBLIMIT; i--;)
+        for j in (0..64).rev() {   // matches shine: for (j = 64; j--;)
             // Calculate filter coefficient using the same formula as shine
             // filter = 1e9 * cos((double)((2 * i + 1) * (16 - j) * PI64))
-            let angle = (2 * i + 1) as f64 * (16 - j) as f64 * (PI / 64.0);
+            let angle = (2 * i + 1) as f64 * (16 - j as i32) as f64 * (PI / 64.0);
             let mut filter = 1e9 * angle.cos();
             
             // Apply rounding (matches shine's modf logic)

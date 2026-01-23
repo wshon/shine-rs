@@ -395,12 +395,10 @@ mod tests {
             let cs_coeffs = [*MDCT_CS0, *MDCT_CS1, *MDCT_CS2, *MDCT_CS3, *MDCT_CS4, *MDCT_CS5, *MDCT_CS6, *MDCT_CS7];
             
             for ca in &ca_coeffs {
-                prop_assert!(ca.abs() <= 0x7fffffff, "CA coefficient should be within range");
                 prop_assert!(*ca < 0, "CA coefficients should be negative (from negative input)");
             }
             
             for cs in &cs_coeffs {
-                prop_assert!(cs.abs() <= 0x7fffffff, "CS coefficient should be within range");
                 prop_assert!(*cs > 0, "CS coefficients should be positive");
             }
         }
