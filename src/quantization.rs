@@ -186,7 +186,7 @@ pub fn shine_outer_loop(
     let mut bits: i32;
     let huff_bits: i32;
     let side_info = &mut config.side_info;
-    let cod_info = &mut side_info.gr[gr as usize][ch as usize].tt;
+    let cod_info = &mut side_info.gr[gr as usize].ch[ch as usize].tt;
 
     cod_info.quantizer_step_size = bin_search_step_size(max_bits, ix, cod_info, config);
 
@@ -226,7 +226,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 }
             }
 
-            let cod_info = &mut config.side_info.gr[gr as usize][ch as usize].tt;
+            let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
             cod_info.sfb_lmax = (SFB_LMAX - 1) as u32; // gr_deco
 
             calc_xmin(&config.ratio, cod_info, &mut l3_xmin, gr, ch);
@@ -302,12 +302,12 @@ fn calc_scfsi(
     let mut condition = 0;
     let mut temp: i32;
 
-    let samplerate_index = match config.wave.sample_rate {
+    let samplerate_index = match config.wave.samplerate {
         44100 => 0, 48000 => 1, 32000 => 2, 22050 => 3, 24000 => 4,
         16000 => 5, 11025 => 6, 12000 => 7, 8000 => 8, _ => 0,
     };
 
-    let scalefac_band_long = &SCALE_FACT_BAND_INDEX[samplerate_index];
+    let scalefac_band_long = &SHINE_SCALE_FACT_BAND_INDEX[samplerate_index];
 
     config.l3loop.xrmaxl[gr as usize] = config.l3loop.xrmax;
 
@@ -399,10 +399,10 @@ fn calc_scfsi(
 /// Corresponds to part2_length() in l3loop.c
 fn part2_length(gr: i32, ch: i32, config: &mut ShineGlobalConfig) -> i32 {
     let mut bits = 0;
-    let gi = &config.side_info.gr[gr as usize][ch as usize].tt;
+    let gi = &config.side_info.gr[gr as usize].ch[ch as usize].tt;
 
-    let slen1 = SLEN1_TAB[gi.scalefac_compress as usize % SLEN1_TAB.len()];
-    let slen2 = SLEN2_TAB[gi.scalefac_compress as usize % SLEN2_TAB.len()];
+    let slen1 = SHINE_SLEN1_TAB[gi.scalefac_compress as usize % SHINE_SLEN1_TAB.len()];
+    let slen2 = SHINE_SLEN2_TAB[gi.scalefac_compress as usize % SHINE_SLEN2_TAB.len()];
 
     if gr == 0 || config.side_info.scfsi[ch as usize][0] == 0 {
         bits += 6 * slen1;
@@ -632,11 +632,11 @@ fn subdivide(cod_info: &mut GranuleInfo, config: &mut ShineGlobalConfig) {
         cod_info.region0_count = 0;
         cod_info.region1_count = 0;
     } else {
-        let samplerate_index = match config.wave.sample_rate {
+        let samplerate_index = match config.wave.samplerate {
             44100 => 0, 48000 => 1, 32000 => 2, 22050 => 3, 24000 => 4,
             16000 => 5, 11025 => 6, 12000 => 7, 8000 => 8, _ => 0,
         };
-        let scalefac_band_long = &SCALE_FACT_BAND_INDEX[samplerate_index];
+        let scalefac_band_long = &SHINE_SCALE_FACT_BAND_INDEX[samplerate_index];
 
         let bigvalues_region = 2 * cod_info.big_values;
 

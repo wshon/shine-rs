@@ -101,7 +101,7 @@ pub fn shine_resv_frame_end(config: &mut ShineGlobalConfig) {
          * This was preferred by someone designing a
          * real-time decoder...
          */
-        let gi = &mut l3_side.gr[0][0].tt;
+        let gi = &mut l3_side.gr[0].ch[0].tt;
 
         if gi.part2_3_length + (stuffing_bits as u32) < 4095 {
             gi.part2_3_length += stuffing_bits as u32;
@@ -112,7 +112,7 @@ pub fn shine_resv_frame_end(config: &mut ShineGlobalConfig) {
                     if stuffing_bits == 0 {
                         break;
                     }
-                    let gi = &mut l3_side.gr[gr as usize][ch as usize].tt;
+                    let gi = &mut l3_side.gr[gr as usize].ch[ch as usize].tt;
                     let extra_bits = 4095 - gi.part2_3_length as i32;
                     let bits_this_gr = if extra_bits < stuffing_bits { 
                         extra_bits 
