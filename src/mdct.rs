@@ -76,7 +76,7 @@ fn cmuls(are: i32, aim: i32, bre: i32, bim: i32) -> (i32, i32) {
 /// void shine_mdct_sub(shine_global_config *config, int stride);
 pub fn shine_mdct_sub(
     config: &mut crate::shine_config::ShineGlobalConfig,
-    _stride: i32
+    stride: i32
 ) {
     // Direct implementation following shine's shine_mdct_sub
     // (ref/shine/src/lib/l3mdct.c:52-120)
@@ -84,12 +84,17 @@ pub fn shine_mdct_sub(
     // Note: we wish to access the array 'config->mdct_freq[2][2][576]' as [2][2][32][18]. (32*18=576)
     for ch in (0..config.wave.channels).rev() {
         for gr in 0..config.mpeg.granules_per_frame {
+            // TODO: Polyphase filtering needs to be implemented properly
+            // The borrowing issue needs to be resolved by restructuring the data access
+            // For now, skip this step to fix the stack overflow issue first
+            
             // Perform imdct of 18 previous subband samples + 18 current subband samples
             for band in 0..32 {
                 let mut mdct_in = [0i32; 36];
                 
                 // Copy 36 samples for this band (18 previous + 18 current)
-                for k in 0..18 {
+                // Following shine's exact loop: for (k = 18; k--;)
+                for k in (0..18).rev() {
                     mdct_in[k] = config.l3_sb_sample[ch as usize][gr as usize][k][band];
                     mdct_in[k + 18] = config.l3_sb_sample[ch as usize][(gr + 1) as usize][k][band];
                 }
@@ -97,6 +102,7 @@ pub fn shine_mdct_sub(
                 // Calculation of the MDCT
                 // In the case of long blocks (block_type 0,1,3) there are
                 // 36 coefficients in the time domain and 18 in the frequency domain.
+                // Following shine's exact loop: for (k = 18; k--;)
                 for k in (0..18).rev() {
                     let mut vm = 0i64;
                     

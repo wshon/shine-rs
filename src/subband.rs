@@ -501,76 +501,107 @@ mod tests {
 }
 
 /// Shine-style function interface following shine's shine_window_filter_subband exactly
-/// (ref/shine/src/lib/l3subband.c:44-108)
+/// (ref/shine/src/lib/l3subband.c:47-108)
 /// 
 /// This function matches shine's signature and behavior exactly:
 /// void shine_window_filter_subband(int16_t **buffer, int32_t s[SBLIMIT], int ch,
 ///                                  shine_global_config *config, int stride);
+/// 
+/// Returns the new buffer position after processing
 pub fn shine_window_filter_subband(
-    pcm_samples: &[i16; 32], 
-    output: &mut [i32; 32], 
-    channel: usize, 
-    subband_state: &mut crate::shine_config::Subband
-) {
+    buffer: &[i16],
+    buffer_pos: usize,
+    s: &mut [i32; 32],
+    ch: i32,
+    config: &mut crate::shine_config::ShineGlobalConfig,
+    stride: i32
+) -> usize {
     // Direct implementation following shine's shine_window_filter_subband
     // (ref/shine/src/lib/l3subband.c:50-120)
     
     let mut y = [0i32; 64];
+    let ch_idx = ch as usize;
+    let mut ptr = buffer_pos;
     
     // Replace 32 oldest samples with 32 new samples
-    // Following shine's buffer management exactly
-    for i in 0..32 {
-        let idx = (i + subband_state.off[channel] as usize) & (crate::shine_config::HAN_SIZE - 1);
-        subband_state.x[channel][idx] = (pcm_samples[i] as i32) << 16;
+    // Following shine's buffer management exactly: for (i = 32; i--;)
+    for i in (0..32).rev() {
+        if ptr < buffer.len() {
+            config.subband.x[ch_idx][(i + config.subband.off[ch_idx] as usize) & (crate::shine_config::HAN_SIZE - 1)] = 
+                (buffer[ptr] as i32) << 16;
+            ptr += stride as usize;
+        }
     }
     
     // Apply analysis window (shine_enwindow) to produce windowed samples y[64]
-    // This follows shine's windowing exactly with the 8-fold loop unrolling
-    for i in 0..64 {
+    // Following shine's windowing exactly: for (i = 64; i--;)
+    for i in (0..64).rev() {
         let mut s_value = 0i64;
+        let i_usize = i as usize;
         
-        // Apply 8 window coefficients (shine uses 8-fold unrolling)
-        for k in 0..8 {
-            let x_idx = (subband_state.off[channel] as usize + i + (k << 6)) & (crate::shine_config::HAN_SIZE - 1);
-            let window_idx = i + (k << 6);
-            
-            // Use shine's window coefficients from tables
-            if window_idx < crate::tables::ENWINDOW.len() {
-                s_value += (subband_state.x[channel][x_idx] as i64) * (crate::tables::ENWINDOW[window_idx] as i64);
-            }
-        }
+        // Following shine's 8-fold loop unrolling with mul0 + muladd pattern
+        // mul0(s_value, s_value_lo, config->subband.x[ch][...], shine_enwindow[i + (0 << 6)]);
+        s_value = (config.subband.x[ch_idx][(config.subband.off[ch_idx] as usize + i_usize + (0 << 6)) & (crate::shine_config::HAN_SIZE - 1)] as i64) 
+                * (ENWINDOW[i_usize + (0 << 6)] as i64);
         
-        // Convert back to i32 with proper scaling (shine's mulz operation)
-        y[i] = (s_value >> 31) as i32;
+        // muladd operations for remaining 7 windows
+        s_value += (config.subband.x[ch_idx][(config.subband.off[ch_idx] as usize + i_usize + (1 << 6)) & (crate::shine_config::HAN_SIZE - 1)] as i64) 
+                 * (ENWINDOW[i_usize + (1 << 6)] as i64);
+        s_value += (config.subband.x[ch_idx][(config.subband.off[ch_idx] as usize + i_usize + (2 << 6)) & (crate::shine_config::HAN_SIZE - 1)] as i64) 
+                 * (ENWINDOW[i_usize + (2 << 6)] as i64);
+        s_value += (config.subband.x[ch_idx][(config.subband.off[ch_idx] as usize + i_usize + (3 << 6)) & (crate::shine_config::HAN_SIZE - 1)] as i64) 
+                 * (ENWINDOW[i_usize + (3 << 6)] as i64);
+        s_value += (config.subband.x[ch_idx][(config.subband.off[ch_idx] as usize + i_usize + (4 << 6)) & (crate::shine_config::HAN_SIZE - 1)] as i64) 
+                 * (ENWINDOW[i_usize + (4 << 6)] as i64);
+        s_value += (config.subband.x[ch_idx][(config.subband.off[ch_idx] as usize + i_usize + (5 << 6)) & (crate::shine_config::HAN_SIZE - 1)] as i64) 
+                 * (ENWINDOW[i_usize + (5 << 6)] as i64);
+        s_value += (config.subband.x[ch_idx][(config.subband.off[ch_idx] as usize + i_usize + (6 << 6)) & (crate::shine_config::HAN_SIZE - 1)] as i64) 
+                 * (ENWINDOW[i_usize + (6 << 6)] as i64);
+        s_value += (config.subband.x[ch_idx][(config.subband.off[ch_idx] as usize + i_usize + (7 << 6)) & (crate::shine_config::HAN_SIZE - 1)] as i64) 
+                 * (ENWINDOW[i_usize + (7 << 6)] as i64);
+        
+        // mulz(s_value, s_value_lo) - convert to fixed point
+        y[i_usize] = (s_value >> 31) as i32;
     }
     
-    // Update offset for next call (shine's circular buffer management)
-    subband_state.off[channel] = (subband_state.off[channel] + 480) & (crate::shine_config::HAN_SIZE as i32 - 1);
+    // Update offset following shine's modulo operation
+    // config->subband.off[ch] = (config->subband.off[ch] + 480) & (HAN_SIZE - 1);
+    config.subband.off[ch_idx] = ((config.subband.off[ch_idx] as usize + 480) & (crate::shine_config::HAN_SIZE - 1)) as i32;
     
-    // Apply filter bank to produce 32 subband samples
-    // This follows shine's filter bank exactly
-    for i in (0..32).rev() {  // i from 31 down to 0 (matches shine's SBLIMIT loop)
+    // Apply subband filter matrix to produce 32 subband samples
+    // Following shine's exact loop: for (i = SBLIMIT; i--;)
+    for i in (0..32).rev() {
         let mut s_value = 0i64;
         
-        // First multiply with j=63 (matches shine's mul0)
-        s_value += (subband_state.fl[i][63] as i64) * (y[63] as i64);
+        // Following shine's mul0 + muladd pattern with 7-step unrolling
+        // mul0(s_value, s_value_lo, config->subband.fl[i][63], y[63]);
+        s_value = (config.subband.fl[i][63] as i64) * (y[63] as i64);
         
-        // Apply filter coefficients with 7-step unrolling (matches shine's loop)
-        // shine: for (j = 63; j; j -= 7) { muladd(..., fl[i][j-1], y[j-1]); ... muladd(..., fl[i][j-7], y[j-7]); }
+        // for (j = 63; j; j -= 7) { ... muladd operations ... }
         let mut j = 63;
         while j > 0 {
-            // Apply 7 coefficients at once (shine's muladd operations)
-            // Note: shine accesses j-1, j-2, ..., j-7 in each iteration
-            let end = if j >= 7 { j - 7 } else { 0 };
-            for offset in 1..=(j - end) {
-                if j >= offset {
-                    s_value += (subband_state.fl[i][j - offset] as i64) * (y[j - offset] as i64);
+            if j >= 7 {
+                s_value += (config.subband.fl[i][j - 1] as i64) * (y[j - 1] as i64);
+                s_value += (config.subband.fl[i][j - 2] as i64) * (y[j - 2] as i64);
+                s_value += (config.subband.fl[i][j - 3] as i64) * (y[j - 3] as i64);
+                s_value += (config.subband.fl[i][j - 4] as i64) * (y[j - 4] as i64);
+                s_value += (config.subband.fl[i][j - 5] as i64) * (y[j - 5] as i64);
+                s_value += (config.subband.fl[i][j - 6] as i64) * (y[j - 6] as i64);
+                s_value += (config.subband.fl[i][j - 7] as i64) * (y[j - 7] as i64);
+                j -= 7;
+            } else {
+                // Handle remaining samples
+                for idx in (0..j).rev() {
+                    s_value += (config.subband.fl[i][idx] as i64) * (y[idx] as i64);
                 }
+                break;
             }
-            j -= 7;
         }
         
-        // Convert back to i32 with proper scaling (shine's mulz operation)
-        output[i] = (s_value >> 31) as i32;
+        // mulz(s_value, s_value_lo) - convert to fixed point and store
+        s[i] = (s_value >> 31) as i32;
     }
+    
+    // Return new buffer position (equivalent to *buffer = ptr in C)
+    ptr
 }

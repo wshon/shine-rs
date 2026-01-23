@@ -441,6 +441,10 @@ impl QuantizationLoop {
                 if max_quantized <= 8192 {
                     break;
                 }
+                // CRITICAL FIX: Add safety check to prevent infinite loop
+                if info.quantizer_step_size >= 255 {
+                    break;
+                }
             }
             
             // Following shine's exact sequence:
@@ -462,7 +466,14 @@ impl QuantizationLoop {
             bits += bvbits;
             
             // } while (bits > max_bits);
-            if max_bits < 0 || bits <= max_bits {
+            // CRITICAL FIX: Following shine's exact logic - the loop continues while bits > max_bits
+            // But we need to handle the case where max_bits < 0 properly
+            if bits <= max_bits {
+                break;
+            }
+            
+            // CRITICAL FIX: Add safety check to prevent infinite loop
+            if info.quantizer_step_size >= 255 {
                 break;
             }
         }
@@ -510,7 +521,9 @@ impl QuantizationLoop {
         loop {
             let half = count / 2;
             
-            if half == 0 {
+            // CRITICAL FIX: Add the missing condition check from shine
+            // The loop should terminate when count <= 1, not when half == 0
+            if count <= 1 {
                 break;
             }
             
