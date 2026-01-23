@@ -358,6 +358,7 @@ impl Mp3Encoder {
         
         // Step 2: Calculate bits_per_frame (lines 159-160)
         let bits_per_frame = 8 * (self.whole_slots_per_frame + if padding { 1 } else { 0 });
+        let target_frame_bytes = bits_per_frame / 8;
         
         // Step 3: Calculate mean_bits (lines 161-162)
         let granules_per_frame = match self.config.mpeg_version() {
@@ -381,7 +382,7 @@ impl Mp3Encoder {
         
         // Step 6: Write frame to bitstream (line 170)
         // shine_format_bitstream(config);
-        self.shine_format_bitstream(padding)?;
+        self.shine_format_bitstream(padding, target_frame_bytes)?;
         
         // Step 7: Return data (lines 172-176)
         let encoded_data = self.bitstream.flush();
@@ -554,7 +555,7 @@ impl Mp3Encoder {
     /// 
     /// Original shine signature: void shine_format_bitstream(shine_global_config *config)
     /// - config: shine_global_config* (contains side info and quantized data)
-    fn shine_format_bitstream(&mut self, padding: bool) -> Result<()> {
+    fn shine_format_bitstream(&mut self, padding: bool, target_frame_bytes: usize) -> Result<()> {
         use crate::config::MpegVersion;
         
         let granules_per_frame = match self.config.mpeg_version() {
@@ -583,7 +584,7 @@ impl Mp3Encoder {
         
         // Step 3: Encode main data (line 46)
         // encodeMainData(config);
-        self.encode_main_data(granules_per_frame, channels)?;
+        self.encode_main_data(granules_per_frame, channels, target_frame_bytes)?;
         
         Ok(())
     }
@@ -606,7 +607,15 @@ impl Mp3Encoder {
     
     /// Encode main data following shine's encodeMainData
     /// (ref/shine/src/lib/l3bitstream.c:48-68)
-    fn encode_main_data(&mut self, granules_per_frame: usize, channels: usize) -> Result<()> {
+    fn encode_main_data(&mut self, granules_per_frame: usize, channels: usize, target_frame_bytes: usize) -> Result<()> {
+        // Calculate how many bytes we need to write to reach target frame size
+        let current_bytes = self.bitstream.bits_written() / 8;
+        let _remaining_bytes = if target_frame_bytes > current_bytes {
+            target_frame_bytes - current_bytes
+        } else {
+            0
+        };
+        
         // Following shine's encodeMainData exactly
         // for (gr = 0; gr < config->mpeg.granules_per_frame; gr++) {
         //   for (ch = 0; ch < config->wave.channels; ch++) {
@@ -624,12 +633,20 @@ impl Mp3Encoder {
                 // Write Huffman encoded spectral data
                 // For now, write minimal data to create valid frame structure
                 // In real implementation, this would call Huffmancodebits()
-                
-                // Write some padding data to reach target frame size
-                for _i in 0..100 { // Write some bits to fill the frame
-                    self.bitstream.write_bits(0, 8);
-                }
             }
+        }
+        
+        // Fill remaining bytes to reach target frame size
+        let bytes_written_after_scalefactors = self.bitstream.bits_written() / 8;
+        let still_remaining = if target_frame_bytes > bytes_written_after_scalefactors {
+            target_frame_bytes - bytes_written_after_scalefactors
+        } else {
+            0
+        };
+        
+        // Write padding data to reach exact target frame size
+        for _i in 0..still_remaining {
+            self.bitstream.write_bits(0, 8);
         }
         
         Ok(())
