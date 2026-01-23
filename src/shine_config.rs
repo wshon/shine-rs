@@ -247,6 +247,8 @@ pub struct ShineGlobalConfig {
     pub scalefactor: ShineScalefac,
     /// Input buffers for each channel
     pub buffer: [Vec<i16>; MAX_CHANNELS],
+    /// Buffer position for each channel (for subband filtering)
+    pub buffer_position: [usize; MAX_CHANNELS],
     /// Perceptual entropy [channel][granule]
     pub pe: [[f64; MAX_GRANULES]; MAX_CHANNELS],
     /// Quantized coefficients [channel][granule][coefficient]
@@ -313,6 +315,7 @@ impl ShineGlobalConfig {
             ratio: ShinePsyRatio::default(),
             scalefactor: ShineScalefac::default(),
             buffer,
+            buffer_position: [0; MAX_CHANNELS],
             pe: [[0.0; MAX_GRANULES]; MAX_CHANNELS],
             l3_enc: Box::new([[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]),
             l3_sb_sample: Box::new([[[[0; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS]),

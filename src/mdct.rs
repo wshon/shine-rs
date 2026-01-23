@@ -69,7 +69,7 @@ fn cmuls(are: i32, aim: i32, bre: i32, bim: i32) -> (i32, i32) {
 /// void shine_mdct_sub(shine_global_config *config, int stride);
 pub fn shine_mdct_sub(
     config: &mut crate::shine_config::ShineGlobalConfig,
-    _stride: i32
+    stride: i32
 ) {
     // Direct implementation following shine's shine_mdct_sub
     // (ref/shine/src/lib/l3mdct.c:52-120)
@@ -77,9 +77,35 @@ pub fn shine_mdct_sub(
     // Note: we wish to access the array 'config->mdct_freq[2][2][576]' as [2][2][32][18]. (32*18=576)
     for ch in (0..config.wave.channels).rev() {
         for gr in 0..config.mpeg.granules_per_frame {
-            // TODO: Polyphase filtering needs to be implemented properly
-            // The borrowing issue needs to be resolved by restructuring the data access
-            // For now, skip this step to fix the stack overflow issue first
+            // Polyphase filtering - following shine's exact implementation
+            // for (k = 0; k < 18; k += 2) {
+            //   shine_window_filter_subband(&config->buffer[ch], &config->l3_sb_sample[ch][gr + 1][k][0], ch, config, stride);
+            //   shine_window_filter_subband(&config->buffer[ch], &config->l3_sb_sample[ch][gr + 1][k + 1][0], ch, config, stride);
+            //   /* Compensate for inversion in the analysis filter (every odd index of band AND k) */
+            //   for (band = 1; band < 32; band += 2)
+            //     config->l3_sb_sample[ch][gr + 1][k + 1][band] *= -1;
+            // }
+            for k in (0..18).step_by(2) {
+                crate::subband::shine_window_filter_subband(
+                    config, 
+                    ch as usize, 
+                    (gr + 1) as usize, 
+                    k, 
+                    stride
+                );
+                crate::subband::shine_window_filter_subband(
+                    config, 
+                    ch as usize, 
+                    (gr + 1) as usize, 
+                    k + 1, 
+                    stride
+                );
+                
+                // Compensate for inversion in the analysis filter (every odd index of band AND k)
+                for band in (1..32).step_by(2) {
+                    config.l3_sb_sample[ch as usize][(gr + 1) as usize][k + 1][band] *= -1;
+                }
+            }
             
             // Perform imdct of 18 previous subband samples + 18 current subband samples
             for band in 0..32 {

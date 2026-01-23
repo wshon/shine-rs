@@ -198,7 +198,7 @@ fn verify_aliasing_reduction() -> EncodingResult<()> {
 fn verify_subband_coefficients() -> EncodingResult<()> {
     println!("  验证子带滤波器系数...");
     
-    let filter = crate::subband::SubbandFilter::new();
+    let _filter = crate::subband::SubbandFilter::new();
     
     // 验证滤波器系数计算是否与shine一致
     // shine的计算公式：filter = 1e9 * cos((2 * i + 1) * (16 - j) * PI64)
