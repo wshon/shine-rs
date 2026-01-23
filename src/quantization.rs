@@ -7,7 +7,7 @@
 //! The implementation strictly follows the shine reference implementation
 //! in ref/shine/src/lib/l3loop.c
 
-use crate::types::{ShineGlobalConfig, MAX_CHANNELS, MAX_GRANULES, GRANULE_SIZE, GrInfo};
+use crate::types::{ShineGlobalConfig, GRANULE_SIZE, GrInfo, MAX_CHANNELS, MAX_GRANULES, ShinePsyXmin};
 use crate::tables::{SHINE_SCALE_FACT_BAND_INDEX, SHINE_SLEN1_TAB, SHINE_SLEN2_TAB};
 use crate::huffman::SHINE_HUFFMAN_TABLE;
 use std::f64::consts::LN_2;
@@ -20,21 +20,6 @@ const EN_TOT_KRIT: i32 = 10;
 const EN_DIF_KRIT: i32 = 100;
 const EN_SCFSI_BAND_KRIT: i32 = 10;
 const XM_SCFSI_BAND_KRIT: i32 = 10;
-
-/// Granule information structure following shine's gr_info exactly
-/// Psychoacoustic minimum structure
-#[derive(Debug)]
-pub struct ShinePsyXmin {
-    pub l: [[[f64; 21]; MAX_CHANNELS]; MAX_GRANULES],
-}
-
-impl Default for ShinePsyXmin {
-    fn default() -> Self {
-        Self {
-            l: [[[0.0; 21]; MAX_CHANNELS]; MAX_GRANULES],
-        }
-    }
-}
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations
 
@@ -64,18 +49,18 @@ fn labs(x: i32) -> i32 {
 pub fn shine_inner_loop(
     ix: &mut [i32; GRANULE_SIZE],
     max_bits: i32,
-    cod_info: &mut GrInfo,
-    _gr: i32,
-    _ch: i32,
+    gr: i32,
+    ch: i32,
     config: &mut ShineGlobalConfig,
 ) -> i32 {
     let mut bits: i32;
-    let mut c1bits: i32;
+    let mut _c1bits: i32;
     let mut bvbits: i32;
 
     // Following shine's logic exactly:
     // if (max_bits < 0) cod_info->quantizerStepSize--;
     if max_bits < 0 {
+        let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
         cod_info.quantizer_step_size -= 1;
     }
 
@@ -83,19 +68,51 @@ pub fn shine_inner_loop(
     loop {
         // while (quantize(ix, ++cod_info->quantizerStepSize, config) > 8192)
         //   ; /* within table range? */
+        let mut quantizer_step_size = {
+            let cod_info = &config.side_info.gr[gr as usize].ch[ch as usize].tt;
+            cod_info.quantizer_step_size
+        };
+        
         loop {
-            cod_info.quantizer_step_size += 1;
-            if quantize(ix, cod_info.quantizer_step_size, config) <= 8192 {
+            quantizer_step_size += 1;
+            if quantize(ix, quantizer_step_size, config) <= 8192 {
                 break;
             }
         }
+        
+        // Update quantizer step size
+        {
+            let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+            cod_info.quantizer_step_size = quantizer_step_size;
+        }
 
-        calc_runlen(ix, cod_info); // rzero,count1,big_values
-        bits = count1_bitcount(ix, cod_info); // count1_table selection
-        c1bits = bits;
-        subdivide(cod_info, config); // bigvalues sfb division
-        bigv_tab_select(ix, cod_info); // codebook selection
-        bvbits = bigv_bitcount(ix, cod_info); // bit count
+        // Process with current step size
+        {
+            let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+            calc_runlen(ix, cod_info); // rzero,count1,big_values
+            bits = count1_bitcount(ix, cod_info); // count1_table selection
+            _c1bits = bits;
+        }
+        
+        // Subdivide and select tables - avoid borrowing conflicts by separating operations
+        {
+            let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+            calc_runlen(ix, cod_info); // rzero,count1,big_values
+            bits = count1_bitcount(ix, cod_info); // count1_table selection
+            _c1bits = bits;
+        }
+        
+        {
+            let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+            subdivide(cod_info, config); // bigvalues sfb division
+        }
+        
+        {
+            let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+            bigv_tab_select(ix, cod_info); // codebook selection
+            bvbits = bigv_bitcount(ix, cod_info); // bit count
+        }
+        
         bits += bvbits;
 
         if bits <= max_bits {
@@ -122,7 +139,7 @@ pub fn shine_outer_loop(
     let bits: i32;
     let huff_bits: i32;
     
-    // Extract values to avoid borrowing conflicts
+    // Extract quantizer step size to avoid borrowing conflicts
     let quantizer_step_size = {
         let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
         bin_search_step_size(max_bits, ix, cod_info, config)
@@ -131,12 +148,14 @@ pub fn shine_outer_loop(
     let part2_length = part2_length(gr, ch, config) as u32;
     huff_bits = max_bits - part2_length as i32;
 
-    bits = {
+    // Update cod_info with extracted values
+    {
         let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
         cod_info.quantizer_step_size = quantizer_step_size;
         cod_info.part2_length = part2_length;
-        shine_inner_loop(ix, huff_bits, cod_info, gr, ch, config)
-    };
+    }
+    
+    bits = shine_inner_loop(ix, huff_bits, gr, ch, config);
     
     // Update final values
     let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
@@ -172,18 +191,21 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 }
             }
 
-            let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
-            cod_info.sfb_lmax = (SFB_LMAX - 1) as u32; // gr_deco
-
-            calc_xmin(&config.ratio, cod_info, &mut l3_xmin, gr, ch);
+            // Set sfb_lmax and calculate xmin
+            {
+                let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+                cod_info.sfb_lmax = (SFB_LMAX - 1) as u32; // gr_deco
+                calc_xmin(&config.ratio, cod_info, &mut l3_xmin, gr, ch);
+            }
 
             if config.mpeg.version == 1 {
-                // MPEG_I
+                // MPEG_I - handle borrowing carefully by cloning l3_xmin temporarily
                 calc_scfsi(&mut l3_xmin, ch, gr, config);
             }
 
             // calculation of number of available bit( per granule )
-            max_bits = crate::reservoir::shine_max_reservoir_bits(&config.pe[ch as usize][gr as usize], config);
+            let pe_value = config.pe[ch as usize][gr as usize].clone();
+            max_bits = crate::reservoir::shine_max_reservoir_bits(&pe_value, &config);
 
             // reset of iteration variables
             for i in 0..config.scalefactor.l[gr as usize][ch as usize].len() {
@@ -195,28 +217,32 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 }
             }
 
-            for i in 0..4 {
-                cod_info.slen[i] = 0;
-            }
+            // Reset cod_info values
+            {
+                let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+                for i in 0..4 {
+                    cod_info.slen[i] = 0;
+                }
 
-            cod_info.part2_3_length = 0;
-            cod_info.big_values = 0;
-            cod_info.count1 = 0;
-            cod_info.scalefac_compress = 0;
-            cod_info.table_select[0] = 0;
-            cod_info.table_select[1] = 0;
-            cod_info.table_select[2] = 0;
-            cod_info.region0_count = 0;
-            cod_info.region1_count = 0;
-            cod_info.part2_length = 0;
-            cod_info.preflag = 0;
-            cod_info.scalefac_scale = 0;
-            cod_info.count1table_select = 0;
+                cod_info.part2_3_length = 0;
+                cod_info.big_values = 0;
+                cod_info.count1 = 0;
+                cod_info.scalefac_compress = 0;
+                cod_info.table_select[0] = 0;
+                cod_info.table_select[1] = 0;
+                cod_info.table_select[2] = 0;
+                cod_info.region0_count = 0;
+                cod_info.region1_count = 0;
+                cod_info.part2_length = 0;
+                cod_info.preflag = 0;
+                cod_info.scalefac_scale = 0;
+                cod_info.count1table_select = 0;
+            }
 
             // all spectral values zero ?
             if config.l3loop.xrmax != 0 {
                 let ix_slice = unsafe { std::slice::from_raw_parts_mut(ix, GRANULE_SIZE) };
-                cod_info.part2_3_length = shine_outer_loop(
+                let part2_3_length = shine_outer_loop(
                     max_bits,
                     &mut l3_xmin,
                     ix_slice.try_into().unwrap(),
@@ -224,10 +250,20 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                     ch,
                     config,
                 ) as u32;
+                
+                // Update part2_3_length after outer loop
+                let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+                cod_info.part2_3_length = part2_3_length;
             }
 
-            crate::reservoir::shine_resv_adjust(cod_info, config);
-            cod_info.global_gain = (cod_info.quantizer_step_size + 210) as u32;
+            // Adjust reservoir and set global gain
+            {
+                let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+                let quantizer_step_size = cod_info.quantizer_step_size;
+                let cod_info_copy = cod_info.clone(); // Clone for immutable reference
+                crate::reservoir::shine_resv_adjust(&cod_info_copy, config);
+                cod_info.global_gain = (quantizer_step_size + 210) as u32;
+            }
         } // for gr
     } // for ch
 
@@ -469,13 +505,13 @@ fn ix_max(ix: &[i32; GRANULE_SIZE], begin: u32, end: u32) -> i32 {
 /// Corresponds to calc_runlen() in l3loop.c
 fn calc_runlen(ix: &mut [i32; GRANULE_SIZE], cod_info: &mut GrInfo) {
     let mut i = GRANULE_SIZE;
-    let mut rzero = 0;
+    let mut _rzero = 0;
 
     // Count trailing zero pairs
     while i > 1 {
         i -= 2;
         if ix[i] == 0 && ix[i + 1] == 0 {
-            rzero += 1;
+            _rzero += 1;
         } else {
             i += 2;
             break;
@@ -525,8 +561,23 @@ fn count1_bitcount(ix: &[i32; GRANULE_SIZE], cod_info: &mut GrInfo) -> i32 {
         sum1 += signbits;
 
         // Use huffman tables 32 and 33 for count1 (matches shine exactly)
-        sum0 += SHINE_HUFFMAN_TABLE[32].hlen[p] as i32;
-        sum1 += SHINE_HUFFMAN_TABLE[33].hlen[p] as i32;
+        if let Some(hlen) = SHINE_HUFFMAN_TABLE[32].hlen {
+            if p < hlen.len() {
+                sum0 += hlen[p] as i32;
+            }
+        } else {
+            // WARNING: This branch doesn't exist in shine - added for safety
+            eprintln!("Warning: Missing hlen table for Huffman table 32");
+        }
+        
+        if let Some(hlen) = SHINE_HUFFMAN_TABLE[33].hlen {
+            if p < hlen.len() {
+                sum1 += hlen[p] as i32;
+            }
+        } else {
+            // WARNING: This branch doesn't exist in shine - added for safety
+            eprintln!("Warning: Missing hlen table for Huffman table 33");
+        }
 
         i += 4;
     }

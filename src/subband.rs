@@ -8,45 +8,8 @@
 //! in ref/shine/src/lib/l3subband.c
 
 use crate::tables::SHINE_ENWINDOW;
+use crate::types::{Subband, MAX_CHANNELS, SBLIMIT, HAN_SIZE};
 use std::f64::consts::PI;
-
-/// Maximum number of channels (matches shine MAX_CHANNELS)
-pub const MAX_CHANNELS: usize = 2;
-
-/// Number of subbands (matches shine SBLIMIT)
-pub const SBLIMIT: usize = 32;
-
-/// Size of the analysis window buffer (matches shine HAN_SIZE)
-pub const HAN_SIZE: usize = 512;
-
-/// Subband analysis filterbank state
-/// Corresponds to shine's subband_t structure in types.h
-#[derive(Debug, Clone)]
-pub struct SubbandState {
-    /// Circular buffer offset for each channel
-    pub off: [usize; MAX_CHANNELS],
-    /// Analysis filterbank coefficients [subband][coefficient]
-    pub fl: [[i32; 64]; SBLIMIT],
-    /// Windowed sample buffer for each channel [channel][sample]
-    pub x: [[i32; HAN_SIZE]; MAX_CHANNELS],
-}
-
-impl SubbandState {
-    /// Create a new subband state with initialized values
-    pub fn new() -> Self {
-        Self {
-            off: [0; MAX_CHANNELS],
-            fl: [[0; 64]; SBLIMIT],
-            x: [[0; HAN_SIZE]; MAX_CHANNELS],
-        }
-    }
-}
-
-impl Default for SubbandState {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations
@@ -87,7 +50,7 @@ fn mulz(value: i32) -> i32 {
 /// Calculates the analysis filterbank coefficients and rounds to the
 /// 9th decimal place accuracy of the filterbank tables in the ISO
 /// document. The coefficients are stored in the fl array.
-pub fn shine_subband_initialise(subband: &mut SubbandState) {
+pub fn shine_subband_initialise(subband: &mut Subband) {
     // Initialize channel offsets and sample buffers (matches shine implementation)
     for i in 0..MAX_CHANNELS {
         subband.off[i] = 0;
@@ -132,7 +95,7 @@ pub fn shine_window_filter_subband(
     buffer: &mut &[i16],
     s: &mut [i32; SBLIMIT],
     ch: usize,
-    subband: &mut SubbandState,
+    subband: &mut Subband,
     stride: usize,
 ) {
     let mut y = [0i32; 64];
@@ -142,7 +105,7 @@ pub fn shine_window_filter_subband(
     for i in 0..32 {
         let sample_idx = 31 - i; // Reverse order to match shine's loop
         if sample_idx * stride < buffer.len() {
-            subband.x[ch][sample_idx + subband.off[ch]] = 
+            subband.x[ch][sample_idx + subband.off[ch] as usize] = 
                 (buffer[sample_idx * stride] as i32) << 16;
         }
     }
@@ -158,42 +121,42 @@ pub fn shine_window_filter_subband(
         
         // Windowing operation using shine's exact loop structure
         s_value = mul0(
-            subband.x[ch][(subband.off[ch] + i + (0 << 6)) & (HAN_SIZE - 1)],
+            subband.x[ch][(subband.off[ch] as usize + i + (0 << 6)) & (HAN_SIZE - 1)],
             SHINE_ENWINDOW[i + (0 << 6)]
         );
         s_value = muladd(
             s_value,
-            subband.x[ch][(subband.off[ch] + i + (1 << 6)) & (HAN_SIZE - 1)],
+            subband.x[ch][(subband.off[ch] as usize + i + (1 << 6)) & (HAN_SIZE - 1)],
             SHINE_ENWINDOW[i + (1 << 6)]
         );
         s_value = muladd(
             s_value,
-            subband.x[ch][(subband.off[ch] + i + (2 << 6)) & (HAN_SIZE - 1)],
+            subband.x[ch][(subband.off[ch] as usize + i + (2 << 6)) & (HAN_SIZE - 1)],
             SHINE_ENWINDOW[i + (2 << 6)]
         );
         s_value = muladd(
             s_value,
-            subband.x[ch][(subband.off[ch] + i + (3 << 6)) & (HAN_SIZE - 1)],
+            subband.x[ch][(subband.off[ch] as usize + i + (3 << 6)) & (HAN_SIZE - 1)],
             SHINE_ENWINDOW[i + (3 << 6)]
         );
         s_value = muladd(
             s_value,
-            subband.x[ch][(subband.off[ch] + i + (4 << 6)) & (HAN_SIZE - 1)],
+            subband.x[ch][(subband.off[ch] as usize + i + (4 << 6)) & (HAN_SIZE - 1)],
             SHINE_ENWINDOW[i + (4 << 6)]
         );
         s_value = muladd(
             s_value,
-            subband.x[ch][(subband.off[ch] + i + (5 << 6)) & (HAN_SIZE - 1)],
+            subband.x[ch][(subband.off[ch] as usize + i + (5 << 6)) & (HAN_SIZE - 1)],
             SHINE_ENWINDOW[i + (5 << 6)]
         );
         s_value = muladd(
             s_value,
-            subband.x[ch][(subband.off[ch] + i + (6 << 6)) & (HAN_SIZE - 1)],
+            subband.x[ch][(subband.off[ch] as usize + i + (6 << 6)) & (HAN_SIZE - 1)],
             SHINE_ENWINDOW[i + (6 << 6)]
         );
         s_value = muladd(
             s_value,
-            subband.x[ch][(subband.off[ch] + i + (7 << 6)) & (HAN_SIZE - 1)],
+            subband.x[ch][(subband.off[ch] as usize + i + (7 << 6)) & (HAN_SIZE - 1)],
             SHINE_ENWINDOW[i + (7 << 6)]
         );
         
@@ -201,7 +164,7 @@ pub fn shine_window_filter_subband(
     }
 
     // Update circular buffer offset (matches shine modulo operation)
-    subband.off[ch] = (subband.off[ch] + 480) & (HAN_SIZE - 1);
+    subband.off[ch] = (subband.off[ch] + 480) & (HAN_SIZE as i32 - 1);
 
     // Apply synthesis filterbank (matches shine implementation exactly)
     for i in 0..SBLIMIT {
@@ -253,7 +216,7 @@ mod tests {
         fn test_subband_initialise_coefficients(
             _unit in Just(())
         ) {
-            let mut subband = SubbandState::new();
+            let mut subband = Subband::default();
             shine_subband_initialise(&mut subband);
             
             // Verify that coefficients are initialized (non-zero for most entries)
@@ -279,7 +242,7 @@ mod tests {
             samples in prop::collection::vec(-32768i16..32767, 32..64),
             channel in 0usize..MAX_CHANNELS,
         ) {
-            let mut subband = SubbandState::new();
+            let mut subband = Subband::default();
             shine_subband_initialise(&mut subband);
             
             let mut buffer = samples.as_slice();
@@ -326,7 +289,7 @@ mod tests {
         fn test_subband_state_consistency(
             _unit in Just(())
         ) {
-            let mut subband = SubbandState::new();
+            let mut subband = Subband::default();
             
             // Test multiple initializations produce same result
             shine_subband_initialise(&mut subband);
@@ -348,7 +311,7 @@ mod tests {
 
     #[test]
     fn test_subband_state_default() {
-        let subband = SubbandState::default();
+        let subband = Subband::default();
         
         // Verify default initialization
         for i in 0..MAX_CHANNELS {

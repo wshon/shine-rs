@@ -5,8 +5,7 @@
 //! The implementation strictly follows the shine reference implementation
 //! in ref/shine/src/lib/l3mdct.c
 
-use crate::types::{ShineGlobalConfig, MAX_CHANNELS, MAX_GRANULES, GRANULE_SIZE, SBLIMIT};
-use crate::subband::shine_window_filter_subband;
+use crate::types::{ShineGlobalConfig, GRANULE_SIZE, SBLIMIT};
 use std::f64::consts::PI;
 use lazy_static::lazy_static;
 
@@ -20,12 +19,12 @@ const PI72: f64 = PI / 72.0;
 /// These are table B.9 coefficients for aliasing reduction from the ISO standard
 
 /// MDCT_CA macro: coef / sqrt(1.0 + (coef * coef)) * 0x7fffffff
-const fn mdct_ca(coef: f64) -> i32 {
+fn mdct_ca(coef: f64) -> i32 {
     (coef / (1.0 + coef * coef).sqrt() * 0x7fffffff as f64) as i32
 }
 
 /// MDCT_CS macro: 1.0 / sqrt(1.0 + (coef * coef)) * 0x7fffffff  
-const fn mdct_cs(coef: f64) -> i32 {
+fn mdct_cs(coef: f64) -> i32 {
     (1.0 / (1.0 + coef * coef).sqrt() * 0x7fffffff as f64) as i32
 }
 
@@ -131,15 +130,16 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                 // First subband filtering call
                 // shine_window_filter_subband(&config->buffer[ch], &config->l3_sb_sample[ch][gr + 1][k][0], ch, config, stride);
                 let mut s_temp = [0i32; SBLIMIT];
+                let buffer_slice = unsafe { 
+                    std::slice::from_raw_parts(config.buffer[ch_idx], GRANULE_SIZE)
+                };
+                let mut buffer_ref = buffer_slice;
+                
                 crate::subband::shine_window_filter_subband(
-                    &mut config.buffer[ch_idx].as_slice(),
+                    &mut buffer_ref,
                     &mut s_temp,
                     ch_idx,
-                    &mut crate::subband::SubbandState {
-                        off: [config.subband.off[0] as usize, config.subband.off[1] as usize],
-                        fl: *config.subband.fl.clone(),
-                        x: *config.subband.x.clone(),
-                    },
+                    &mut config.subband,
                     stride as usize
                 );
                 
@@ -151,14 +151,10 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                 // Second subband filtering call
                 // shine_window_filter_subband(&config->buffer[ch], &config->l3_sb_sample[ch][gr + 1][k + 1][0], ch, config, stride);
                 crate::subband::shine_window_filter_subband(
-                    &mut config.buffer[ch_idx].as_slice(),
+                    &mut buffer_ref,
                     &mut s_temp,
                     ch_idx,
-                    &mut crate::subband::SubbandState {
-                        off: [config.subband.off[0] as usize, config.subband.off[1] as usize],
-                        fl: *config.subband.fl.clone(),
-                        x: *config.subband.x.clone(),
-                    },
+                    &mut config.subband,
                     stride as usize
                 );
                 
@@ -233,8 +229,8 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     let (new_curr_0, new_prev_17) = cmuls(
                         config.mdct_freq[ch_idx][gr_idx][curr_band_base + 0],
                         config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 0],
-                        MDCT_CS0,
-                        MDCT_CA0
+                        *MDCT_CS0,
+                        *MDCT_CA0
                     );
                     config.mdct_freq[ch_idx][gr_idx][curr_band_base + 0] = new_curr_0;
                     config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 0] = new_prev_17;
@@ -242,8 +238,8 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     let (new_curr_1, new_prev_16) = cmuls(
                         config.mdct_freq[ch_idx][gr_idx][curr_band_base + 1],
                         config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 1],
-                        MDCT_CS1,
-                        MDCT_CA1
+                        *MDCT_CS1,
+                        *MDCT_CA1
                     );
                     config.mdct_freq[ch_idx][gr_idx][curr_band_base + 1] = new_curr_1;
                     config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 1] = new_prev_16;
@@ -251,8 +247,8 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     let (new_curr_2, new_prev_15) = cmuls(
                         config.mdct_freq[ch_idx][gr_idx][curr_band_base + 2],
                         config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 2],
-                        MDCT_CS2,
-                        MDCT_CA2
+                        *MDCT_CS2,
+                        *MDCT_CA2
                     );
                     config.mdct_freq[ch_idx][gr_idx][curr_band_base + 2] = new_curr_2;
                     config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 2] = new_prev_15;
@@ -260,8 +256,8 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     let (new_curr_3, new_prev_14) = cmuls(
                         config.mdct_freq[ch_idx][gr_idx][curr_band_base + 3],
                         config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 3],
-                        MDCT_CS3,
-                        MDCT_CA3
+                        *MDCT_CS3,
+                        *MDCT_CA3
                     );
                     config.mdct_freq[ch_idx][gr_idx][curr_band_base + 3] = new_curr_3;
                     config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 3] = new_prev_14;
@@ -269,8 +265,8 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     let (new_curr_4, new_prev_13) = cmuls(
                         config.mdct_freq[ch_idx][gr_idx][curr_band_base + 4],
                         config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 4],
-                        MDCT_CS4,
-                        MDCT_CA4
+                        *MDCT_CS4,
+                        *MDCT_CA4
                     );
                     config.mdct_freq[ch_idx][gr_idx][curr_band_base + 4] = new_curr_4;
                     config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 4] = new_prev_13;
@@ -278,8 +274,8 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     let (new_curr_5, new_prev_12) = cmuls(
                         config.mdct_freq[ch_idx][gr_idx][curr_band_base + 5],
                         config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 5],
-                        MDCT_CS5,
-                        MDCT_CA5
+                        *MDCT_CS5,
+                        *MDCT_CA5
                     );
                     config.mdct_freq[ch_idx][gr_idx][curr_band_base + 5] = new_curr_5;
                     config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 5] = new_prev_12;
@@ -287,8 +283,8 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     let (new_curr_6, new_prev_11) = cmuls(
                         config.mdct_freq[ch_idx][gr_idx][curr_band_base + 6],
                         config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 6],
-                        MDCT_CS6,
-                        MDCT_CA6
+                        *MDCT_CS6,
+                        *MDCT_CA6
                     );
                     config.mdct_freq[ch_idx][gr_idx][curr_band_base + 6] = new_curr_6;
                     config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 6] = new_prev_11;
@@ -296,8 +292,8 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     let (new_curr_7, new_prev_10) = cmuls(
                         config.mdct_freq[ch_idx][gr_idx][curr_band_base + 7],
                         config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 7],
-                        MDCT_CS7,
-                        MDCT_CA7
+                        *MDCT_CS7,
+                        *MDCT_CA7
                     );
                     config.mdct_freq[ch_idx][gr_idx][curr_band_base + 7] = new_curr_7;
                     config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 7] = new_prev_10;
