@@ -6,7 +6,7 @@
 
 use crate::error::{EncodingError, EncodingResult};
 use crate::huffman::{HuffCodeTab, SHINE_HUFFMAN_TABLE};
-use crate::types::{ShineGlobalConfig, GrInfo, GRANULE_SIZE, MAX_CHANNELS, MAX_GRANULES};
+use crate::types::{ShineGlobalConfig, GrInfo, GRANULE_SIZE};
 use crate::tables::{SHINE_SLEN1_TAB, SHINE_SLEN2_TAB, SHINE_SCALE_FACT_BAND_INDEX};
 
 /// Bitstream writer structure (matches shine's bitstream_t exactly)
@@ -152,38 +152,40 @@ pub fn format_bitstream(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 /// Encode the main data section (matches encodeMainData exactly)
 /// (ref/shine/src/lib/l3bitstream.c:46-71)
 fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
-    let si = &config.side_info;
-
     for gr in 0..config.mpeg.granules_per_frame as usize {
         for ch in 0..config.wave.channels as usize {
-            let gi = &si.gr[gr].ch[ch].tt;
-            let slen1 = SHINE_SLEN1_TAB[gi.scalefac_compress as usize] as u32;
-            let slen2 = SHINE_SLEN2_TAB[gi.scalefac_compress as usize] as u32;
-            let ix = &config.l3_enc[ch][gr];
-
+            // Extract values we need before borrowing config mutably
+            let scalefac_compress = config.side_info.gr[gr].ch[ch].tt.scalefac_compress;
+            let scfsi = config.side_info.scfsi[ch];
+            let slen1 = SHINE_SLEN1_TAB[scalefac_compress as usize] as u32;
+            let slen2 = SHINE_SLEN2_TAB[scalefac_compress as usize] as u32;
+            
             // Write scale factors
-            if gr == 0 || si.scfsi[ch][0] == 0 {
+            if gr == 0 || scfsi[0] == 0 {
                 for sfb in 0..6 {
                     config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen1)?;
                 }
             }
-            if gr == 0 || si.scfsi[ch][1] == 0 {
+            if gr == 0 || scfsi[1] == 0 {
                 for sfb in 6..11 {
                     config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen1)?;
                 }
             }
-            if gr == 0 || si.scfsi[ch][2] == 0 {
+            if gr == 0 || scfsi[2] == 0 {
                 for sfb in 11..16 {
                     config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen2)?;
                 }
             }
-            if gr == 0 || si.scfsi[ch][3] == 0 {
+            if gr == 0 || scfsi[3] == 0 {
                 for sfb in 16..21 {
                     config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen2)?;
                 }
             }
 
-            huffman_code_bits(config, ix, gi)?;
+            // Copy the granule info to avoid borrowing conflicts
+            let gi = config.side_info.gr[gr].ch[ch].tt.clone();
+            let ix = config.l3_enc[ch][gr];
+            huffman_code_bits(config, &ix, &gi)?;
         }
     }
     

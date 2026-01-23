@@ -27,7 +27,7 @@ pub const MAX_GRANULES: usize = 2;
 /// SWAB32 macro implementation (matches shine's SWAB32)
 #[inline]
 pub fn swab32(x: u32) -> u32 {
-    ((x >> 24) | ((x >> 8) & 0xff00) | ((x & 0xff00) << 8) | (x << 24))
+    (x >> 24) | ((x >> 8) & 0xff00) | ((x & 0xff00) << 8) | (x << 24)
 }
 
 /// Private shine wave configuration (matches priv_shine_wave_t)

@@ -7,7 +7,7 @@
 //! The implementation strictly follows the shine reference implementation
 //! in ref/shine/src/lib/l3subband.c
 
-use crate::tables::ENWINDOW;
+use crate::tables::SHINE_ENWINDOW;
 use std::f64::consts::PI;
 
 /// Maximum number of channels (matches shine MAX_CHANNELS)
@@ -159,42 +159,42 @@ pub fn shine_window_filter_subband(
         // Windowing operation using shine's exact loop structure
         s_value = mul0(
             subband.x[ch][(subband.off[ch] + i + (0 << 6)) & (HAN_SIZE - 1)],
-            ENWINDOW[i + (0 << 6)]
+            SHINE_ENWINDOW[i + (0 << 6)]
         );
         s_value = muladd(
             s_value,
             subband.x[ch][(subband.off[ch] + i + (1 << 6)) & (HAN_SIZE - 1)],
-            ENWINDOW[i + (1 << 6)]
+            SHINE_ENWINDOW[i + (1 << 6)]
         );
         s_value = muladd(
             s_value,
             subband.x[ch][(subband.off[ch] + i + (2 << 6)) & (HAN_SIZE - 1)],
-            ENWINDOW[i + (2 << 6)]
+            SHINE_ENWINDOW[i + (2 << 6)]
         );
         s_value = muladd(
             s_value,
             subband.x[ch][(subband.off[ch] + i + (3 << 6)) & (HAN_SIZE - 1)],
-            ENWINDOW[i + (3 << 6)]
+            SHINE_ENWINDOW[i + (3 << 6)]
         );
         s_value = muladd(
             s_value,
             subband.x[ch][(subband.off[ch] + i + (4 << 6)) & (HAN_SIZE - 1)],
-            ENWINDOW[i + (4 << 6)]
+            SHINE_ENWINDOW[i + (4 << 6)]
         );
         s_value = muladd(
             s_value,
             subband.x[ch][(subband.off[ch] + i + (5 << 6)) & (HAN_SIZE - 1)],
-            ENWINDOW[i + (5 << 6)]
+            SHINE_ENWINDOW[i + (5 << 6)]
         );
         s_value = muladd(
             s_value,
             subband.x[ch][(subband.off[ch] + i + (6 << 6)) & (HAN_SIZE - 1)],
-            ENWINDOW[i + (6 << 6)]
+            SHINE_ENWINDOW[i + (6 << 6)]
         );
         s_value = muladd(
             s_value,
             subband.x[ch][(subband.off[ch] + i + (7 << 6)) & (HAN_SIZE - 1)],
-            ENWINDOW[i + (7 << 6)]
+            SHINE_ENWINDOW[i + (7 << 6)]
         );
         
         y[i] = mulz(s_value);

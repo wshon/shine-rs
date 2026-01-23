@@ -9,7 +9,6 @@
 
 use crate::types::{ShineGlobalConfig, MAX_CHANNELS, MAX_GRANULES, GRANULE_SIZE, SBLIMIT};
 use crate::tables::{SHINE_SCALE_FACT_BAND_INDEX, SHINE_SLEN1_TAB, SHINE_SLEN2_TAB};
-use crate::reservoir::shine_max_reservoir_bits;
 use std::f64::consts::LN_2;
 
 /// Constants from shine (matches l3loop.c exactly)
@@ -427,7 +426,7 @@ fn part2_length(gr: i32, ch: i32, config: &mut ShineGlobalConfig) -> i32 {
 /// Calculate allowed distortion for each scalefactor band
 /// Corresponds to calc_xmin() in l3loop.c
 fn calc_xmin(
-    ratio: &crate::shine_config::ShinePsyRatio,
+    ratio: &crate::types::ShinePsyRatio,
     cod_info: &mut GranuleInfo,
     l3_xmin: &mut ShinePsyXmin,
     gr: i32,
@@ -934,7 +933,7 @@ fn bin_search_step_size(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shine_config::ShineGlobalConfig;
+    use crate::types::ShineGlobalConfig;
     use crate::config::{Config, WaveConfig, MpegConfig, MpegMode, MpegEmphasis};
     use proptest::prelude::*;
     use std::sync::Once;
