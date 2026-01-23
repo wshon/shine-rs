@@ -1068,6 +1068,97 @@ impl QuantizationLoop {
         
         bits as u32
     }
+    
+    /// Calculate psychoacoustic masking thresholds
+    /// Following shine's calc_xmin exactly (ref/shine/src/lib/l3loop.c:305-325)
+    /// 
+    /// Original shine signature: void calc_xmin(shine_psy_ratio_t *ratio, gr_info *cod_info, shine_psy_xmin_t *l3_xmin, int gr, int ch)
+    /// Note: Shine uses a simplified psychoacoustic model where xmin is always zero
+    pub fn calc_xmin(&self, cod_info: &mut GranuleInfo, _gr: usize, _ch: usize) -> crate::Result<[f32; 21]> {
+        let mut l3_xmin = [0.0f32; 21];
+        
+        // Following shine's exact loop: for (sfb = cod_info->sfb_lmax; sfb--;)
+        for sfb in (0..=cod_info.sfb_lmax as usize).rev() {
+            if sfb >= 21 { continue; }
+            
+            // Following shine's comment and implementation exactly:
+            // "note. xmin will always be zero with no psychoacoustic model"
+            // l3_xmin->l[gr][ch][sfb] = 0;
+            l3_xmin[sfb] = 0.0;
+        }
+        
+        Ok(l3_xmin)
+    }
+    
+    /// Calculate scale factor selection information
+    /// Following shine's SCFSI calculation
+    pub fn calc_scfsi(&self, _l3_xmin: &[f32; 21], _ch: usize, _gr: usize) -> crate::Result<()> {
+        // For now, we don't implement scale factor selection information
+        // This would be implemented following shine's scfsi.c
+        Ok(())
+    }
+    
+    /// Calculate perceptual entropy for bit reservoir management
+    /// Following shine's perceptual entropy calculation
+    pub fn calculate_perceptual_entropy(&self, _ch: usize, _gr: usize) -> crate::Result<f64> {
+        // Simplified perceptual entropy calculation
+        // In a full implementation, this would analyze the spectral content
+        // and calculate the perceptual entropy following shine's algorithm
+        Ok(100.0)
+    }
+    
+    /// Main iteration loop for encoding granules
+    /// Following shine's main encoding loop logic (ref/shine/src/lib/l3loop.c)
+    /// This function processes all granules for all channels in a frame
+    pub fn encode_granules(
+        &mut self,
+        mdct_freq: &[[[i32; 576]; 2]; 2], // [channel][granule][coefficient]
+        channels: usize,
+        granules_per_frame: usize,
+        sample_rate: u32,
+        reservoir: &mut crate::reservoir::BitReservoir,
+        mpeg_version: crate::config::MpegVersion,
+    ) -> crate::Result<(Vec<GranuleInfo>, Vec<[[i32; 576]; 2]>)> {
+        let mut all_granule_info = Vec::new();
+        let mut all_quantized_coeffs = vec![[[0i32; 576]; 2]; channels];
+        
+        for ch in (0..channels).rev() {
+            for gr in 0..granules_per_frame {
+                let xr = mdct_freq[ch][gr];
+                let mut cod_info = GranuleInfo::default();
+                cod_info.sfb_lmax = 21 - 1;
+                
+                let l3_xmin = self.calc_xmin(&mut cod_info, gr, ch)?;
+                
+                if matches!(mpeg_version, crate::config::MpegVersion::Mpeg1) {
+                    self.calc_scfsi(&l3_xmin, ch, gr)?;
+                }
+                
+                let perceptual_entropy = self.calculate_perceptual_entropy(ch, gr)?;
+                let max_bits = reservoir.max_reservoir_bits(perceptual_entropy, channels as u8);
+                
+                let mut quantized_coeffs = [0i32; 576];
+                
+                let part2_3_length = self.quantize_and_encode(
+                    &xr,
+                    max_bits,
+                    &mut cod_info,
+                    &mut quantized_coeffs,
+                    sample_rate
+                )?;
+                
+                all_quantized_coeffs[ch][gr] = quantized_coeffs;
+                reservoir.adjust_reservoir(part2_3_length as u32, channels as u8);
+                cod_info.global_gain = (cod_info.quantizer_step_size + 210) as u32;
+                
+                all_granule_info.push(cod_info);
+            }
+        }
+        
+        reservoir.frame_end(channels as u8)?;
+        
+        Ok((all_granule_info, all_quantized_coeffs))
+    }
 }
 
 impl Default for QuantizationLoop {

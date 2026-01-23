@@ -8,6 +8,7 @@ use crate::shine_config::ShineGlobalConfig;
 use crate::reservoir::BitReservoir;
 use crate::error::{EncoderError, InputDataError};
 use crate::quantization::{QuantizationLoop, GranuleInfo};
+use crate::pcm_utils;
 use crate::Result;
 
 /// Main MP3 encoder structure following shine's architecture
@@ -229,36 +230,22 @@ impl Mp3Encoder {
     
     /// De-interleave non-interleaved PCM data into channel buffers
     fn deinterleave_pcm(&mut self, pcm_data: &[i16], channels: usize, samples_per_frame: usize) {
-        for ch in 0..channels {
-            self.global_config.buffer[ch].clear();
-            self.global_config.buffer[ch].reserve(samples_per_frame);
-            
-            let channel_start = ch * samples_per_frame;
-            let channel_end = channel_start + samples_per_frame;
-            
-            for sample_idx in channel_start..channel_end {
-                if sample_idx < pcm_data.len() {
-                    self.global_config.buffer[ch].push(pcm_data[sample_idx]);
-                }
-            }
-        }
+        pcm_utils::deinterleave_pcm_non_interleaved(
+            pcm_data, 
+            channels, 
+            samples_per_frame, 
+            &mut self.global_config.buffer[..channels]
+        );
     }
     
     /// De-interleave interleaved PCM data into channel buffers
     fn deinterleave_pcm_interleaved(&mut self, pcm_data: &[i16], channels: usize, samples_per_frame: usize) {
-        for ch in 0..channels {
-            self.global_config.buffer[ch].clear();
-            self.global_config.buffer[ch].reserve(samples_per_frame);
-        }
-        
-        for sample_idx in 0..samples_per_frame {
-            for ch in 0..channels {
-                let interleaved_idx = sample_idx * channels + ch;
-                if interleaved_idx < pcm_data.len() {
-                    self.global_config.buffer[ch].push(pcm_data[interleaved_idx]);
-                }
-            }
-        }
+        pcm_utils::deinterleave_pcm_interleaved(
+            pcm_data, 
+            channels, 
+            samples_per_frame, 
+            &mut self.global_config.buffer[..channels]
+        );
     }
     
     /// Main encoding pipeline following shine's encode_buffer_internal
@@ -295,7 +282,22 @@ impl Mp3Encoder {
         self.shine_mdct_sub(channels)?;
         
         // Step 5: Bit and noise allocation
-        self.shine_iteration_loop(channels, mean_bits as i32)?;
+        let (granule_info, quantized_coeffs) = self.quantization_loop.encode_granules(
+            &self.global_config.mdct_freq,
+            channels,
+            granules_per_frame,
+            self.global_config.wave.sample_rate,
+            &mut self.reservoir,
+            self.config.mpeg_version(),
+        )?;
+        
+        // Store results
+        self.current_granule_info = granule_info;
+        for ch in 0..channels {
+            for gr in 0..granules_per_frame {
+                self.global_config.l3_enc[ch][gr] = quantized_coeffs[ch][gr];
+            }
+        }
         
         // Step 6: Format bitstream
         self.shine_format_bitstream(padding, target_frame_bytes)?;
@@ -313,80 +315,6 @@ impl Mp3Encoder {
     fn shine_mdct_sub(&mut self, _channels: usize) -> Result<()> {
         crate::mdct::shine_mdct_sub(&mut self.global_config, 1);
         Ok(())
-    }
-    
-    /// Bit and noise allocation iteration loop
-    fn shine_iteration_loop(&mut self, channels: usize, _mean_bits: i32) -> Result<()> {
-        use crate::config::MpegVersion;
-        
-        let granules_per_frame = match self.config.mpeg_version() {
-            MpegVersion::Mpeg1 => 2,
-            MpegVersion::Mpeg2 | MpegVersion::Mpeg25 => 1,
-        };
-        
-        let mut all_granule_info = Vec::new();
-        
-        for ch in (0..channels).rev() {
-            for gr in 0..granules_per_frame {
-                let xr = self.global_config.mdct_freq[ch][gr];
-                let mut cod_info = GranuleInfo::default();
-                cod_info.sfb_lmax = 21 - 1;
-                
-                let l3_xmin = self.calc_xmin(&mut cod_info, gr, ch)?;
-                
-                if matches!(self.config.mpeg_version(), MpegVersion::Mpeg1) {
-                    self.calc_scfsi(&l3_xmin, ch, gr)?;
-                }
-                
-                let perceptual_entropy = self.calculate_perceptual_entropy(ch, gr)?;
-                let max_bits = self.reservoir.max_reservoir_bits(perceptual_entropy, channels as u8);
-                
-                let mut quantized_coeffs = [0i32; 576];
-                let sample_rate = self.global_config.wave.sample_rate;
-                
-                let part2_3_length = self.quantization_loop.quantize_and_encode(
-                    &xr,
-                    max_bits,
-                    &mut cod_info,
-                    &mut quantized_coeffs,
-                    sample_rate
-                )?;
-                
-                self.global_config.l3_enc[ch][gr] = quantized_coeffs;
-                self.reservoir.adjust_reservoir(part2_3_length as u32, channels as u8);
-                cod_info.global_gain = (cod_info.quantizer_step_size + 210) as u32;
-                
-                all_granule_info.push(cod_info);
-            }
-        }
-        
-        self.reservoir.frame_end(channels as u8)?;
-        self.current_granule_info = all_granule_info;
-        
-        Ok(())
-    }
-    
-    /// Calculate psychoacoustic masking thresholds
-    fn calc_xmin(&self, cod_info: &mut GranuleInfo, _gr: usize, _ch: usize) -> Result<[f32; 21]> {
-        let mut l3_xmin = [0.0f32; 21];
-        
-        for sfb in (0..=cod_info.sfb_lmax as usize).rev() {
-            if sfb >= 21 { continue; }
-            l3_xmin[sfb] = 0.0;
-        }
-        
-        Ok(l3_xmin)
-    }
-    
-    /// Calculate scale factor selection information
-    fn calc_scfsi(&self, _l3_xmin: &[f32; 21], _ch: usize, _gr: usize) -> Result<()> {
-        // For now, we don't implement scale factor selection information
-        Ok(())
-    }
-    
-    /// Calculate perceptual entropy for bit reservoir management
-    fn calculate_perceptual_entropy(&self, _ch: usize, _gr: usize) -> Result<f64> {
-        Ok(100.0)
     }
     
     /// Format and write the bitstream
