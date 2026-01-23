@@ -3,13 +3,18 @@
 //! This tool converts WAV files to MP3 format using the rust-mp3-encoder library.
 //! It supports various sample rates, mono/stereo configurations, and bitrates.
 
-use rust_mp3_encoder::{Mp3Encoder, Config};
-use rust_mp3_encoder::config::{WaveConfig, MpegConfig, Channels, StereoMode, Emphasis};
+use rust_mp3_encoder::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
 use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process;
+
+/// Stereo mode constants (matches shine's stereo modes)
+const STEREO_MONO: i32 = 3;
+const STEREO_STEREO: i32 = 0;
+const STEREO_JOINT_STEREO: i32 = 1;
+const STEREO_DUAL_CHANNEL: i32 = 2;
 
 /// WAV file reader that extracts PCM data and metadata
 struct WavReader;
@@ -132,8 +137,8 @@ impl WavReader {
 struct Args {
     input_file: String,
     output_file: String,
-    bitrate: u32,
-    stereo_mode: StereoMode,
+    bitrate: i32,
+    stereo_mode: i32,
 }
 
 impl Args {
@@ -164,7 +169,7 @@ impl Args {
         
         // Parse bitrate (default: 128)
         let bitrate = if args.len() > 3 {
-            args[3].parse::<u32>()
+            args[3].parse::<i32>()
                 .map_err(|_| format!("Invalid bitrate: {}", args[3]))?
         } else {
             128
@@ -178,14 +183,14 @@ impl Args {
         // Parse stereo mode (default: auto-detect based on channels)
         let stereo_mode = if args.len() > 4 {
             match args[4].to_lowercase().as_str() {
-                "mono" => StereoMode::Mono,
-                "stereo" => StereoMode::Stereo,
-                "joint_stereo" => StereoMode::JointStereo,
-                "dual_channel" => StereoMode::DualChannel,
+                "mono" => STEREO_MONO,
+                "stereo" => STEREO_STEREO,
+                "joint_stereo" => STEREO_JOINT_STEREO,
+                "dual_channel" => STEREO_DUAL_CHANNEL,
                 _ => return Err(format!("Invalid stereo mode: {}. Supported: mono, stereo, joint_stereo, dual_channel", args[4])),
             }
         } else {
-            StereoMode::JointStereo // Will be adjusted based on input channels
+            STEREO_JOINT_STEREO // Will be adjusted based on input channels
         };
         
         Ok(Args {
@@ -207,41 +212,39 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     println!("WAV info: {} Hz, {} channels, {} samples", 
              sample_rate, channels, pcm_data.len());
     
-    // Determine channel configuration
-    let wave_channels = if channels == 1 { 
-        Channels::Mono 
-    } else { 
-        Channels::Stereo 
-    };
-    
     // Adjust stereo mode based on input channels
     let stereo_mode = if channels == 1 {
-        StereoMode::Mono
+        STEREO_MONO
     } else {
         args.stereo_mode
     };
     
     // Create encoder configuration
-    let config = Config {
-        wave: WaveConfig {
-            channels: wave_channels,
-            sample_rate,
+    let mut config = ShineConfig {
+        wave: ShineWave {
+            channels: channels as i32,
+            samplerate: sample_rate as i32,
         },
-        mpeg: MpegConfig {
+        mpeg: ShineMpeg {
             mode: stereo_mode,
-            bitrate: args.bitrate,
-            emphasis: Emphasis::None,
-            copyright: false,
-            original: true,
+            bitr: args.bitrate,
+            emph: 0,
+            copyright: 0,
+            original: 1,
         },
     };
     
-    println!("Encoding with: {} kbps, {:?} mode", args.bitrate, stereo_mode);
+    // Set default MPEG values
+    shine_set_config_mpeg_defaults(&mut config.mpeg);
+    config.mpeg.bitr = args.bitrate; // Override default bitrate
+    config.mpeg.mode = stereo_mode;  // Override default mode
     
-    let mut encoder = Mp3Encoder::new(config)?;
+    println!("Encoding with: {} kbps, mode {}", args.bitrate, stereo_mode);
     
-    // Encode audio in chunks
-    let samples_per_frame = encoder.samples_per_frame();
+    let mut encoder = shine_initialise(&config)?;
+    
+    // Calculate samples per frame
+    let samples_per_frame = 1152; // MPEG Layer III frame size
     let frame_size = samples_per_frame * channels as usize;
     let mut mp3_data = Vec::new();
     
@@ -252,38 +255,32 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut frame_count = 0;
     for chunk in pcm_data.chunks(frame_size) {
         if chunk.len() == frame_size {
-            let frame_data = if channels == 1 {
-                encoder.encode_frame(chunk)?
-            } else {
-                encoder.encode_frame_interleaved(chunk)?
-            };
+            // Convert to raw pointer for shine API
+            let data_ptr = chunk.as_ptr();
             
-            mp3_data.extend_from_slice(frame_data);
+            let (frame_data, written) = shine_encode_buffer_interleaved(&mut encoder, data_ptr)?;
+            
+            if written > 0 {
+                mp3_data.extend_from_slice(&frame_data[..written]);
+            }
+            
             frame_count += 1;
             
             if frame_count % 100 == 0 {
                 println!("Encoded {} / {} frames", frame_count, total_frames);
             }
-        } else {
-            // Handle partial frame
-            match encoder.encode_samples(chunk)? {
-                Some(frame_data) => {
-                    mp3_data.extend_from_slice(frame_data);
-                    println!("Encoded partial frame: {} samples", chunk.len());
-                },
-                None => {
-                    println!("Partial frame buffered: {} samples", chunk.len());
-                }
-            }
         }
     }
     
     // Flush any remaining data
-    let final_data = encoder.flush()?;
-    if !final_data.is_empty() {
-        mp3_data.extend_from_slice(final_data);
-        println!("Flushed final data: {} bytes", final_data.len());
+    let (final_data, final_written) = shine_flush(&mut encoder);
+    if final_written > 0 {
+        mp3_data.extend_from_slice(&final_data[..final_written]);
+        println!("Flushed final data: {} bytes", final_written);
     }
+    
+    // Close encoder
+    shine_close(encoder);
     
     println!("Total MP3 data: {} bytes", mp3_data.len());
     

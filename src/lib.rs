@@ -16,3 +16,8 @@ pub mod reservoir;
 pub mod subband;
 pub mod tables;
 pub mod types;
+
+// Re-export commonly used types and functions for easier access
+pub use encoder::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
+pub use error::{EncodingError, EncodingResult};
+pub use types::ShineGlobalConfig;

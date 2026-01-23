@@ -13,6 +13,7 @@ use crate::huffman::SHINE_HUFFMAN_TABLE;
 use std::f64::consts::LN_2;
 
 /// Constants from shine (matches l3loop.c exactly)
+#[allow(dead_code)] // May be used in future implementations
 const CBLIMIT: usize = 21;
 const SFB_LMAX: usize = 22;
 const EN_TOT_KRIT: i32 = 10;
@@ -962,23 +963,11 @@ mod tests {
     }
 
     fn create_test_config() -> ShineGlobalConfig {
-        let config = Config {
-            wave: WaveConfig {
-                channels: 2,
-                sample_rate: 44100,
-            },
-            mpeg: MpegConfig {
-                mode: MpegMode::Stereo,
-                bitrate: 128,
-                emphasis: MpegEmphasis::None,
-                copyright: false,
-                original: true,
-            },
-        };
-        
-        let mut shine_config = ShineGlobalConfig::new(config).unwrap();
-        shine_config.initialize().unwrap();
-        shine_config
+        let mut config = ShineGlobalConfig::new();
+        config.wave.channels = 2;
+        config.wave.samplerate = 44100;
+        config.mpeg.bitr = 128;
+        config
     }
 
     #[cfg(test)]
