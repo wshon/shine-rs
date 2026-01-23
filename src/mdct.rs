@@ -261,18 +261,19 @@ impl MdctTransform {
                 let mut j = 35;
                 while j > 0 {
                     if j >= 7 {
-                        vm += Self::mul(mdct_in[j - 1], self.cos_l[k][j - 1]);
-                        vm += Self::mul(mdct_in[j - 2], self.cos_l[k][j - 2]);
-                        vm += Self::mul(mdct_in[j - 3], self.cos_l[k][j - 3]);
-                        vm += Self::mul(mdct_in[j - 4], self.cos_l[k][j - 4]);
-                        vm += Self::mul(mdct_in[j - 5], self.cos_l[k][j - 5]);
-                        vm += Self::mul(mdct_in[j - 6], self.cos_l[k][j - 6]);
-                        vm += Self::mul(mdct_in[j - 7], self.cos_l[k][j - 7]);
+                        // Use saturating arithmetic to prevent overflow
+                        vm = vm.saturating_add(Self::mul(mdct_in[j - 1], self.cos_l[k][j - 1]));
+                        vm = vm.saturating_add(Self::mul(mdct_in[j - 2], self.cos_l[k][j - 2]));
+                        vm = vm.saturating_add(Self::mul(mdct_in[j - 3], self.cos_l[k][j - 3]));
+                        vm = vm.saturating_add(Self::mul(mdct_in[j - 4], self.cos_l[k][j - 4]));
+                        vm = vm.saturating_add(Self::mul(mdct_in[j - 5], self.cos_l[k][j - 5]));
+                        vm = vm.saturating_add(Self::mul(mdct_in[j - 6], self.cos_l[k][j - 6]));
+                        vm = vm.saturating_add(Self::mul(mdct_in[j - 7], self.cos_l[k][j - 7]));
                         j -= 7;
                     } else {
                         // Handle remaining samples
                         for idx in (0..j).rev() {
-                            vm += Self::mul(mdct_in[idx], self.cos_l[k][idx]);
+                            vm = vm.saturating_add(Self::mul(mdct_in[idx], self.cos_l[k][idx]));
                         }
                         break;
                     }

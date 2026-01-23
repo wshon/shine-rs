@@ -118,6 +118,38 @@ impl Config {
         }
     }
     
+    /// Get bitrate index for MP3 frame header
+    pub fn bitrate_index(&self) -> u8 {
+        let bitrates = match self.mpeg_version() {
+            MpegVersion::Mpeg1 => &[0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0],
+            MpegVersion::Mpeg2 | MpegVersion::Mpeg25 => &[0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0],
+        };
+        
+        for (index, &rate) in bitrates.iter().enumerate() {
+            if rate == self.mpeg.bitrate {
+                return index as u8;
+            }
+        }
+        
+        9 // Default to index 9 (128 kbps for MPEG-1, 64 kbps for MPEG-2)
+    }
+    
+    /// Get sample rate index for MP3 frame header
+    pub fn samplerate_index(&self) -> u8 {
+        match self.wave.sample_rate {
+            44100 => 0,
+            48000 => 1,
+            32000 => 2,
+            22050 => 0, // MPEG-2 uses same indices but different interpretation
+            24000 => 1,
+            16000 => 2,
+            11025 => 0, // MPEG-2.5 uses same indices but different interpretation
+            12000 => 1,
+            8000 => 2,
+            _ => 0, // Default fallback
+        }
+    }
+    
     /// Validate compatibility between sample rate and bitrate
     fn validate_compatibility(&self) -> ConfigResult<()> {
         let valid_combinations = match self.wave.sample_rate {
