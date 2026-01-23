@@ -3,8 +3,7 @@
 //! Layer3 bit reservoir: Described in C.1.5.4.2.2 of the IS
 //! This module implements shine's reservoir.c functions exactly
 
-use crate::types::ShineGlobalConfig;
-use crate::quantization::GranuleInfo;
+use crate::types::{ShineGlobalConfig, GrInfo};
 
 /// Get maximum reservoir bits for current granule
 /// Corresponds to shine_max_reservoir_bits() in reservoir.c
@@ -57,7 +56,7 @@ pub fn shine_max_reservoir_bits(pe: &f64, config: &ShineGlobalConfig) -> i32 {
 /// 
 /// Called after a granule's bit allocation. Readjusts the size of
 /// the reservoir to reflect the granule's usage.
-pub fn shine_resv_adjust(gi: &GranuleInfo, config: &mut ShineGlobalConfig) {
+pub fn shine_resv_adjust(gi: &GrInfo, config: &mut ShineGlobalConfig) {
     config.resv_size += (config.mean_bits / config.wave.channels) - gi.part2_3_length as i32;
 }
 

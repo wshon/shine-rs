@@ -113,23 +113,33 @@ pub fn shine_inner_loop(
 /// global gain. This module calls the inner iteration loop.
 pub fn shine_outer_loop(
     max_bits: i32,
-    l3_xmin: &mut ShinePsyXmin, // the allowed distortion of the scalefactor
+    _l3_xmin: &mut ShinePsyXmin, // the allowed distortion of the scalefactor
     ix: &mut [i32; GRANULE_SIZE], // vector of quantized values ix(0..575)
     gr: i32,
     ch: i32,
     config: &mut ShineGlobalConfig,
 ) -> i32 {
-    let mut bits: i32;
+    let bits: i32;
     let huff_bits: i32;
-    let side_info = &mut config.side_info;
-    let cod_info = &mut side_info.gr[gr as usize].ch[ch as usize].tt;
+    
+    // Extract values to avoid borrowing conflicts
+    let quantizer_step_size = {
+        let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+        bin_search_step_size(max_bits, ix, cod_info, config)
+    };
+    
+    let part2_length = part2_length(gr, ch, config) as u32;
+    huff_bits = max_bits - part2_length as i32;
 
-    cod_info.quantizer_step_size = bin_search_step_size(max_bits, ix, cod_info, config);
-
-    cod_info.part2_length = part2_length(gr, ch, config) as u32;
-    huff_bits = max_bits - cod_info.part2_length as i32;
-
-    bits = shine_inner_loop(ix, huff_bits, cod_info, gr, ch, config);
+    bits = {
+        let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+        cod_info.quantizer_step_size = quantizer_step_size;
+        cod_info.part2_length = part2_length;
+        shine_inner_loop(ix, huff_bits, cod_info, gr, ch, config)
+    };
+    
+    // Update final values
+    let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
     cod_info.part2_3_length = cod_info.part2_length + bits as u32;
 
     cod_info.part2_3_length as i32
@@ -364,9 +374,9 @@ fn part2_length(gr: i32, ch: i32, config: &mut ShineGlobalConfig) -> i32 {
 fn calc_xmin(
     _ratio: &crate::types::ShinePsyRatio,
     cod_info: &mut GrInfo,
-    _l3_xmin: &mut ShinePsyXmin,
-    _gr: i32,
-    _ch: i32,
+    l3_xmin: &mut ShinePsyXmin,
+    gr: i32,
+    ch: i32,
 ) {
     for sfb in (0..cod_info.sfb_lmax as usize).rev() {
         // note. xmin will always be zero with no psychoacoustic model
