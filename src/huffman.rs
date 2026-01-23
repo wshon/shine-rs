@@ -1155,6 +1155,8 @@ mod tests {
                 address1,
                 address2,
                 address3,
+                sfb_lmax: 20,
+                slen: [0, 0, 0, 0],
             }
         }
     }

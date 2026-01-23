@@ -7,6 +7,7 @@ use crate::config::{Config, MpegVersion, StereoMode, Emphasis};
 use crate::quantization::GranuleInfo;
 
 /// Bitstream writer for MP3 frame data
+#[derive(Debug)]
 pub struct BitstreamWriter {
     /// Output buffer
     buffer: Vec<u8>,
@@ -972,6 +973,8 @@ mod tests {
                     address1: 0,
                     address2: 0,
                     address3: 0,
+                    sfb_lmax: 20,
+                    slen: [0, 0, 0, 0],
                 });
             }
             
@@ -1021,6 +1024,8 @@ mod tests {
                     address1: 0,
                     address2: 0,
                     address3: 0,
+                    sfb_lmax: 20,
+                    slen: [0, 0, 0, 0],
                 }
             }).boxed()
         }

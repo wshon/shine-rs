@@ -63,7 +63,7 @@ mod tests {
                 (8000.0 * (2.0 * std::f64::consts::PI * 440.0 * t).sin()) as i16
             }).collect()),
             ("white_noise", (0..samples_per_frame).map(|i| {
-                ((i * 1234567) % 65536) as i16 - 32768
+                ((i * 1234567) % 65536) as i16 - 32767
             }).collect()),
         ];
 
@@ -238,7 +238,7 @@ mod tests {
             
             prop_assert!(encoded_frame.is_ok(), "Encoding should succeed");
             
-            let frame = encoded_frame.unwrap();
+            let frame = encoded_frame.unwrap().to_vec(); // Copy the frame data
             
             // Frame should have reasonable size
             prop_assert!(frame.len() >= 100, "Frame should be at least 100 bytes");
@@ -250,11 +250,14 @@ mod tests {
             prop_assert_eq!(sync, 0x7FF, "Frame should have valid sync word");
             
             // Frame size should be consistent for same parameters
-            let frame2 = if channels == Channels::Stereo {
+            let frame2_result = if channels == Channels::Stereo {
                 encoder.encode_frame_interleaved(&pcm_data)
             } else {
                 encoder.encode_frame(&pcm_data)
-            }.unwrap();
+            };
+            
+            prop_assert!(frame2_result.is_ok(), "Second encoding should succeed");
+            let frame2 = frame2_result.unwrap();
             
             prop_assert_eq!(frame.len(), frame2.len(), "Frame size should be consistent");
         }

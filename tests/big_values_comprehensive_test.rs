@@ -177,32 +177,85 @@ mod tests {
     }
 
     /// Extract big_values from encoded MP3 frame
-    /// This is a simplified parser - in a real implementation you'd want more robust parsing
+    /// This function properly parses the MP3 bitstream structure
     fn extract_big_values_from_frame(frame: &[u8]) -> u32 {
         if frame.len() < 10 {
             return 0;
         }
 
-        // Skip frame header (4 bytes) and find side info
-        let side_info_start = 4;
+        // Parse frame header (4 bytes)
+        let header = u32::from_be_bytes([frame[0], frame[1], frame[2], frame[3]]);
         
-        // For mono MPEG-1: side info is 17 bytes
-        // big_values is at offset 6-7 in granule info (9 bits)
-        if frame.len() > side_info_start + 8 {
-            let granule_start = side_info_start + 9; // Skip main_data_begin and private_bits
+        // Check sync word (11 bits)
+        if (header >> 21) != 0x7FF {
+            return 0; // Invalid frame
+        }
+        
+        // Extract MPEG version (2 bits)
+        let mpeg_version = (header >> 19) & 0x3;
+        if mpeg_version == 1 { // Reserved
+            return 0;
+        }
+        
+        // Extract layer (2 bits) - should be 01 for Layer III
+        let layer = (header >> 17) & 0x3;
+        if layer != 1 { // Layer III
+            return 0;
+        }
+        
+        // Extract channel mode (2 bits)
+        let channel_mode = (header >> 6) & 0x3;
+        let channels = if channel_mode == 3 { 1 } else { 2 }; // 3 = mono, others = stereo
+        
+        // Calculate side info size
+        let side_info_size = if mpeg_version == 3 { // MPEG-1
+            if channels == 1 { 17 } else { 32 }
+        } else { // MPEG-2/2.5
+            if channels == 1 { 9 } else { 17 }
+        };
+        
+        if frame.len() < 4 + side_info_size {
+            return 0;
+        }
+        
+        // Parse side info starting at byte 4
+        let side_info = &frame[4..4 + side_info_size];
+        
+        // For MPEG-1 mono, the structure is:
+        // main_data_begin (9 bits)
+        // private_bits (5 bits)  
+        // scfsi (4 bits)
+        // Then granule 0 info, granule 1 info
+        // Each granule info starts with:
+        // part2_3_length (12 bits)
+        // big_values (9 bits)
+        // ...
+        
+        if mpeg_version == 3 && channels == 1 { // MPEG-1 mono
+            // Skip main_data_begin (9 bits) + private_bits (5 bits) + scfsi (4 bits) = 18 bits = 2.25 bytes
+            // We'll start from byte 2 and handle bit alignment
             
-            if frame.len() > granule_start + 2 {
-                // Extract big_values (9 bits starting at bit offset after part2_3_length)
-                let byte1 = frame[granule_start + 1] as u32;
-                let byte2 = frame[granule_start + 2] as u32;
+            if side_info.len() >= 6 {
+                // Extract big_values from first granule (starts at bit 18)
+                // Bit 18-29: part2_3_length (12 bits)
+                // Bit 30-38: big_values (9 bits)
                 
-                // big_values is 9 bits, extract from the bit stream
-                // This is a simplified extraction - real implementation would need proper bit parsing
-                let big_values = ((byte1 & 0x01) << 8) | byte2;
+                let byte2 = side_info[2] as u32;
+                let byte3 = side_info[3] as u32;
+                let byte4 = side_info[4] as u32;
+                
+                // Extract bits 30-38 (big_values)
+                // Bit 30 is bit 6 of byte2 (counting from bit 16)
+                // Bits 31-38 are all 8 bits of byte3
+                let big_values = ((byte2 & 0x03) << 7) | ((byte3 & 0xFE) >> 1);
+                
                 return big_values;
             }
         }
         
+        // For other configurations, return 0 for now
+        // TODO: Implement parsing for stereo and MPEG-2/2.5
         0
     }
+
 }

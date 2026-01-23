@@ -31,6 +31,7 @@ pub mod reservoir;
 pub mod huffman;
 pub mod encoder;
 pub mod error;
+pub mod shine_config;
 
 // Re-export main types for convenience
 pub use config::{Config, WaveConfig, MpegConfig, Channels, StereoMode, Emphasis};

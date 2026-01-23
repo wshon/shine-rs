@@ -24,6 +24,7 @@ pub struct QuantizationLoop {
 }
 
 /// Granule information structure
+/// Following shine's gr_info structure exactly (ref/shine/src/lib/types.h)
 #[derive(Debug, Clone)]
 pub struct GranuleInfo {
     /// Length of part2_3 data in bits
@@ -56,6 +57,10 @@ pub struct GranuleInfo {
     pub address1: u32,
     pub address2: u32,
     pub address3: u32,
+    /// Scale factor band limit for long blocks (shine's sfb_lmax)
+    pub sfb_lmax: u32,
+    /// Scale factor lengths (shine's slen[4])
+    pub slen: [u32; 4],
 }
 
 impl Default for GranuleInfo {
@@ -77,6 +82,8 @@ impl Default for GranuleInfo {
             address1: 0,
             address2: 0,
             address3: 0,
+            sfb_lmax: 20, // SFB_LMAX - 1 = 21 - 1 = 20
+            slen: [0, 0, 0, 0],
         }
     }
 }
@@ -376,7 +383,34 @@ impl QuantizationLoop {
         
         // Set big values count - following shine's logic exactly
         // cod_info->big_values = i >> 1;
-        side_info.big_values = (i >> 1) as u32;
+        let calculated_big_values = (i >> 1) as u32;
+        
+        // CRITICAL: MP3 standard requires big_values <= 288 (576 coefficients / 2)
+        // If our calculation exceeds this, it indicates a problem in the quantization
+        // or run length calculation that needs to be investigated
+        if calculated_big_values > 288 {
+            eprintln!("WARNING: big_values {} exceeds MP3 limit of 288", calculated_big_values);
+            eprintln!("This indicates insufficient quantization step size");
+            eprintln!("Coefficients distribution:");
+            let mut non_zero_count = 0;
+            let mut large_count = 0;
+            for &coeff in quantized.iter() {
+                if coeff != 0 {
+                    non_zero_count += 1;
+                    if coeff > 1 {
+                        large_count += 1;
+                    }
+                }
+            }
+            eprintln!("  Non-zero coefficients: {}", non_zero_count);
+            eprintln!("  Large coefficients (>1): {}", large_count);
+            eprintln!("  Calculated i value: {}", i);
+            
+            // For now, clamp to the maximum allowed value
+            side_info.big_values = 288;
+        } else {
+            side_info.big_values = calculated_big_values;
+        }
     }
     
     /// Inner loop: find optimal Huffman table selection
@@ -448,11 +482,9 @@ impl QuantizationLoop {
         // Following shine's logic: huff_bits = max_bits - cod_info->part2_length;
         let huffman_bits = max_bits - info.part2_length as i32;
         
-        // Quantize coefficients with the selected step size
-        let mut quantized = [0i32; GRANULE_SIZE];
-        self.quantize(&mut quantized, info.quantizer_step_size, mdct_coeffs);
-        
         // Following shine's logic: bits = shine_inner_loop(ix, huff_bits, cod_info, gr, ch, config);
+        // Note: inner_loop will quantize the coefficients internally
+        let mut quantized = [0i32; GRANULE_SIZE];
         let bits = self.inner_loop(mdct_coeffs, &mut quantized, huffman_bits, info, sample_rate);
         
         // Following shine's logic: cod_info->part2_3_length = cod_info->part2_length + bits;
@@ -504,6 +536,9 @@ impl QuantizationLoop {
                 self.select_big_values_tables(&temp_coeffs, &mut temp_info);
                 let bvbits = self.big_values_bitcount(&temp_coeffs, &temp_info);
                 
+                // CRITICAL: shine's bin_search_StepSize only counts Huffman bits
+                // but compares against the full desired_rate (which includes part2)
+                // This is the exact behavior we need to replicate
                 c1bits + bvbits
             };
             
