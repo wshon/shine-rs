@@ -111,9 +111,26 @@ pub enum EncodingError {
     /// Bit reservoir overflow
     #[error("Bit reservoir overflow: attempted to use {requested} bits, only {available} available")]
     BitReservoirOverflow { requested: usize, available: usize },
+    
+    /// Validation error for testing and verification
+    #[error("Validation error: {0}")]
+    ValidationError(String),
 }
 
 /// Specialized result types for different modules
 pub type ConfigResult<T> = std::result::Result<T, ConfigError>;
 pub type InputResult<T> = std::result::Result<T, InputDataError>;
 pub type EncodingResult<T> = std::result::Result<T, EncodingError>;
+
+/// Convert EncoderError to EncodingError for verification purposes
+impl From<EncoderError> for EncodingError {
+    fn from(err: EncoderError) -> Self {
+        match err {
+            EncoderError::Config(config_err) => EncodingError::ValidationError(format!("Config error: {}", config_err)),
+            EncoderError::InputData(input_err) => EncodingError::ValidationError(format!("Input error: {}", input_err)),
+            EncoderError::Encoding(encoding_err) => encoding_err,
+            EncoderError::Memory => EncodingError::ValidationError("Memory error".to_string()),
+            EncoderError::InternalState(msg) => EncodingError::ValidationError(format!("Internal state error: {}", msg)),
+        }
+    }
+}

@@ -34,6 +34,9 @@ pub mod error;
 pub mod shine_config;
 pub mod pcm_utils;
 
+#[cfg(test)]
+pub mod verification_3_4;
+
 // Re-export main types for convenience
 pub use config::{Config, WaveConfig, MpegConfig, Channels, StereoMode, Emphasis};
 pub use encoder::Mp3Encoder;
