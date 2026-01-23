@@ -537,11 +537,11 @@ pub fn shine_window_filter_subband(
     // Following shine's windowing exactly: for (i = 64; i--;)
     for i in (0..64).rev() {
         let mut s_value = 0i64;
-        let i_usize = i as usize;
         
         // Following shine's 8-fold loop unrolling with mul0 + muladd pattern
         // mul0(s_value, s_value_lo, config->subband.x[ch][...], shine_enwindow[i + (0 << 6)]);
-        s_value = (config.subband.x[ch_idx][(config.subband.off[ch_idx] as usize + i_usize + (0 << 6)) & (crate::shine_config::HAN_SIZE - 1)] as i64) 
+        let i_usize = i as usize;
+        let mut s_value = (config.subband.x[ch_idx][(config.subband.off[ch_idx] as usize + i_usize + (0 << 6)) & (crate::shine_config::HAN_SIZE - 1)] as i64) 
                 * (ENWINDOW[i_usize + (0 << 6)] as i64);
         
         // muladd operations for remaining 7 windows
@@ -571,11 +571,9 @@ pub fn shine_window_filter_subband(
     // Apply subband filter matrix to produce 32 subband samples
     // Following shine's exact loop: for (i = SBLIMIT; i--;)
     for i in (0..32).rev() {
-        let mut s_value = 0i64;
-        
         // Following shine's mul0 + muladd pattern with 7-step unrolling
         // mul0(s_value, s_value_lo, config->subband.fl[i][63], y[63]);
-        s_value = (config.subband.fl[i][63] as i64) * (y[63] as i64);
+        let mut s_value = (config.subband.fl[i][63] as i64) * (y[63] as i64);
         
         // for (j = 63; j; j -= 7) { ... muladd operations ... }
         let mut j = 63;

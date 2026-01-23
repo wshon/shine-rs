@@ -25,8 +25,13 @@ fn main() {
     println!("Creating test data...");
     // Create a small amount of test data (1 frame)
     let samples_per_frame = encoder.samples_per_frame();
-    let frame_size = samples_per_frame * 2; // stereo
-    let test_data: Vec<i16> = (0..frame_size).map(|i| (i as i16) * 100).collect();
+    let channels = 2; // stereo
+    let frame_size = samples_per_frame.saturating_mul(channels); // Use saturating_mul to prevent overflow
+    println!("Frame size calculation:");
+    println!("  Samples per frame: {}", samples_per_frame);
+    println!("  Channels: {}", channels);
+    println!("  Frame size (total): {}", frame_size);
+    let test_data: Vec<i16> = (0..frame_size).map(|i| ((i % 1000) as i16).saturating_mul(10)).collect();
     
     println!("Encoding single frame with {} samples...", test_data.len());
     

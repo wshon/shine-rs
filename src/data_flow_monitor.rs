@@ -6,7 +6,7 @@
 //! from task 4.1.
 
 use crate::quantization::GranuleInfo;
-use crate::error::{EncodingError, EncodingResult};
+use crate::error::EncodingResult;
 use std::collections::HashMap;
 
 /// Data flow validation thresholds based on task 4.1 requirements

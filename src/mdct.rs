@@ -76,7 +76,7 @@ fn cmuls(are: i32, aim: i32, bre: i32, bim: i32) -> (i32, i32) {
 /// void shine_mdct_sub(shine_global_config *config, int stride);
 pub fn shine_mdct_sub(
     config: &mut crate::shine_config::ShineGlobalConfig,
-    stride: i32
+    _stride: i32
 ) {
     // Direct implementation following shine's shine_mdct_sub
     // (ref/shine/src/lib/l3mdct.c:52-120)
@@ -104,11 +104,9 @@ pub fn shine_mdct_sub(
                 // 36 coefficients in the time domain and 18 in the frequency domain.
                 // Following shine's exact loop: for (k = 18; k--;)
                 for k in (0..18).rev() {
-                    let mut vm = 0i64;
-                    
                     // Following shine's mul0 + muladd pattern with 7-step unrolling
                     // mul0(vm, vm_lo, mdct_in[35], config->mdct.cos_l[k][35]);
-                    vm = (mdct_in[35] as i64) * (config.mdct.cos_l[k][35] as i64);
+                    let mut vm = (mdct_in[35] as i64) * (config.mdct.cos_l[k][35] as i64);
                     
                     // for (j = 35; j; j -= 7) { ... muladd operations ... }
                     let mut j = 35;

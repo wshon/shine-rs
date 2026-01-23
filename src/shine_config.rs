@@ -34,10 +34,10 @@ pub const HAN_SIZE: usize = 512;
 pub struct L3Loop {
     /// MDCT coefficients pointer (xr in shine)
     pub xr: *mut i32,
-    /// Squared MDCT coefficients
-    pub xrsq: [i32; GRANULE_SIZE],
-    /// Absolute MDCT coefficients  
-    pub xrabs: [i32; GRANULE_SIZE],
+    /// Squared MDCT coefficients (moved to heap to prevent stack overflow)
+    pub xrsq: Box<[i32; GRANULE_SIZE]>,
+    /// Absolute MDCT coefficients (moved to heap to prevent stack overflow)
+    pub xrabs: Box<[i32; GRANULE_SIZE]>,
     /// Maximum absolute coefficient
     pub xrmax: i32,
     /// Total energy per granule [granule]
@@ -52,16 +52,16 @@ pub struct L3Loop {
     pub steptab: [f64; 128],
     /// Integer quantization step table - 128 elements to match shine
     pub steptabi: [i32; 128],
-    /// Integer to index lookup table
-    pub int2idx: [i32; 10000],
+    /// Integer to index lookup table (moved to heap to prevent stack overflow)
+    pub int2idx: Box<[i32; 10000]>,
 }
 
 impl Default for L3Loop {
     fn default() -> Self {
         Self {
             xr: std::ptr::null_mut(),
-            xrsq: [0; GRANULE_SIZE],
-            xrabs: [0; GRANULE_SIZE], 
+            xrsq: Box::new([0; GRANULE_SIZE]),
+            xrabs: Box::new([0; GRANULE_SIZE]), 
             xrmax: 0,
             en_tot: [0; MAX_GRANULES],
             en: [[0; 21]; MAX_GRANULES],
@@ -69,7 +69,7 @@ impl Default for L3Loop {
             xrmaxl: [0; MAX_GRANULES],
             steptab: [0.0; 128],
             steptabi: [0; 128],
-            int2idx: [0; 10000],
+            int2idx: Box::new([0; 10000]),
         }
     }
 }
@@ -96,18 +96,18 @@ impl Default for Mdct {
 pub struct Subband {
     /// Channel offsets
     pub off: [i32; MAX_CHANNELS],
-    /// Filter coefficients
-    pub fl: [[i32; 64]; SBLIMIT],
-    /// Sample history buffer
-    pub x: [[i32; HAN_SIZE]; MAX_CHANNELS],
+    /// Filter coefficients (moved to heap to prevent stack overflow)
+    pub fl: Box<[[i32; 64]; SBLIMIT]>,
+    /// Sample history buffer (moved to heap to prevent stack overflow)
+    pub x: Box<[[i32; HAN_SIZE]; MAX_CHANNELS]>,
 }
 
 impl Default for Subband {
     fn default() -> Self {
         Self {
             off: [0; MAX_CHANNELS],
-            fl: [[0; 64]; SBLIMIT],
-            x: [[0; HAN_SIZE]; MAX_CHANNELS],
+            fl: Box::new([[0; 64]; SBLIMIT]),
+            x: Box::new([[0; HAN_SIZE]; MAX_CHANNELS]),
         }
     }
 }
