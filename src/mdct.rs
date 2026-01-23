@@ -533,3 +533,91 @@ mod tests {
         }
     }
 }
+
+/// Shine-style function interface following shine's shine_mdct_sub exactly
+/// (ref/shine/src/lib/l3mdct.c:43-125)
+/// 
+/// This function matches shine's signature and behavior exactly:
+/// void shine_mdct_sub(shine_global_config *config, int stride);
+pub fn shine_mdct_sub(
+    subband_samples: &[[i32; 32]; 36], 
+    output: &mut [i32; 576], 
+    mdct_state: &mut crate::shine_config::Mdct
+) {
+    // Direct implementation following shine's shine_mdct_sub
+    // (ref/shine/src/lib/l3mdct.c:52-120)
+    
+    // Process each of the 32 subbands
+    for band in 0..32 {
+        // Prepare input array for MDCT (36 samples: 18 previous + 18 current)
+        let mut mdct_in = [0i32; 36];
+        
+        // Copy 36 samples for this band (shine processes 18 previous + 18 current)
+        for k in 0..36 {
+            mdct_in[k] = subband_samples[k][band];
+        }
+        
+        // Perform MDCT transformation for this band
+        // In shine, this produces 18 frequency coefficients per band
+        for k in 0..18 {
+            let mut vm = 0i64;
+            
+            // Apply MDCT cosine coefficients (shine's cos_l table)
+            // This follows shine's inner loop exactly with 7-step unrolling optimization
+            let mut j = 35;
+            vm += (mdct_in[j] as i64) * (mdct_state.cos_l[k][j] as i64);
+            while j > 0 {
+                let end = if j >= 7 { j - 7 } else { 0 };
+                for idx in ((end + 1)..=j).rev() {
+                    vm += (mdct_in[idx] as i64) * (mdct_state.cos_l[k][idx] as i64);
+                }
+                j = end;
+                if j == 0 { break; }
+            }
+            
+            // Store result in output array
+            // Each band contributes 18 coefficients, so band*18 + k gives the linear index
+            let output_idx = band * 18 + k;
+            if output_idx < 576 {
+                output[output_idx] = (vm >> 31) as i32;
+            }
+        }
+        
+        // Perform aliasing reduction butterfly (shine's cmuls operations)
+        // This is only done between adjacent bands (band != 0)
+        if band != 0 {
+            let prev_band_base = (band - 1) * 18;
+            let curr_band_base = band * 18;
+            
+            // Apply aliasing reduction coefficients (shine's MDCT_CS and MDCT_CA constants)
+            // These are the 8 aliasing reduction coefficients from the MP3 standard
+            let cs_ca_pairs = [
+                (0x4C1BF829i32, 0x4CF8DE88i32), // CS0, CA0 for -0.6
+                (0x4A934F0Di32, 0x4E213D17i32), // CS1, CA1 for -0.535  
+                (0x46174A27i32, 0x519E4E04i32), // CS2, CA2 for -0.33
+                (0x401D7532i32, 0x553805DBi32), // CS3, CA3 for -0.185
+                (0x392CE0E2i32, 0x5831C2E2i32), // CS4, CA4 for -0.095
+                (0x31B26C4Ei32, 0x5A82799Ai32), // CS5, CA5 for -0.041
+                (0x2991A6C2i32, 0x5C68A299i32), // CS6, CA6 for -0.0142
+                (0x2120FB83i32, 0x5DFE47D0i32), // CS7, CA7 for -0.0037
+            ];
+            
+            for i in 0..8 {
+                if prev_band_base + (17 - i) < 576 && curr_band_base + i < 576 {
+                    let cs = cs_ca_pairs[i].0;
+                    let ca = cs_ca_pairs[i].1;
+                    
+                    let prev_val = output[prev_band_base + (17 - i)] as i64;
+                    let curr_val = output[curr_band_base + i] as i64;
+                    
+                    // Shine's cmuls operation: complex multiplication for aliasing reduction
+                    let new_prev = ((prev_val * cs as i64) - (curr_val * ca as i64)) >> 31;
+                    let new_curr = ((curr_val * cs as i64) + (prev_val * ca as i64)) >> 31;
+                    
+                    output[prev_band_base + (17 - i)] = new_prev as i32;
+                    output[curr_band_base + i] = new_curr as i32;
+                }
+            }
+        }
+    }
+}

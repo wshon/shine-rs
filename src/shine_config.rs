@@ -351,11 +351,16 @@ impl ShineGlobalConfig {
     /// Initialize MDCT following shine's shine_mdct_initialise
     /// (ref/shine/src/lib/l3mdct.c:30-50)
     fn shine_mdct_initialise(&mut self) -> Result<()> {
-        // Initialize MDCT cosine table
-        for i in 0..18 {
-            for j in 0..36 {
-                let angle = std::f64::consts::PI / 36.0 * (j as f64 + 0.5) * (i as f64 + 0.5);
-                self.mdct.cos_l[i][j] = (angle.cos() * (1 << 15) as f64) as i32;
+        // Initialize MDCT cosine table following shine exactly
+        // shine: config->mdct.cos_l[m][k] = (int32_t)(sin(PI36 * (k + 0.5)) * cos((PI / 72) * (2 * k + 19) * (2 * m + 1)) * 0x7fffffff);
+        const PI36: f64 = std::f64::consts::PI / 36.0;
+        const PI72: f64 = std::f64::consts::PI / 72.0;
+        
+        for m in 0..18 {
+            for k in 0..36 {
+                let sin_part = (PI36 * (k as f64 + 0.5)).sin();
+                let cos_part = (PI72 * (2 * k + 19) as f64 * (2 * m + 1) as f64).cos();
+                self.mdct.cos_l[m][k] = (sin_part * cos_part * 0x7fffffff as f64) as i32;
             }
         }
         
@@ -363,12 +368,9 @@ impl ShineGlobalConfig {
     }
     
     /// Initialize subband filter following shine's shine_subband_initialise  
-    /// (ref/shine/src/lib/l3subband.c:50-100)
+    /// (ref/shine/src/lib/l3subband.c:15-40)
     fn shine_subband_initialise(&mut self) -> Result<()> {
-        // Initialize subband filter coefficients
-        // This would load the actual filter coefficients from tables
-        // For now, initialize to zero (will be implemented with proper tables)
-        
+        // Initialize channel offsets and sample history
         for ch in 0..MAX_CHANNELS {
             self.subband.off[ch] = 0;
             for i in 0..HAN_SIZE {
@@ -376,10 +378,22 @@ impl ShineGlobalConfig {
             }
         }
         
-        // Initialize filter bank coefficients (simplified for now)
-        for sb in 0..SBLIMIT {
-            for i in 0..64 {
-                self.subband.fl[sb][i] = 0;
+        // Calculate analysis filterbank coefficients following shine exactly
+        // shine: for (i = SBLIMIT; i--;) for (j = 64; j--;)
+        // shine: filter = 1e9 * cos((double)((2 * i + 1) * (16 - j) * PI64))
+        // Note: shine's j goes from 63 down to 0, so (16 - j) ranges from -47 to 16
+        const PI64: f64 = std::f64::consts::PI / 64.0;
+        
+        for i in (0..SBLIMIT).rev() {  // i from 31 down to 0 (matches shine)
+            for j in (0..64).rev() {   // j from 63 down to 0 (matches shine)
+                let filter = 1e9 * ((2 * i + 1) as f64 * (16 - j as i32) as f64 * PI64).cos();
+                let rounded_filter = if filter >= 0.0 {
+                    filter + 0.5
+                } else {
+                    filter - 0.5
+                };
+                // Scale and convert to fixed point before storing (matches shine exactly)
+                self.subband.fl[i][j] = (rounded_filter.trunc() * (0x7fffffff as f64 * 1e-9)) as i32;
             }
         }
         

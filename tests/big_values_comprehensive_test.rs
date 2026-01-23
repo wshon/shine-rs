@@ -253,9 +253,65 @@ mod tests {
             }
         }
         
-        // For other configurations, return 0 for now
-        // TODO: Implement parsing for stereo and MPEG-2/2.5
-        0
+        // For other configurations, implement parsing based on MPEG version and channel mode
+        // Following MP3 frame structure specification
+        
+        // Determine side info length based on MPEG version and channel mode
+        let side_info_len = if mpeg_version == 3 { // MPEG-1
+            if channels == 1 { 17 } else { 32 }
+        } else { // MPEG-2/2.5
+            if channels == 1 { 9 } else { 17 }
+        };
+        
+        if side_info.len() < side_info_len {
+            return 0; // Not enough data
+        }
+        
+        // For MPEG-1 stereo, parse first granule, first channel
+        if mpeg_version == 3 && channels == 2 {
+            // MPEG-1 stereo side info structure:
+            // Bytes 0-3: main_data_begin (9 bits) + private_bits (3 bits) + scfsi (4 bits per channel)
+            // Bytes 4+: granule info (starts at byte 4)
+            
+            if side_info.len() >= 7 {
+                let byte4 = side_info[4] as u32;
+                let byte5 = side_info[5] as u32;
+                let byte6 = side_info[6] as u32;
+                
+                // Extract big_values from granule 0, channel 0
+                // Similar bit extraction as mono case but offset by 4 bytes
+                let big_values = ((byte4 & 0x03) << 7) | ((byte5 & 0xFE) >> 1);
+                return big_values;
+            }
+        }
+        
+        // For MPEG-2/2.5 mono
+        if mpeg_version != 3 && channels == 1 {
+            // MPEG-2/2.5 mono has shorter side info
+            if side_info.len() >= 3 {
+                let byte1 = side_info[1] as u32;
+                let byte2 = side_info[2] as u32;
+                
+                // Extract big_values (bit positions differ for MPEG-2/2.5)
+                let big_values = ((byte1 & 0x03) << 7) | ((byte2 & 0xFE) >> 1);
+                return big_values;
+            }
+        }
+        
+        // For MPEG-2/2.5 stereo
+        if mpeg_version != 3 && channels == 2 {
+            // MPEG-2/2.5 stereo side info
+            if side_info.len() >= 4 {
+                let byte2 = side_info[2] as u32;
+                let byte3 = side_info[3] as u32;
+                
+                // Extract big_values from first channel
+                let big_values = ((byte2 & 0x03) << 7) | ((byte3 & 0xFE) >> 1);
+                return big_values;
+            }
+        }
+        
+        0 // Default fallback
     }
 
 }

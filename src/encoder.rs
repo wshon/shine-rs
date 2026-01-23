@@ -479,8 +479,18 @@ impl Mp3Encoder {
                     }
                     
                     // Apply subband filter to get subband samples
-                    // TODO: Implement actual subband filter method
-                    // self.global_config.subband.filter(&pcm_chunk, &mut subband_samples[k], ch);;;
+                    // Following shine's shine_window_filter_subband exactly
+                    let mut subband_output = [0i32; 32];
+                    crate::subband::shine_window_filter_subband(
+                        &pcm_chunk, 
+                        &mut subband_output, 
+                        ch, 
+                        &mut self.global_config.subband
+                    );
+                    // Copy subband samples to the appropriate time slot
+                    for sb in 0..32 {
+                        subband_samples[k][sb] = subband_output[sb];
+                    }
                     
                     // Process k+1 if within bounds
                     if k + 1 < 18 {
@@ -494,8 +504,18 @@ impl Mp3Encoder {
                         }
                         
                         // Apply subband filter to get subband samples
-                        // TODO: Implement actual subband filter method
-                        // self.global_config.subband.filter(&pcm_chunk, &mut subband_samples[k + 1], ch);;;
+                        // Following shine's shine_window_filter_subband exactly
+                        let mut subband_output = [0i32; 32];
+                        crate::subband::shine_window_filter_subband(
+                            &pcm_chunk, 
+                            &mut subband_output, 
+                            ch, 
+                            &mut self.global_config.subband
+                        );
+                        // Copy subband samples to the appropriate time slot
+                        for sb in 0..32 {
+                            subband_samples[k + 1][sb] = subband_output[sb];
+                        }
                         
                         // Compensate for inversion in analysis filter (every odd index of band AND k)
                         // for (band = 1; band < 32; band += 2)
@@ -507,9 +527,13 @@ impl Mp3Encoder {
                 }
                 
                 // Apply MDCT transform to get frequency domain coefficients
-                let mdct_coeffs = [0i32; 576];
-                // TODO: Implement actual MDCT transform method
-                // self.global_config.mdct.transform(&subband_samples, &mut mdct_coeffs)?;;
+                // Following shine's shine_mdct_sub exactly
+                let mut mdct_coeffs = [0i32; 576];
+                crate::mdct::shine_mdct_sub(
+                    &subband_samples, 
+                    &mut mdct_coeffs, 
+                    &mut self.global_config.mdct
+                );
                 
                 // Store MDCT coefficients following shine's structure
                 // config->mdct_freq[ch][gr] = mdct_coeffs
