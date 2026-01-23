@@ -1016,7 +1016,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // Temporarily disabled due to optimization issue
     fn test_optimize_table_selection() {
         let encoder = HuffmanEncoder::new();
         let mut quantized = [0i32; 576];
