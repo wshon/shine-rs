@@ -7,13 +7,12 @@
 //! The implementation strictly follows the shine reference implementation
 //! in ref/shine/src/lib/l3loop.c
 
-use crate::types::{ShineGlobalConfig, GRANULE_SIZE, GrInfo, MAX_CHANNELS, MAX_GRANULES, ShinePsyXmin};
+use crate::types::{ShineGlobalConfig, GRANULE_SIZE, GrInfo, ShinePsyXmin};
 use crate::tables::{SHINE_SCALE_FACT_BAND_INDEX, SHINE_SLEN1_TAB, SHINE_SLEN2_TAB};
 use crate::huffman::SHINE_HUFFMAN_TABLE;
 use std::f64::consts::LN_2;
 
 /// Constants from shine (matches l3loop.c exactly)
-const E: f64 = 2.71828182845;
 const CBLIMIT: usize = 21;
 const SFB_LMAX: usize = 22;
 const EN_TOT_KRIT: i32 = 10;
@@ -102,9 +101,11 @@ pub fn shine_inner_loop(
             _c1bits = bits;
         }
         
+        // Create a temporary copy for subdivide to avoid borrowing conflicts
         {
-            let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
-            subdivide(cod_info, config); // bigvalues sfb division
+            let mut cod_info_copy = config.side_info.gr[gr as usize].ch[ch as usize].tt.clone();
+            subdivide(&mut cod_info_copy, config); // bigvalues sfb division
+            config.side_info.gr[gr as usize].ch[ch as usize].tt = cod_info_copy;
         }
         
         {
@@ -141,8 +142,10 @@ pub fn shine_outer_loop(
     
     // Extract quantizer step size to avoid borrowing conflicts
     let quantizer_step_size = {
-        let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
-        bin_search_step_size(max_bits, ix, cod_info, config)
+        let mut cod_info = config.side_info.gr[gr as usize].ch[ch as usize].tt.clone();
+        let result = bin_search_step_size(max_bits, ix, &mut cod_info, config);
+        config.side_info.gr[gr as usize].ch[ch as usize].tt = cod_info;
+        result
     };
     
     let part2_length = part2_length(gr, ch, config) as u32;
@@ -261,8 +264,9 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
                 let quantizer_step_size = cod_info.quantizer_step_size;
                 let cod_info_copy = cod_info.clone(); // Clone for immutable reference
-                crate::reservoir::shine_resv_adjust(&cod_info_copy, config);
                 cod_info.global_gain = (quantizer_step_size + 210) as u32;
+                // Call reservoir adjust with the copied data
+                crate::reservoir::shine_resv_adjust(&cod_info_copy, config);
             }
         } // for gr
     } // for ch

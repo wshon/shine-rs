@@ -22,6 +22,7 @@ fn mul(a: i32, b: i32) -> i32 {
 
 /// Multiplication with rounding and 32-bit right shift
 #[inline]
+#[allow(dead_code)] // Used in tests
 fn mulr(a: i32, b: i32) -> i32 {
     (((a as i64 * b as i64) + 0x80000000i64) >> 32) as i32
 }
@@ -117,6 +118,7 @@ pub fn shine_window_filter_subband(
 
     // Apply analysis window (matches shine implementation exactly)
     for i in 0..64 {
+        #[allow(unused_assignments)] // s_value is used but compiler doesn't detect it properly
         let mut s_value = 0i32;
         
         // Windowing operation using shine's exact loop structure
@@ -168,6 +170,7 @@ pub fn shine_window_filter_subband(
 
     // Apply synthesis filterbank (matches shine implementation exactly)
     for i in 0..SBLIMIT {
+        #[allow(unused_assignments)] // s_value is used but compiler doesn't detect it properly
         let mut s_value = 0i32;
         
         // Start with the last coefficient (j=63)

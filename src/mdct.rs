@@ -183,6 +183,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                 // In the case of long blocks (block_type 0,1,3) there are
                 // 36 coefficients in the time domain and 18 in the frequency domain
                 for k in (0..18).rev() {  // k from 17 down to 0 (matches shine: for (k = 18; k--;))
+                    #[allow(unused_assignments)] // vm is used but compiler doesn't detect it properly
                     let mut vm = 0i32;
                     
                     // Start with the last coefficient (matches shine exactly)

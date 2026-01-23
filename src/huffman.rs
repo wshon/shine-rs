@@ -319,7 +319,8 @@ pub struct HuffCodeTab {
 /// HTN constant (number of Huffman tables)
 pub const HTN: usize = 34;
 
-/// NOREF constant (matches shine's NOREF)
+/// NOREF constant (matches shine's NOREF) - currently unused but kept for shine compatibility
+#[allow(dead_code)]
 const NOREF: i32 = -1;
 
 /// Huffman table array (matches shine's shine_huffman_table exactly)
