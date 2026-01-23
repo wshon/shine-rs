@@ -1,1115 +1,361 @@
-//! Huffman encoding for MP3 quantized coefficients
+//! Huffman coding implementation for MP3 encoding
 //!
-//! This module implements Huffman encoding using the standard MP3
-//! Huffman code tables for lossless compression of quantized coefficients.
-//! 
-//! Following shine's huffman.c and l3loop.c implementation exactly
+//! This module implements the Huffman coding tables and functions
+//! exactly as defined in shine's huffman.c
 
-use crate::bitstream::BitstreamWriter;
-use crate::quantization::GranuleInfo;
-use crate::error::{EncodingResult, EncodingError};
-use crate::tables::{HUFFMAN_TABLES, COUNT1_TABLES, HuffmanTable};
+/// HUFFBITS type definition (matches shine's HUFFBITS)
+pub type HuffBits = u16;
 
-/// Calculate run length encoding information (following shine's calc_runlen)
-/// 
-/// This mirrors shine's calc_runlen function (ref/shine/src/lib/l3loop.c:429-450)
-/// Partitions quantized coefficients into big values, quadruples and zeros.
-/// 
-/// # Arguments
-/// * `quantized` - Quantized coefficients (ix array in shine)
-/// * `info` - Granule information to be updated
-/// 
-/// shine signature: void calc_runlen(int ix[GRANULE_SIZE], gr_info *cod_info)
-pub fn calc_runlen(quantized: &[i32; 576], info: &mut GranuleInfo) {
-    let mut i = 576;
-    
-    // Count trailing zero pairs - following shine's logic exactly
-    // for (i = GRANULE_SIZE; i > 1; i -= 2)
-    //   if (!ix[i - 1] && !ix[i - 2])
-    //     rzero++;
-    //   else
-    //     break;
-    while i > 1 {
-        if quantized[i - 1] == 0 && quantized[i - 2] == 0 {
-            i -= 2;
-        } else {
-            break;
-        }
-    }
-    
-    // Count quadruples (count1 region) - following shine's logic exactly
-    // cod_info->count1 = 0;
-    // for (; i > 3; i -= 4)
-    //   if (ix[i - 1] <= 1 && ix[i - 2] <= 1 && ix[i - 3] <= 1 && ix[i - 4] <= 1)
-    //     cod_info->count1++;
-    //   else
-    //     break;
-    info.count1 = 0;
-    while i > 3 {
-        if quantized[i - 1] <= 1 && quantized[i - 2] <= 1 && quantized[i - 3] <= 1 && quantized[i - 4] <= 1 {
-            info.count1 += 1;
-            i -= 4;
-        } else {
-            break;
-        }
-    }
-    
-    // Set big values count - following shine's logic exactly
-    // cod_info->big_values = i >> 1;
-    let calculated_big_values = (i >> 1) as u32;
-    
-    // CRITICAL: MP3 standard requires big_values <= 288 (576 coefficients / 2)
-    if calculated_big_values > 288 {
-        info.big_values = 288; // Clamp to maximum allowed
-    } else {
-        info.big_values = calculated_big_values;
-    }
+/// Constants from shine (matches huffman.c exactly)
+pub const DMASK: HuffBits = 1 << (((std::mem::size_of::<HuffBits>()) << 3) - 1);
+pub const HS: u32 = (std::mem::size_of::<HuffBits>() << 3) as u32;
+
+/// Huffman table 1 codes (matches shine's t1HB)
+static T1HB: [HuffBits; 4] = [1, 1, 1, 0];
+
+/// Huffman table 2 codes (matches shine's t2HB)
+static T2HB: [HuffBits; 9] = [1, 2, 1, 3, 1, 1, 3, 2, 0];
+
+/// Huffman table 3 codes (matches shine's t3HB)
+static T3HB: [HuffBits; 9] = [3, 2, 1, 1, 1, 1, 3, 2, 0];
+
+/// Huffman table 5 codes (matches shine's t5HB)
+static T5HB: [HuffBits; 16] = [1, 2, 6, 5, 3, 1, 4, 4, 7, 5, 7, 1, 6, 1, 1, 0];
+
+/// Huffman table 6 codes (matches shine's t6HB)
+static T6HB: [HuffBits; 16] = [7, 3, 5, 1, 6, 2, 3, 2, 5, 4, 4, 1, 3, 3, 2, 0];
+
+/// Huffman table 7 codes (matches shine's t7HB)
+static T7HB: [HuffBits; 36] = [
+    1, 2, 10, 19, 16, 10, 3, 3, 7, 10, 5, 3,
+    11, 4, 13, 17, 8, 4, 12, 11, 18, 15, 11, 2,
+    7, 6, 9, 14, 3, 1, 6, 4, 5, 3, 2, 0
+];
+
+/// Huffman table 8 codes (matches shine's t8HB)
+static T8HB: [HuffBits; 36] = [
+    3, 4, 6, 18, 12, 5, 5, 1, 2, 16, 9, 3,
+    7, 3, 5, 14, 7, 3, 19, 17, 15, 13, 10, 4,
+    13, 5, 8, 11, 5, 1, 12, 4, 4, 1, 1, 0
+];
+
+/// Huffman table 9 codes (matches shine's t9HB)
+static T9HB: [HuffBits; 36] = [
+    7, 5, 9, 14, 15, 7, 6, 4, 5, 5, 6, 7,
+    7, 6, 8, 8, 8, 5, 15, 6, 9, 10, 5, 1,
+    11, 7, 9, 6, 4, 1, 14, 4, 6, 2, 6, 0
+];
+
+/// Huffman table 10 codes (matches shine's t10HB)
+static T10HB: [HuffBits; 64] = [
+    1, 2, 10, 23, 35, 30, 12, 17, 3, 3, 8, 12, 18, 21, 12, 7,
+    11, 9, 15, 21, 32, 40, 19, 6, 14, 13, 22, 34, 46, 23, 18, 7,
+    20, 19, 33, 47, 27, 22, 9, 3, 31, 22, 41, 26, 21, 20, 5, 3,
+    14, 13, 10, 11, 16, 6, 5, 1, 9, 8, 7, 8, 4, 4, 2, 0
+];
+
+/// Huffman table 11 codes (matches shine's t11HB)
+static T11HB: [HuffBits; 64] = [
+    3, 4, 10, 24, 34, 33, 21, 15, 5, 3, 4, 10, 32, 17, 11, 10,
+    11, 7, 13, 18, 30, 31, 20, 5, 25, 11, 19, 59, 27, 18, 12, 5,
+    35, 33, 31, 58, 30, 16, 7, 5, 28, 26, 32, 19, 17, 15, 8, 14,
+    14, 12, 9, 13, 14, 9, 4, 1, 11, 4, 6, 6, 6, 3, 2, 0
+];
+
+/// Huffman table 12 codes (matches shine's t12HB)
+static T12HB: [HuffBits; 64] = [
+    9, 6, 16, 33, 41, 39, 38, 26, 7, 5, 6, 9, 23, 16, 26, 11,
+    17, 7, 11, 14, 21, 30, 10, 7, 17, 10, 15, 12, 18, 28, 14, 5,
+    32, 13, 22, 19, 18, 16, 9, 5, 40, 17, 31, 29, 17, 13, 4, 2,
+    27, 12, 11, 15, 10, 7, 4, 1, 27, 12, 8, 12, 6, 3, 1, 0
+];
+
+/// Huffman table 13 codes (matches shine's t13HB)
+static T13HB: [HuffBits; 256] = [
+    1, 5, 14, 21, 34, 51, 46, 71, 42, 52, 68, 52, 67, 44, 43, 19, 3, 4,
+    12, 19, 31, 26, 44, 33, 31, 24, 32, 24, 31, 35, 22, 14, 15, 13, 23, 36,
+    59, 49, 77, 65, 29, 40, 30, 40, 27, 33, 42, 16, 22, 20, 37, 61, 56, 79,
+    73, 64, 43, 76, 56, 37, 26, 31, 25, 14, 35, 16, 60, 57, 97, 75, 114, 91,
+    54, 73, 55, 41, 48, 53, 23, 24, 58, 27, 50, 96, 76, 70, 93, 84, 77, 58,
+    79, 29, 74, 49, 41, 17, 47, 45, 78, 74, 115, 94, 90, 79, 69, 83, 71, 50,
+    59, 38, 36, 15, 72, 34, 56, 95, 92, 85, 91, 90, 86, 73, 77, 65, 51, 44,
+    43, 42, 43, 20, 30, 44, 55, 78, 72, 87, 78, 61, 46, 54, 37, 30, 20, 16,
+    53, 25, 41, 37, 44, 59, 54, 81, 66, 76, 57, 54, 37, 18, 39, 11, 35, 33,
+    31, 57, 42, 82, 72, 80, 47, 58, 55, 21, 22, 26, 38, 22, 53, 25, 23, 38,
+    70, 60, 51, 36, 55, 26, 34, 23, 27, 14, 9, 7, 34, 32, 28, 39, 49, 75,
+    30, 52, 48, 40, 52, 28, 18, 17, 9, 5, 45, 21, 34, 64, 56, 50, 49, 45,
+    31, 19, 12, 15, 10, 7, 6, 3, 48, 23, 20, 39, 36, 35, 53, 21, 16, 23,
+    13, 10, 6, 1, 4, 2, 16, 15, 17, 27, 25, 20, 29, 11, 17, 12, 16, 8,
+    1, 1, 0, 1
+];
+
+/// Huffman table 15 codes (matches shine's t15HB)
+static T15HB: [HuffBits; 256] = [
+    7, 12, 18, 53, 47, 76, 124, 108, 89, 123, 108, 119, 107, 81, 122, 63,
+    13, 5, 16, 27, 46, 36, 61, 51, 42, 70, 52, 83, 65, 41, 59, 36,
+    19, 17, 15, 24, 41, 34, 59, 48, 40, 64, 50, 78, 62, 80, 56, 33,
+    29, 28, 25, 43, 39, 63, 55, 93, 76, 59, 93, 72, 54, 75, 50, 29,
+    52, 22, 42, 40, 67, 57, 95, 79, 72, 57, 89, 69, 49, 66, 46, 27,
+    77, 37, 35, 66, 58, 52, 91, 74, 62, 48, 79, 63, 90, 62, 40, 38,
+    125, 32, 60, 56, 50, 92, 78, 65, 55, 87, 71, 51, 73, 51, 70, 30,
+    109, 53, 49, 94, 88, 75, 66, 122, 91, 73, 56, 42, 64, 44, 21, 25,
+    90, 43, 41, 77, 73, 63, 56, 92, 77, 66, 47, 67, 48, 53, 36, 20,
+    71, 34, 67, 60, 58, 49, 88, 76, 67, 106, 71, 54, 38, 39, 23, 15,
+    109, 53, 51, 47, 90, 82, 58, 57, 48, 72, 57, 41, 23, 27, 62, 9,
+    86, 42, 40, 37, 70, 64, 52, 43, 70, 55, 42, 25, 29, 18, 11, 11,
+    118, 68, 30, 55, 50, 46, 74, 65, 49, 39, 24, 16, 22, 13, 14, 7,
+    91, 44, 39, 38, 34, 63, 52, 45, 31, 52, 28, 19, 14, 8, 9, 3,
+    123, 60, 58, 53, 47, 43, 32, 22, 37, 24, 17, 12, 15, 10, 2, 1,
+    71, 37, 34, 30, 28, 20, 17, 26, 21, 16, 10, 6, 8, 6, 2, 0
+];
+
+/// Huffman table 16 codes (matches shine's t16HB)
+static T16HB: [HuffBits; 256] = [
+    1, 5, 14, 44, 74, 63, 110, 93, 172, 149, 138, 242, 225, 195,
+    376, 17, 3, 4, 12, 20, 35, 62, 53, 47, 83, 75, 68, 119,
+    201, 107, 207, 9, 15, 13, 23, 38, 67, 58, 103, 90, 161, 72,
+    127, 117, 110, 209, 206, 16, 45, 21, 39, 69, 64, 114, 99, 87,
+    158, 140, 252, 212, 199, 387, 365, 26, 75, 36, 68, 65, 115, 101,
+    179, 164, 155, 264, 246, 226, 395, 382, 362, 9, 66, 30, 59, 56,
+    102, 185, 173, 265, 142, 253, 232, 400, 388, 378, 445, 16, 111, 54,
+    52, 100, 184, 178, 160, 133, 257, 244, 228, 217, 385, 366, 715, 10,
+    98, 48, 91, 88, 165, 157, 148, 261, 248, 407, 397, 372, 380, 889,
+    884, 8, 85, 84, 81, 159, 156, 143, 260, 249, 427, 401, 392, 383,
+    727, 713, 708, 7, 154, 76, 73, 141, 131, 256, 245, 426, 406, 394,
+    384, 735, 359, 710, 352, 11, 139, 129, 67, 125, 247, 233, 229, 219,
+    393, 743, 737, 720, 885, 882, 439, 4, 243, 120, 118, 115, 227, 223,
+    396, 746, 742, 736, 721, 712, 706, 223, 436, 6, 202, 224, 222, 218,
+    216, 389, 386, 381, 364, 888, 443, 707, 440, 437, 1728, 4, 747, 211,
+    210, 208, 370, 379, 734, 723, 714, 1735, 883, 877, 876, 3459, 865, 2,
+    377, 369, 102, 187, 726, 722, 358, 711, 709, 866, 1734, 871, 3458, 870,
+    434, 0, 12, 10, 7, 11, 10, 17, 11, 9, 13, 12, 10, 7,
+    5, 3, 1, 3
+];
+
+/// Huffman table 24 codes (matches shine's t24HB)
+static T24HB: [HuffBits; 256] = [
+    15, 13, 46, 80, 146, 262, 248, 434, 426, 669, 653, 649, 621, 517, 1032,
+    88, 14, 12, 21, 38, 71, 130, 122, 216, 209, 198, 327, 345, 319, 297,
+    279, 42, 47, 22, 41, 74, 68, 128, 120, 221, 207, 194, 182, 340, 315,
+    295, 541, 18, 81, 39, 75, 70, 134, 125, 116, 220, 204, 190, 178, 325,
+    311, 293, 271, 16, 147, 72, 69, 135, 127, 118, 112, 210, 200, 188, 352,
+    323, 306, 285, 540, 14, 263, 66, 129, 126, 119, 114, 214, 202, 192, 180,
+    341, 317, 301, 281, 262, 12, 249, 123, 121, 117, 113, 215, 206, 195, 185,
+    347, 330, 308, 291, 272, 520, 10, 435, 115, 111, 109, 211, 203, 196, 187,
+    353, 332, 313, 298, 283, 531, 381, 17, 427, 212, 208, 205, 201, 193, 186,
+    177, 169, 320, 303, 286, 268, 514, 377, 16, 335, 199, 197, 191, 189, 181,
+    174, 333, 321, 305, 289, 275, 521, 379, 371, 11, 668, 184, 183, 179, 175,
+    344, 331, 314, 304, 290, 277, 530, 383, 373, 366, 10, 652, 346, 171, 168,
+    164, 318, 309, 299, 287, 276, 263, 513, 375, 368, 362, 6, 648, 322, 316,
+    312, 307, 302, 292, 284, 269, 261, 512, 376, 370, 364, 359, 4, 620, 300,
+    296, 294, 288, 282, 273, 266, 515, 380, 374, 369, 365, 361, 357, 2, 1033,
+    280, 278, 274, 267, 264, 259, 382, 378, 372, 367, 363, 360, 358, 356, 0,
+    43, 20, 19, 17, 15, 13, 11, 9, 7, 6, 4, 7, 5, 3, 1,
+    3
+];
+
+/// Huffman table 32 codes (matches shine's t32HB)
+static T32HB: [HuffBits; 16] = [1, 5, 4, 5, 6, 5, 4, 4, 7, 3, 6, 0, 7, 2, 3, 1];
+
+/// Huffman table 33 codes (matches shine's t33HB)
+static T33HB: [HuffBits; 16] = [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0];
+
+/// Huffman table 1 lengths (matches shine's t1l)
+static T1L: [u8; 4] = [1, 3, 2, 3];
+
+/// Huffman table 2 lengths (matches shine's t2l)
+static T2L: [u8; 9] = [1, 3, 6, 3, 3, 5, 5, 5, 6];
+
+/// Huffman table 3 lengths (matches shine's t3l)
+static T3L: [u8; 9] = [2, 2, 6, 3, 2, 5, 5, 5, 6];
+
+/// Huffman table 5 lengths (matches shine's t5l)
+static T5L: [u8; 16] = [1, 3, 6, 7, 3, 3, 6, 7, 6, 6, 7, 8, 7, 6, 7, 8];
+
+/// Huffman table 6 lengths (matches shine's t6l)
+static T6L: [u8; 16] = [3, 3, 5, 7, 3, 2, 4, 5, 4, 4, 5, 6, 6, 5, 6, 7];
+
+/// Huffman table 7 lengths (matches shine's t7l)
+static T7L: [u8; 36] = [
+    1, 3, 6, 8, 8, 9, 3, 4, 6, 7, 7, 8,
+    6, 5, 7, 8, 8, 9, 7, 7, 8, 9, 9, 9,
+    7, 7, 8, 9, 9, 10, 8, 8, 9, 10, 10, 10
+];
+
+/// Huffman table 8 lengths (matches shine's t8l)
+static T8L: [u8; 36] = [
+    2, 3, 6, 8, 8, 9, 3, 2, 4, 8, 8, 8,
+    6, 4, 6, 8, 8, 9, 8, 8, 8, 9, 9, 10,
+    8, 7, 8, 9, 10, 10, 9, 8, 9, 9, 11, 11
+];
+
+/// Huffman table 9 lengths (matches shine's t9l)
+static T9L: [u8; 36] = [
+    3, 3, 5, 6, 8, 9, 3, 3, 4, 5, 6, 8,
+    4, 4, 5, 6, 7, 8, 6, 5, 6, 7, 7, 8,
+    7, 6, 7, 7, 8, 9, 8, 7, 8, 8, 9, 9
+];
+
+/// Huffman table 10 lengths (matches shine's t10l)
+static T10L: [u8; 64] = [
+    1, 3, 6, 8, 9, 9, 9, 10, 3, 4, 6, 7, 8, 9, 8, 8,
+    6, 6, 7, 8, 9, 10, 9, 9, 7, 7, 8, 9, 10, 10, 9, 10,
+    8, 8, 9, 10, 10, 10, 10, 10, 9, 9, 10, 10, 11, 11, 10, 11,
+    8, 8, 9, 10, 10, 10, 11, 11, 9, 8, 9, 10, 10, 11, 11, 11
+];
+
+/// Huffman table 11 lengths (matches shine's t11l)
+static T11L: [u8; 64] = [
+    2, 3, 5, 7, 8, 9, 8, 9, 3, 3, 4, 6, 8, 8, 7, 8,
+    5, 5, 6, 7, 8, 9, 8, 8, 7, 6, 7, 9, 8, 10, 8, 9,
+    8, 8, 8, 9, 9, 10, 9, 10, 8, 8, 9, 10, 10, 11, 10, 11,
+    8, 7, 7, 8, 9, 10, 10, 10, 8, 7, 8, 9, 10, 10, 10, 10
+];
+
+/// Huffman table 12 lengths (matches shine's t12l)
+static T12L: [u8; 64] = [
+    4, 3, 5, 7, 8, 9, 9, 9, 3, 3, 4, 5, 7, 7, 8, 8,
+    5, 4, 5, 6, 7, 8, 7, 8, 6, 5, 6, 6, 7, 8, 8, 8,
+    7, 6, 7, 7, 8, 8, 8, 9, 8, 7, 8, 8, 8, 9, 8, 9,
+    8, 7, 7, 8, 8, 9, 9, 10, 9, 8, 8, 9, 9, 9, 9, 10
+];
+
+/// Huffman table 13 lengths (matches shine's t13l)
+static T13L: [u8; 256] = [
+    1, 4, 6, 7, 8, 9, 9, 10, 9, 10, 11, 11, 12, 12, 13, 13, 3, 4, 6,
+    7, 8, 8, 9, 9, 9, 9, 10, 10, 11, 12, 12, 12, 6, 6, 7, 8, 9, 9,
+    10, 10, 9, 10, 10, 11, 11, 12, 13, 13, 7, 7, 8, 9, 9, 10, 10, 10, 10,
+    11, 11, 11, 11, 12, 13, 13, 8, 7, 9, 9, 10, 10, 11, 11, 10, 11, 11, 12,
+    12, 13, 13, 14, 9, 8, 9, 10, 10, 10, 11, 11, 11, 11, 12, 11, 13, 13, 14,
+    14, 9, 9, 10, 10, 11, 11, 11, 11, 11, 12, 12, 12, 13, 13, 14, 14, 10, 9,
+    10, 11, 11, 11, 12, 12, 12, 12, 13, 13, 13, 14, 16, 16, 9, 8, 9, 10, 10,
+    11, 11, 12, 12, 12, 12, 13, 13, 14, 15, 15, 10, 9, 10, 10, 11, 11, 11, 13,
+    12, 13, 13, 14, 14, 14, 16, 15, 10, 10, 10, 11, 11, 12, 12, 13, 12, 13, 14,
+    13, 14, 15, 16, 17, 11, 10, 10, 11, 12, 12, 12, 12, 13, 13, 13, 14, 15, 15,
+    15, 16, 11, 11, 11, 12, 12, 13, 12, 13, 14, 14, 15, 15, 15, 16, 16, 16, 12,
+    11, 12, 13, 13, 13, 14, 14, 14, 14, 14, 15, 16, 15, 16, 16, 13, 12, 12, 13,
+    13, 13, 15, 14, 14, 17, 15, 15, 15, 17, 16, 16, 12, 12, 13, 14, 14, 14, 15,
+    14, 15, 15, 16, 16, 19, 18, 19, 16
+];
+
+/// Huffman table 15 lengths (matches shine's t15l)
+static T15L: [u8; 256] = [
+    3, 4, 5, 7, 7, 8, 9, 9, 9, 10, 10, 11, 11, 11, 12, 13, 4, 3, 5,
+    6, 7, 7, 8, 8, 8, 9, 9, 10, 10, 10, 11, 11, 5, 5, 5, 6, 7, 7,
+    8, 8, 8, 9, 9, 10, 10, 11, 11, 11, 6, 6, 6, 7, 7, 8, 8, 9, 9,
+    9, 10, 10, 10, 11, 11, 11, 7, 6, 7, 7, 8, 8, 9, 9, 9, 9, 10, 10,
+    10, 11, 11, 11, 8, 7, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 11, 11, 11,
+    12, 9, 7, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 11, 11, 12, 12, 9, 8,
+    8, 9, 9, 9, 9, 10, 10, 10, 10, 10, 11, 11, 11, 12, 9, 8, 8, 9, 9,
+    9, 9, 10, 10, 10, 10, 11, 11, 12, 12, 12, 9, 8, 9, 9, 9, 9, 10, 10,
+    10, 11, 11, 11, 11, 12, 12, 12, 10, 9, 9, 9, 10, 10, 10, 10, 10, 11, 11,
+    11, 11, 12, 13, 12, 10, 9, 9, 9, 10, 10, 10, 10, 11, 11, 11, 11, 12, 12,
+    12, 13, 11, 10, 9, 10, 10, 10, 11, 11, 11, 11, 11, 11, 12, 12, 13, 13, 11,
+    10, 10, 10, 10, 11, 11, 11, 11, 12, 12, 12, 12, 12, 13, 13, 12, 11, 11, 11,
+    11, 11, 11, 11, 12, 12, 12, 12, 13, 13, 12, 13, 12, 11, 11, 11, 11, 11, 11,
+    12, 12, 12, 12, 12, 13, 13, 13, 13
+];
+
+/// Huffman table 16 lengths (matches shine's t16l)
+static T16L: [u8; 256] = [
+    1, 4, 6, 8, 9, 9, 10, 10, 11, 11, 11, 12, 12, 12, 13, 9, 3, 4, 6,
+    7, 8, 9, 9, 9, 10, 10, 10, 11, 12, 11, 12, 8, 6, 6, 7, 8, 9, 9,
+    10, 10, 11, 10, 11, 11, 11, 12, 12, 9, 8, 7, 8, 9, 9, 10, 10, 10, 11,
+    11, 12, 12, 12, 13, 13, 10, 9, 8, 9, 9, 10, 10, 11, 11, 11, 12, 12, 12,
+    13, 13, 13, 9, 9, 8, 9, 9, 10, 11, 11, 12, 11, 12, 12, 13, 13, 13, 14,
+    10, 10, 9, 9, 10, 11, 11, 11, 11, 12, 12, 12, 12, 13, 13, 14, 10, 10, 9,
+    10, 10, 11, 11, 11, 12, 12, 13, 13, 13, 13, 15, 15, 10, 10, 10, 10, 11, 11,
+    11, 12, 12, 13, 13, 13, 13, 14, 14, 14, 10, 11, 10, 10, 11, 11, 12, 12, 13,
+    13, 13, 13, 14, 13, 14, 13, 11, 11, 11, 10, 11, 12, 12, 12, 12, 13, 14, 14,
+    14, 15, 15, 14, 10, 12, 11, 11, 11, 12, 12, 13, 14, 14, 14, 14, 14, 14, 13,
+    14, 11, 12, 12, 12, 12, 12, 13, 13, 13, 13, 15, 14, 14, 14, 14, 16, 11, 14,
+    12, 12, 12, 13, 13, 14, 14, 14, 16, 15, 15, 15, 17, 15, 11, 13, 13, 11, 12,
+    14, 14, 13, 14, 14, 15, 16, 15, 17, 15, 14, 11, 9, 8, 8, 9, 9, 10, 10,
+    10, 11, 11, 11, 11, 11, 11, 11, 8
+];
+
+/// Huffman table 24 lengths (matches shine's t24l)
+static T24L: [u8; 256] = [
+    4, 4, 6, 7, 8, 9, 9, 10, 10, 11, 11, 11, 11, 11, 12, 9, 4, 4, 5,
+    6, 7, 8, 8, 9, 9, 9, 10, 10, 10, 10, 10, 8, 6, 5, 6, 7, 7, 8,
+    8, 9, 9, 9, 9, 10, 10, 10, 11, 7, 7, 6, 7, 7, 8, 8, 8, 9, 9,
+    9, 9, 10, 10, 10, 10, 7, 8, 7, 7, 8, 8, 8, 8, 9, 9, 9, 10, 10,
+    10, 10, 11, 7, 9, 7, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 10, 10,
+    7, 9, 8, 8, 8, 8, 9, 9, 9, 9, 10, 10, 10, 10, 10, 11, 7, 10, 8,
+    8, 8, 9, 9, 9, 9, 10, 10, 10, 10, 10, 11, 11, 8, 10, 9, 9, 9, 9,
+    9, 9, 9, 9, 10, 10, 10, 10, 11, 11, 8, 10, 9, 9, 9, 9, 9, 9, 10,
+    10, 10, 10, 10, 11, 11, 11, 8, 11, 9, 9, 9, 9, 10, 10, 10, 10, 10, 10,
+    11, 11, 11, 11, 8, 11, 10, 9, 9, 9, 10, 10, 10, 10, 10, 10, 11, 11, 11,
+    11, 8, 11, 10, 10, 10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 8, 11,
+    10, 10, 10, 10, 10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 8, 12, 10, 10, 10,
+    10, 10, 10, 11, 11, 11, 11, 11, 11, 11, 11, 8, 8, 7, 7, 7, 7, 7, 7,
+    7, 7, 7, 7, 8, 8, 8, 8, 4
+];
+
+/// Huffman table 32 lengths (matches shine's t32l)
+static T32L: [u8; 16] = [1, 4, 4, 5, 4, 6, 5, 6, 4, 5, 5, 6, 5, 6, 6, 6];
+
+/// Huffman table 33 lengths (matches shine's t33l)
+static T33L: [u8; 16] = [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4];
+
+/// Huffman code table structure (matches shine's huffcodetab)
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct HuffCodeTab {
+    /// Maximum x-index
+    pub xlen: u32,
+    /// Maximum y-index  
+    pub ylen: u32,
+    /// Number of linbits
+    pub linbits: u32,
+    /// Maximum number to be stored in linbits
+    pub linmax: u32,
+    /// Huffman codes
+    pub hb: Option<&'static [HuffBits]>,
+    /// Code lengths
+    pub hlen: Option<&'static [u8]>,
 }
 
-/// Subdivide big values region (following shine's subdivide)
-/// 
-/// This mirrors shine's subdivide function (ref/shine/src/lib/l3loop.c:500-570)
-/// Subdivides the bigvalue region which will use separate Huffman tables.
-/// 
-/// # Arguments
-/// * `info` - Granule information to be updated
-/// * `sample_rate` - Sample rate for scale factor band calculation
-/// 
-/// shine signature: void subdivide(gr_info *cod_info, shine_global_config *config)
-pub fn subdivide(info: &mut GranuleInfo, sample_rate: u32) {
-    use crate::tables::SCALE_FACT_BAND_INDEX;
-    
-    // Subdivision table from shine (matches subdv_table in l3loop.c exactly)
-    const SUBDV_TABLE: [(u32, u32); 23] = [
-        (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 1), (1, 1), (1, 1), 
-        (1, 2), (2, 2), (2, 3), (2, 3), (3, 4), (3, 4), (3, 4), (4, 5), 
-        (4, 5), (4, 6), (5, 6), (5, 6), (5, 7), (6, 7), (6, 7),
-    ];
-    
-    // Following shine's logic exactly:
-    // if (!cod_info->big_values) { /* no big_values region */
-    if info.big_values == 0 {
-        info.region0_count = 0;
-        info.region1_count = 0;
-        info.address1 = 0;
-        info.address2 = 0;
-        info.address3 = 0;
-        return;
-    }
-    
-    // Following shine's samplerate_index calculation
-    let samplerate_index = match sample_rate {
-        44100 => 0, 48000 => 1, 32000 => 2, 22050 => 3, 24000 => 4,
-        16000 => 5, 11025 => 6, 12000 => 7, 8000 => 8, _ => 0,
-    };
-    
-    let scalefac_band_long = &SCALE_FACT_BAND_INDEX[samplerate_index];
-    let bigvalues_region = (info.big_values * 2) as i32;
-    
-    // Calculate scfb_anz - following shine's logic exactly:
-    // scfb_anz = 0;
-    // while (scalefac_band_long[scfb_anz] < bigvalues_region)
-    //   scfb_anz++;
-    let mut scfb_anz = 0;
-    while scfb_anz < scalefac_band_long.len() - 1 && scalefac_band_long[scfb_anz] < bigvalues_region {
-        scfb_anz += 1;
-    }
-    
-    if scfb_anz >= SUBDV_TABLE.len() {
-        scfb_anz = SUBDV_TABLE.len() - 1;
-    }
-    
-    // Calculate region0_count - following shine's logic exactly:
-    let mut thiscount = SUBDV_TABLE[scfb_anz].0;
-    while thiscount > 0 {
-        if (thiscount as usize + 1) < scalefac_band_long.len() &&
-           scalefac_band_long[thiscount as usize + 1] <= bigvalues_region {
-            break;
-        }
-        thiscount -= 1;
-    }
-    info.region0_count = thiscount;
-    
-    // Ensure address1 doesn't exceed bigvalues_region
-    let calculated_address1 = if (thiscount as usize + 1) < scalefac_band_long.len() {
-        scalefac_band_long[thiscount as usize + 1] as u32
-    } else {
-        bigvalues_region as u32
-    };
-    info.address1 = std::cmp::min(calculated_address1, bigvalues_region as u32);
-    
-    // Calculate region1_count - following shine's pointer offset logic exactly:
-    let region0_offset = (info.region0_count + 1) as usize;
-    let mut thiscount = SUBDV_TABLE[scfb_anz].1;
-    while thiscount > 0 {
-        let index = region0_offset + thiscount as usize + 1;
-        if index < scalefac_band_long.len() &&
-           scalefac_band_long[index] <= bigvalues_region {
-            break;
-        }
-        thiscount -= 1;
-    }
-    info.region1_count = thiscount;
-    
-    // Ensure address2 doesn't exceed bigvalues_region
-    let region1_index = region0_offset + thiscount as usize + 1;
-    let calculated_address2 = if region1_index < scalefac_band_long.len() {
-        scalefac_band_long[region1_index] as u32
-    } else {
-        bigvalues_region as u32
-    };
-    info.address2 = std::cmp::min(calculated_address2, bigvalues_region as u32);
-    
-    // Ensure address2 >= address1
-    info.address2 = std::cmp::max(info.address2, info.address1);
-    
-    info.address3 = bigvalues_region as u32;
-}
+/// HTN constant (number of Huffman tables)
+pub const HTN: usize = 34;
 
-/// Select Huffman tables for big values regions (following shine's bigv_tab_select)
-/// 
-/// This mirrors shine's bigv_tab_select function (ref/shine/src/lib/l3loop.c:572-590)
-/// Selects huffman code tables for bigvalues regions.
-/// 
-/// # Arguments
-/// * `quantized` - Quantized coefficients (ix array in shine)
-/// * `info` - Granule information to be updated
-/// 
-/// shine signature: void bigv_tab_select(int ix[GRANULE_SIZE], gr_info *cod_info)
-pub fn bigv_tab_select(quantized: &[i32; 576], info: &mut GranuleInfo) {
-    // Following shine's initialization exactly:
-    // cod_info->table_select[0] = 0;
-    // cod_info->table_select[1] = 0;
-    // cod_info->table_select[2] = 0;
-    info.table_select[0] = 0;
-    info.table_select[1] = 0;
-    info.table_select[2] = 0;
-    
-    // Following shine's logic exactly:
-    // if (cod_info->address1 > 0)
-    //   cod_info->table_select[0] = new_choose_table(ix, 0, cod_info->address1);
-    if info.address1 > 0 {
-        info.table_select[0] = new_choose_table(quantized, 0, info.address1) as u32;
-    }
-    
-    // if (cod_info->address2 > cod_info->address1)
-    //   cod_info->table_select[1] = new_choose_table(ix, cod_info->address1, cod_info->address2);
-    if info.address2 > info.address1 {
-        info.table_select[1] = new_choose_table(quantized, info.address1, info.address2) as u32;
-    }
-    
-    // if (cod_info->big_values << 1 > cod_info->address2)
-    //   cod_info->table_select[2] = new_choose_table(ix, cod_info->address2, cod_info->big_values << 1);
-    if (info.big_values << 1) > info.address2 {
-        info.table_select[2] = new_choose_table(quantized, info.address2, info.big_values << 1) as u32;
-    }
-}
+/// NOREF constant (matches shine's NOREF)
+const NOREF: i32 = -1;
 
-/// Count bits for big values region (following shine's bigv_bitcount)
-/// 
-/// This mirrors shine's bigv_bitcount function (ref/shine/src/lib/l3loop.c:693-710)
-/// Counts the number of bits necessary to code the bigvalues region.
-/// 
-/// # Arguments
-/// * `quantized` - Quantized coefficients (ix array in shine)
-/// * `info` - Granule information with table selections and addresses
-/// 
-/// # Returns
-/// * Number of bits required (int in shine)
-/// 
-/// shine signature: int bigv_bitcount(int ix[GRANULE_SIZE], gr_info *gi)
-pub fn bigv_bitcount(quantized: &[i32; 576], info: &GranuleInfo) -> i32 {
-    let mut bits = 0i32;  // Following shine's int type
-    
-    // Following shine's logic exactly:
-    // if ((table = gi->table_select[0])) bits += count_bit(ix, 0, gi->address1, table);
-    if info.table_select[0] != 0 {
-        let region_bits = count_bit(quantized, 0, info.address1 as usize, info.table_select[0] as usize);
-        if region_bits == usize::MAX {
-            return i32::MAX; // Cannot encode with selected table
-        }
-        bits += region_bits as i32;
-    }
-    
-    // if ((table = gi->table_select[1])) bits += count_bit(ix, gi->address1, gi->address2, table);
-    if info.table_select[1] != 0 {
-        let region_bits = count_bit(quantized, info.address1 as usize, info.address2 as usize, info.table_select[1] as usize);
-        if region_bits == usize::MAX {
-            return i32::MAX; // Cannot encode with selected table
-        }
-        bits += region_bits as i32;
-    }
-    
-    // if ((table = gi->table_select[2])) bits += count_bit(ix, gi->address2, gi->big_values << 1, table);
-    if info.table_select[2] != 0 {
-        let region_bits = count_bit(quantized, info.address2 as usize, (info.big_values << 1) as usize, info.table_select[2] as usize);
-        if region_bits == usize::MAX {
-            return i32::MAX; // Cannot encode with selected table
-        }
-        bits += region_bits as i32;
-    }
-    
-    bits
-}
-
-/// Count bits for count1 region (following shine's count1_bitcount)
-/// 
-/// This mirrors shine's count1_bitcount function (ref/shine/src/lib/l3loop.c:452-490)
-/// Determines the number of bits to encode the quadruples.
-/// 
-/// # Arguments
-/// * `quantized` - Quantized coefficients (ix array in shine)
-/// * `info` - Granule information to be updated
-/// 
-/// # Returns
-/// * Number of bits required (int in shine)
-/// 
-/// shine signature: int count1_bitcount(int ix[GRANULE_SIZE], gr_info *cod_info)
-pub fn count1_bitcount(quantized: &[i32; 576], info: &mut GranuleInfo) -> i32 {
-    let mut sum0 = 0i32;
-    let mut sum1 = 0i32;
-    
-    // Following shine's logic exactly
-    let big_values_end = (info.big_values << 1) as usize;
-    
-    for k in 0..info.count1 {
-        let i = big_values_end + (k as usize * 4);
-        if i + 3 >= 576 { break; }
-        
-        let v = quantized[i];
-        let w = quantized[i + 1];
-        let x = quantized[i + 2];
-        let y = quantized[i + 3];
-        
-        let p = (if v != 0 { 1 } else { 0 }) +
-                (if w != 0 { 2 } else { 0 }) +
-                (if x != 0 { 4 } else { 0 }) +
-                (if y != 0 { 8 } else { 0 });
-        
-        let mut signbits = 0;
-        if v != 0 { signbits += 1; }
-        if w != 0 { signbits += 1; }
-        if x != 0 { signbits += 1; }
-        if y != 0 { signbits += 1; }
-        
-        sum0 += signbits;
-        sum1 += signbits;
-        
-        // Add table bits (tables 32 and 33 are count1 tables)
-        if (p as usize) < COUNT1_TABLES[0].lengths.len() {
-            sum0 += COUNT1_TABLES[0].lengths[p as usize] as i32;
-        }
-        
-        if (p as usize) < COUNT1_TABLES[1].lengths.len() {
-            sum1 += COUNT1_TABLES[1].lengths[p as usize] as i32;
-        }
-    }
-    
-    // Select the better table
-    if sum0 < sum1 {
-        info.count1table_select = 0;
-        sum0
-    } else {
-        info.count1table_select = 1;
-        sum1
-    }
-}
-
-/// Choose optimal Huffman table (following shine's new_choose_table)
-/// 
-/// This mirrors shine's new_choose_table function (ref/shine/src/lib/l3loop.c:600-690)
-/// Chooses the Huffman table that will encode the region with the fewest bits.
-/// 
-/// # Arguments
-/// * `quantized` - Quantized coefficients (ix array in shine)
-/// * `begin` - Start index (unsigned int in shine)
-/// * `end` - End index (unsigned int in shine)
-/// 
-/// # Returns
-/// * Table index (int in shine)
-/// 
-/// shine signature: int new_choose_table(int ix[GRANULE_SIZE], unsigned int begin, unsigned int end)
-fn new_choose_table(quantized: &[i32; 576], begin: u32, end: u32) -> i32 {
-    if begin >= end || begin >= 576 {
-        return 0;
-    }
-    
-    let actual_end = std::cmp::min(end, 576);
-    let begin_idx = begin as usize;
-    let end_idx = actual_end as usize;
-    
-    // Following shine's ix_max function exactly
-    let mut max = 0;
-    for i in begin_idx..end_idx {
-        if quantized[i].abs() > max {
-            max = quantized[i].abs();
-        }
-    }
-    
-    // Following shine's logic: if (!max) return 0;
-    if max == 0 {
-        return 0;
-    }
-    
-    let mut choice = [0i32; 2];
-    let mut sum = [usize::MAX; 2];
-    
-    // Following shine's logic exactly:
-    // if (max < 15) {
-    if max < 15 {
-        // try tables with no linbits
-        // for (i = 14; i--; ) if (shine_huffman_table[i].xlen > max)
-        for i in (0..15).rev() {
-            if i == 4 || i == 14 { continue; } // Skip non-existent tables
-            
-            if let Some(table) = &HUFFMAN_TABLES[i] {
-                if table.xlen > max as u32 {
-                    choice[0] = i as i32;
-                    break;
-                }
-            }
-        }
-        
-        if choice[0] > 0 {
-            sum[0] = count_bit(quantized, begin_idx, end_idx, choice[0] as usize);
-        }
-        
-        // Following shine's switch statement exactly
-        match choice[0] {
-            2 => {
-                if HUFFMAN_TABLES[3].is_some() {
-                    sum[1] = count_bit(quantized, begin_idx, end_idx, 3);
-                    if sum[1] <= sum[0] {
-                        choice[0] = 3;
-                    }
-                }
-            },
-            5 => {
-                if HUFFMAN_TABLES[6].is_some() {
-                    sum[1] = count_bit(quantized, begin_idx, end_idx, 6);
-                    if sum[1] <= sum[0] {
-                        choice[0] = 6;
-                    }
-                }
-            },
-            7 => {
-                if HUFFMAN_TABLES[8].is_some() {
-                    sum[1] = count_bit(quantized, begin_idx, end_idx, 8);
-                    if sum[1] <= sum[0] {
-                        choice[0] = 8;
-                        sum[0] = sum[1];
-                    }
-                }
-                if HUFFMAN_TABLES[9].is_some() {
-                    sum[1] = count_bit(quantized, begin_idx, end_idx, 9);
-                    if sum[1] <= sum[0] {
-                        choice[0] = 9;
-                    }
-                }
-            },
-            10 => {
-                if HUFFMAN_TABLES[11].is_some() {
-                    sum[1] = count_bit(quantized, begin_idx, end_idx, 11);
-                    if sum[1] <= sum[0] {
-                        choice[0] = 11;
-                        sum[0] = sum[1];
-                    }
-                }
-                if HUFFMAN_TABLES[12].is_some() {
-                    sum[1] = count_bit(quantized, begin_idx, end_idx, 12);
-                    if sum[1] <= sum[0] {
-                        choice[0] = 12;
-                    }
-                }
-            },
-            13 => {
-                if HUFFMAN_TABLES[15].is_some() {
-                    sum[1] = count_bit(quantized, begin_idx, end_idx, 15);
-                    if sum[1] <= sum[0] {
-                        choice[0] = 15;
-                    }
-                }
-            },
-            _ => {}
-        }
-    } else {
-        // Following shine's logic: try tables with linbits
-        // max -= 15;
-        let max_linbits = max - 15;
-        
-        // for (i = 15; i < 24; i++) if (shine_huffman_table[i].linmax >= max)
-        for i in 15..24 {
-            if let Some(table) = &HUFFMAN_TABLES[i] {
-                if table.linmax >= max_linbits as u32 {
-                    choice[0] = i as i32;
-                    break;
-                }
-            }
-        }
-        
-        // for (i = 24; i < 32; i++) if (shine_huffman_table[i].linmax >= max)
-        for i in 24..32 {
-            if let Some(table) = &HUFFMAN_TABLES[i] {
-                if table.linmax >= max_linbits as u32 {
-                    choice[1] = i as i32;
-                    break;
-                }
-            }
-        }
-        
-        if choice[0] > 0 {
-            sum[0] = count_bit(quantized, begin_idx, end_idx, choice[0] as usize);
-        }
-        if choice[1] > 0 {
-            sum[1] = count_bit(quantized, begin_idx, end_idx, choice[1] as usize);
-        }
-        
-        // Following shine's logic: if (sum[1] < sum[0]) choice[0] = choice[1];
-        if sum[1] < sum[0] {
-            choice[0] = choice[1];
-        }
-    }
-    
-    choice[0]
-}
-
-/// Count bits for a specific region using Huffman table (following shine's count_bit)
-/// 
-/// This mirrors shine's count_bit function (ref/shine/src/lib/l3loop.c:712-778)
-/// Counts the number of bits necessary to code the subregion.
-/// 
-/// # Arguments
-/// * `quantized` - Quantized coefficients (ix array in shine)
-/// * `start` - Start index (unsigned int in shine)
-/// * `end` - End index (unsigned int in shine)  
-/// * `table` - Huffman table index (unsigned int in shine)
-/// 
-/// # Returns
-/// * Number of bits required (int in shine)
-/// 
-/// shine signature: int count_bit(int ix[GRANULE_SIZE], unsigned int start, unsigned int end, unsigned int table)
-fn count_bit(quantized: &[i32; 576], start: usize, end: usize, table: usize) -> usize {
-    // Following shine's logic: if (!table) return 0;
-    if table == 0 || table >= HUFFMAN_TABLES.len() {
-        return 0;
-    }
-    
-    let huffman_table = match &HUFFMAN_TABLES[table] {
-        Some(table) => table,
-        None => return 0,
-    };
-    
-    let mut bits = 0usize;
-    let mut i = start; // Convert to usize for array indexing
-    
-    // Following shine's logic exactly:
-    // ylen = h->ylen;
-    // linbits = h->linbits;
-    let ylen = huffman_table.ylen;
-    let linbits = huffman_table.linbits;
-    
-    // Process pairs of coefficients (following shine's logic)
-    // if (table > 15) { /* ESC-table is used */
-    if table > 15 {
-        // for (i = start; i < end; i += 2) {
-        while i + 1 < end && i + 1 < 576 {
-            let mut x = quantized[i].abs();
-            let mut y = quantized[i + 1].abs();
-            
-            // Following shine's ESC logic exactly:
-            // if (x > 14) { x = 15; sum += linbits; }
-            // if (y > 14) { y = 15; sum += linbits; }
-            if x > 14 {
-                x = 15;
-                bits += linbits as usize;
-            }
-            if y > 14 {
-                y = 15;
-                bits += linbits as usize;
-            }
-            
-            // sum += h->hlen[(x * ylen) + y];
-            let table_idx = (x as u32 * ylen + y as u32) as usize;
-            if table_idx < huffman_table.lengths.len() {
-                bits += huffman_table.lengths[table_idx] as usize;
-            } else {
-                return usize::MAX; // Invalid table index
-            }
-            
-            // Add sign bits: if (x) sum++; if (y) sum++;
-            if quantized[i] != 0 { 
-                bits += 1; 
-            }
-            if quantized[i + 1] != 0 { 
-                bits += 1; 
-            }
-            
-            i += 2;
-        }
-    } else {
-        // } else { /* No ESC-words */
-        while i + 1 < end && i + 1 < 576 {
-            let x = quantized[i].abs();
-            let y = quantized[i + 1].abs();
-            
-            // Check if values are within table range
-            if x > huffman_table.xlen as i32 || y > huffman_table.ylen as i32 {
-                return usize::MAX; // Cannot encode with this table
-            }
-            
-            // sum += h->hlen[(x * ylen) + y];
-            let table_idx = (x as u32 * ylen + y as u32) as usize;
-            if table_idx < huffman_table.lengths.len() {
-                bits += huffman_table.lengths[table_idx] as usize;
-            } else {
-                return usize::MAX; // Invalid table index
-            }
-            
-            // Add sign bits: if (x != 0) sum++; if (y != 0) sum++;
-            if quantized[i] != 0 { 
-                bits += 1; 
-            }
-            if quantized[i + 1] != 0 { 
-                bits += 1; 
-            }
-            
-            i += 2;
-        }
-    }
-    
-    bits
-}
-
-/// Encode big values region using Huffman tables (following shine's Huffmancodebits)
-/// 
-/// Encodes the big values region of quantized coefficients using
-/// the appropriate Huffman tables. This mirrors the big values part of
-/// shine's Huffmancodebits function (ref/shine/src/lib/l3bitstream.c:174-190)
-/// 
-/// # Arguments
-/// * `quantized` - Quantized coefficients with sign information (ix array in shine)
-/// * `info` - Granule information with table selections and addresses
-/// * `output` - Bitstream writer for output
-pub fn encode_big_values(
-    quantized: &[i32; 576],
-    info: &GranuleInfo,
-    output: &mut BitstreamWriter
-) -> EncodingResult<usize> {
-    let mut bits_written = 0;
-    
-    // Following shine's Huffmancodebits logic:
-    // bigvalues = gi->big_values << 1;
-    let big_values = (info.big_values as usize) << 1;
-    
-    // for (i = 0; i < bigvalues; i += 2) {
-    //   /* get table pointer */
-    //   int idx = (i >= region1Start) + (i >= region2Start);
-    //   unsigned tableindex = gi->table_select[idx];
-    //   /* get huffman code */
-    //   if (tableindex) {
-    //     x = ix[i];
-    //     y = ix[i + 1];
-    //     shine_HuffmanCode(&config->bs, tableindex, x, y);
-    //   }
-    // }
-    
-    let mut i = 0;
-    while i < big_values && i + 1 < 576 {
-        // Determine which region we're in
-        let region_idx = if i >= info.address2 as usize {
-            2
-        } else if i >= info.address1 as usize {
-            1
-        } else {
-            0
-        };
-        
-        let table_index = info.table_select[region_idx] as usize;
-        
-        if table_index != 0 {
-            let x = quantized[i];
-            let y = quantized[i + 1];
-            bits_written += encode_huffman_pair(x, y, table_index, output)?;
-        }
-        
-        i += 2;
-    }
-    
-    Ok(bits_written)
-}
-
-/// Encode count1 region using count1 tables (following shine's Huffmancodebits)
-/// 
-/// Encodes the count1 region (values of ±1 or 0) using the
-/// specialized count1 Huffman tables. This mirrors the count1 part of
-/// shine's Huffmancodebits function (ref/shine/src/lib/l3bitstream.c:192-200)
-/// 
-/// # Arguments
-/// * `quantized` - Quantized coefficients with sign information (ix array in shine)
-/// * `info` - Granule information with count1 settings
-/// * `output` - Bitstream writer for output
-pub fn encode_count1(
-    quantized: &[i32; 576],
-    info: &GranuleInfo,
-    output: &mut BitstreamWriter
-) -> EncodingResult<usize> {
-    let mut bits_written = 0;
-    
-    // Following shine's Huffmancodebits logic:
-    // h = &shine_huffman_table[gi->count1table_select + 32];
-    let table_index = if info.count1table_select != 0 { 1 } else { 0 };
-    let h = &COUNT1_TABLES[table_index];
-    
-    // bigvalues = gi->big_values << 1;
-    let big_values = (info.big_values as usize) << 1;
-    
-    // count1End = bigvalues + (gi->count1 << 2);
-    let count1_end = big_values + ((info.count1 as usize) << 2);
-    
-    // for (i = bigvalues; i < count1End; i += 4) {
-    let mut i = big_values;
-    while i < count1_end && i + 3 < 576 {
-        let v = quantized[i];
-        let w = quantized[i + 1];
-        let x = quantized[i + 2];
-        let y = quantized[i + 3];
-        
-        // shine_huffman_coder_count1(&config->bs, h, v, w, x, y);
-        bits_written += encode_count1_quadruple(v, w, x, y, h, output)?;
-        
-        i += 4;
-    }
-    
-    Ok(bits_written)
-}
-
-/// Encode a Huffman pair (following shine's shine_HuffmanCode function)
-/// 
-/// Implements the pseudocode of page 98 of the IS.
-/// This mirrors shine's shine_HuffmanCode function (ref/shine/src/lib/l3bitstream.c:243-309)
-/// 
-/// # Arguments
-/// * `x` - First coefficient (with sign)
-/// * `y` - Second coefficient (with sign)
-/// * `table_select` - Huffman table index
-/// * `output` - Bitstream writer for output
-fn encode_huffman_pair(x: i32, y: i32, table_select: usize, output: &mut BitstreamWriter) -> EncodingResult<usize> {
-    if table_select >= HUFFMAN_TABLES.len() {
-        return Err(EncodingError::HuffmanError(
-            format!("Invalid Huffman table index: {}", table_select)
-        ));
-    }
-    
-    let h = match &HUFFMAN_TABLES[table_select] {
-        Some(huffman_table) => huffman_table,
-        None => return Err(EncodingError::HuffmanError(
-            format!("Huffman table {} is not available", table_select)
-        )),
-    };
-    
-    // Following shine's shine_HuffmanCode implementation:
-    let mut abs_x = x.unsigned_abs();
-    let mut abs_y = y.unsigned_abs();
-    let signx = if x < 0 { 1u32 } else { 0u32 };
-    let signy = if y < 0 { 1u32 } else { 0u32 };
-    
-    let ylen = h.ylen;
-    let mut bits_written = 0;
-    
-    if table_select > 15 {
-        // ESC-table is used
-        let mut linbitsx = 0u32;
-        let mut linbitsy = 0u32;
-        let linbits = h.linbits;
-        
-        // if (x > 14) { linbitsx = x - 15; x = 15; }
-        if abs_x > 14 {
-            linbitsx = abs_x - 15;
-            abs_x = 15;
-        }
-        
-        // if (y > 14) { linbitsy = y - 15; y = 15; }
-        if abs_y > 14 {
-            linbitsy = abs_y - 15;
-            abs_y = 15;
-        }
-        
-        // idx = (x * ylen) + y;
-        let idx = (abs_x * ylen + abs_y) as usize;
-        if idx >= h.codes.len() {
-            return Err(EncodingError::HuffmanError(
-                format!("Huffman code index {} out of bounds", idx)
-            ));
-        }
-        
-        // code = h->table[idx]; cbits = h->hlen[idx];
-        let code = h.codes[idx] as u32;
-        let cbits = h.lengths[idx];
-        bits_written += cbits as usize;
-        
-        // shine_putbits(bs, code, cbits);
-        output.write_bits(code, cbits);
-        
-        // Build extension bits following shine's exact logic
-        let mut ext = 0u32;
-        let mut xbits = 0u8;
-        
-        // if (x > 14) { ext |= linbitsx; xbits += linbits; }
-        if x.abs() > 14 {
-            ext |= linbitsx;
-            xbits += linbits as u8;
-        }
-        
-        // if (x != 0) { ext <<= 1; ext |= signx; xbits += 1; }
-        if x != 0 {
-            ext <<= 1;
-            ext |= signx;
-            xbits += 1;
-        }
-        
-        // if (y > 14) { ext <<= linbits; ext |= linbitsy; xbits += linbits; }
-        if y.abs() > 14 {
-            ext <<= linbits as u8;
-            ext |= linbitsy;
-            xbits += linbits as u8;
-        }
-        
-        // if (y != 0) { ext <<= 1; ext |= signy; xbits += 1; }
-        if y != 0 {
-            ext <<= 1;
-            ext |= signy;
-            xbits += 1;
-        }
-        
-        // shine_putbits(bs, ext, xbits);
-        if xbits > 0 {
-            output.write_bits(ext, xbits);
-            bits_written += xbits as usize;
-        }
-    } else {
-        // No ESC-words
-        // idx = (x * ylen) + y;
-        let idx = (abs_x * ylen + abs_y) as usize;
-        if idx >= h.codes.len() {
-            return Err(EncodingError::HuffmanError(
-                format!("Huffman code index {} out of bounds", idx)
-            ));
-        }
-        
-        // code = h->table[idx]; cbits = h->hlen[idx];
-        let mut code = h.codes[idx] as u32;
-        let mut cbits = h.lengths[idx];
-        
-        // if (x != 0) { code <<= 1; code |= signx; cbits += 1; }
-        if x != 0 {
-            code <<= 1;
-            code |= signx;
-            cbits += 1;
-        }
-        
-        // if (y != 0) { code <<= 1; code |= signy; cbits += 1; }
-        if y != 0 {
-            code <<= 1;
-            code |= signy;
-            cbits += 1;
-        }
-        
-        // shine_putbits(bs, code, cbits);
-        output.write_bits(code, cbits);
-        bits_written += cbits as usize;
-    }
-    
-    Ok(bits_written)
-}
-
-/// Encode count1 quadruple (following shine's shine_huffman_coder_count1)
-/// 
-/// This mirrors shine's shine_huffman_coder_count1 function 
-/// (ref/shine/src/lib/l3bitstream.c:213-241)
-fn encode_count1_quadruple(
-    v: i32, w: i32, x: i32, y: i32,
-    h: &HuffmanTable,
-    output: &mut BitstreamWriter
-) -> EncodingResult<usize> {
-    // Following shine's shine_huffman_coder_count1 implementation:
-    
-    // Get absolute values and signs
-    let abs_v = v.abs();
-    let abs_w = w.abs();
-    let abs_x = x.abs();
-    let abs_y = y.abs();
-    
-    let signv = if v < 0 { 1u32 } else { 0u32 };
-    let signw = if w < 0 { 1u32 } else { 0u32 };
-    let signx = if x < 0 { 1u32 } else { 0u32 };
-    let signy = if y < 0 { 1u32 } else { 0u32 };
-    
-    // Convert to count1 format (0 or 1)
-    let v_bit = if abs_v != 0 { 1u32 } else { 0u32 };
-    let w_bit = if abs_w != 0 { 1u32 } else { 0u32 };
-    let x_bit = if abs_x != 0 { 1u32 } else { 0u32 };
-    let y_bit = if abs_y != 0 { 1u32 } else { 0u32 };
-    
-    // p = v + (w << 1) + (x << 2) + (y << 3);
-    let p = (v_bit + (w_bit << 1) + (x_bit << 2) + (y_bit << 3)) as usize;
-    
-    if p >= h.codes.len() {
-        return Err(EncodingError::HuffmanError(
-            format!("Count1 table index {} out of bounds", p)
-        ));
-    }
-    
-    // shine_putbits(bs, h->table[p], h->hlen[p]);
-    let code = h.codes[p] as u32;
-    let length = h.lengths[p];
-    output.write_bits(code, length);
-    let mut bits_written = length as usize;
-    
-    // Build sign bits following shine's logic
-    let mut sign_code = 0u32;
-    let mut sign_bits = 0u8;
-    
-    // if (v) { code = signv; cbits = 1; }
-    if v != 0 {
-        sign_code = signv;
-        sign_bits = 1;
-    }
-    
-    // if (w) { code = (code << 1) | signw; cbits++; }
-    if w != 0 {
-        sign_code = (sign_code << 1) | signw;
-        sign_bits += 1;
-    }
-    
-    // if (x) { code = (code << 1) | signx; cbits++; }
-    if x != 0 {
-        sign_code = (sign_code << 1) | signx;
-        sign_bits += 1;
-    }
-    
-    // if (y) { code = (code << 1) | signy; cbits++; }
-    if y != 0 {
-        sign_code = (sign_code << 1) | signy;
-        sign_bits += 1;
-    }
-    
-    // shine_putbits(bs, code, cbits);
-    if sign_bits > 0 {
-        output.write_bits(sign_code, sign_bits);
-        bits_written += sign_bits as usize;
-    }
-    
-    Ok(bits_written)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::bitstream::BitstreamWriter;
-    use crate::quantization::GranuleInfo;
-    use proptest::prelude::*;
-    use std::sync::Once;
-
-    static INIT: Once = Once::new();
-
-    /// 设置自定义 panic 钩子，只输出通用错误信息
-    fn setup_panic_hook() {
-        INIT.call_once(|| {
-            std::panic::set_hook(Box::new(|_| {
-                eprintln!("Test failed: Property test assertion failed");
-            }));
-        });
-    }
-
-    #[test]
-    fn test_calc_runlen_basic() {
-        let mut quantized = [0i32; 576];
-        let mut info = GranuleInfo::default();
-        
-        // Test with all zeros
-        calc_runlen(&quantized, &mut info);
-        assert_eq!(info.big_values, 0);
-        assert_eq!(info.count1, 0);
-        
-        // Test with some values
-        quantized[0] = 5;
-        quantized[1] = 3;
-        calc_runlen(&quantized, &mut info);
-        assert_eq!(info.big_values, 1);
-    }
-
-    #[test]
-    fn test_subdivide_basic() {
-        let mut info = GranuleInfo::default();
-        info.big_values = 10;
-        
-        subdivide(&mut info, 44100);
-        
-        // Should have set addresses
-        assert!(info.address3 > 0);
-    }
-
-    #[test]
-    fn test_bigv_tab_select_basic() {
-        let quantized = [0i32; 576];
-        let mut info = GranuleInfo::default();
-        info.big_values = 10;
-        info.address1 = 10;
-        info.address2 = 15;
-        
-        bigv_tab_select(&quantized, &mut info);
-        
-        // Should have selected tables
-        assert!(info.table_select[0] <= 31);
-        assert!(info.table_select[1] <= 31);
-        assert!(info.table_select[2] <= 31);
-    }
-
-    #[test]
-    fn test_bigv_bitcount_basic() {
-        let quantized = [0i32; 576];
-        let mut info = GranuleInfo::default();
-        info.big_values = 5;
-        info.table_select = [1, 2, 3];
-        info.address1 = 5;
-        info.address2 = 8;
-        
-        let bits = bigv_bitcount(&quantized, &info);
-        assert!(bits >= 0);
-    }
-
-    #[test]
-    fn test_count1_bitcount_basic() {
-        let mut quantized = [0i32; 576];
-        let mut info = GranuleInfo::default();
-        
-        // Set up count1 region
-        quantized[100] = 1;
-        quantized[101] = -1;
-        quantized[102] = 0;
-        quantized[103] = 1;
-        
-        info.big_values = 50;
-        info.count1 = 5;
-        
-        let bits = count1_bitcount(&quantized, &mut info);
-        assert!(bits >= 0);
-        assert!(info.count1table_select <= 1);
-    }
-
-    #[test]
-    fn test_encode_big_values_basic() {
-        let quantized = [0i32; 576];
-        let mut info = GranuleInfo::default();
-        info.big_values = 5;
-        info.table_select = [1, 2, 3];
-        info.address1 = 5;
-        info.address2 = 8;
-        
-        let mut output = BitstreamWriter::new(100);
-        let result = encode_big_values(&quantized, &info, &mut output);
-        
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_encode_count1_basic() {
-        let mut quantized = [0i32; 576];
-        let mut info = GranuleInfo::default();
-        
-        // Set up count1 values
-        quantized[100] = 1;
-        quantized[101] = -1;
-        quantized[102] = 0;
-        quantized[103] = 1;
-        
-        info.big_values = 50;
-        info.count1 = 5;
-        info.count1table_select = 0;
-        
-        let mut output = BitstreamWriter::new(100);
-        let result = encode_count1(&quantized, &info, &mut output);
-        
-        assert!(result.is_ok());
-    }
-
-    // Property-based tests
-    prop_compose! {
-        fn valid_quantized_coefficients()(
-            coeffs in prop::collection::vec(-15i32..=15, 576)
-        ) -> [i32; 576] {
-            let mut result = [0i32; 576];
-            for (i, &coeff) in coeffs.iter().enumerate() {
-                result[i] = coeff;
-            }
-            result
-        }
-    }
-
-    proptest! {
-        #![proptest_config(ProptestConfig {
-            cases: 100,
-            verbose: 0,
-            max_shrink_iters: 0,
-            failure_persistence: None,
-            ..ProptestConfig::default()
-        })]
-
-        #[test]
-        fn test_calc_runlen_properties(
-            quantized in valid_quantized_coefficients()
-        ) {
-            setup_panic_hook();
-            
-            let mut info = GranuleInfo::default();
-            calc_runlen(&quantized, &mut info);
-            
-            // big_values should be within valid range
-            prop_assert!(info.big_values <= 288, "big_values exceeds maximum");
-            
-            // count1 should be reasonable
-            prop_assert!(info.count1 <= 144, "count1 exceeds reasonable limit");
-        }
-
-        #[test]
-        fn test_subdivide_properties(
-            big_values in 0u32..=288,
-            sample_rate in prop::sample::select(vec![44100u32, 48000, 32000, 22050, 24000, 16000])
-        ) {
-            setup_panic_hook();
-            
-            let mut info = GranuleInfo::default();
-            info.big_values = big_values;
-            
-            subdivide(&mut info, sample_rate);
-            
-            // Addresses should be in correct order
-            prop_assert!(info.address1 <= info.address2, "address1 > address2");
-            prop_assert!(info.address2 <= info.address3, "address2 > address3");
-            
-            // address3 should match big_values * 2
-            prop_assert_eq!(info.address3, big_values * 2, "address3 mismatch");
-        }
-
-        #[test]
-        fn test_huffman_encoding_stability(
-            quantized in valid_quantized_coefficients()
-        ) {
-            setup_panic_hook();
-            
-            let mut info = GranuleInfo::default();
-            calc_runlen(&quantized, &mut info);
-            subdivide(&mut info, 44100);
-            bigv_tab_select(&quantized, &mut info);
-            
-            // Functions should not panic with valid input
-            let _bits = bigv_bitcount(&quantized, &info);
-            let _count1_bits = count1_bitcount(&quantized, &mut info);
-            
-            // Encoding should not panic
-            let mut output = BitstreamWriter::new(1000);
-            let _result1 = encode_big_values(&quantized, &info, &mut output);
-            let _result2 = encode_count1(&quantized, &info, &mut output);
-        }
-    }
-}
+/// Huffman table array (matches shine's shine_huffman_table exactly)
+pub const SHINE_HUFFMAN_TABLE: [HuffCodeTab; HTN] = [
+    HuffCodeTab { xlen: 0, ylen: 0, linbits: 0, linmax: 0, hb: None, hlen: None },
+    HuffCodeTab { xlen: 2, ylen: 2, linbits: 0, linmax: 0, hb: Some(&T1HB), hlen: Some(&T1L) },
+    HuffCodeTab { xlen: 3, ylen: 3, linbits: 0, linmax: 0, hb: Some(&T2HB), hlen: Some(&T2L) },
+    HuffCodeTab { xlen: 3, ylen: 3, linbits: 0, linmax: 0, hb: Some(&T3HB), hlen: Some(&T3L) },
+    HuffCodeTab { xlen: 0, ylen: 0, linbits: 0, linmax: 0, hb: None, hlen: None }, // Apparently not used
+    HuffCodeTab { xlen: 4, ylen: 4, linbits: 0, linmax: 0, hb: Some(&T5HB), hlen: Some(&T5L) },
+    HuffCodeTab { xlen: 4, ylen: 4, linbits: 0, linmax: 0, hb: Some(&T6HB), hlen: Some(&T6L) },
+    HuffCodeTab { xlen: 6, ylen: 6, linbits: 0, linmax: 0, hb: Some(&T7HB), hlen: Some(&T7L) },
+    HuffCodeTab { xlen: 6, ylen: 6, linbits: 0, linmax: 0, hb: Some(&T8HB), hlen: Some(&T8L) },
+    HuffCodeTab { xlen: 6, ylen: 6, linbits: 0, linmax: 0, hb: Some(&T9HB), hlen: Some(&T9L) },
+    HuffCodeTab { xlen: 8, ylen: 8, linbits: 0, linmax: 0, hb: Some(&T10HB), hlen: Some(&T10L) },
+    HuffCodeTab { xlen: 8, ylen: 8, linbits: 0, linmax: 0, hb: Some(&T11HB), hlen: Some(&T11L) },
+    HuffCodeTab { xlen: 8, ylen: 8, linbits: 0, linmax: 0, hb: Some(&T12HB), hlen: Some(&T12L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 0, linmax: 0, hb: Some(&T13HB), hlen: Some(&T13L) },
+    HuffCodeTab { xlen: 0, ylen: 0, linbits: 0, linmax: 0, hb: None, hlen: None }, // Apparently not used
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 0, linmax: 0, hb: Some(&T15HB), hlen: Some(&T15L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 1, linmax: 1, hb: Some(&T16HB), hlen: Some(&T16L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 2, linmax: 3, hb: Some(&T16HB), hlen: Some(&T16L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 3, linmax: 7, hb: Some(&T16HB), hlen: Some(&T16L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 4, linmax: 15, hb: Some(&T16HB), hlen: Some(&T16L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 6, linmax: 63, hb: Some(&T16HB), hlen: Some(&T16L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 8, linmax: 255, hb: Some(&T16HB), hlen: Some(&T16L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 10, linmax: 1023, hb: Some(&T16HB), hlen: Some(&T16L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 13, linmax: 8191, hb: Some(&T16HB), hlen: Some(&T16L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 4, linmax: 15, hb: Some(&T24HB), hlen: Some(&T24L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 5, linmax: 31, hb: Some(&T24HB), hlen: Some(&T24L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 6, linmax: 63, hb: Some(&T24HB), hlen: Some(&T24L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 7, linmax: 127, hb: Some(&T24HB), hlen: Some(&T24L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 8, linmax: 255, hb: Some(&T24HB), hlen: Some(&T24L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 9, linmax: 511, hb: Some(&T24HB), hlen: Some(&T24L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 11, linmax: 2047, hb: Some(&T24HB), hlen: Some(&T24L) },
+    HuffCodeTab { xlen: 16, ylen: 16, linbits: 13, linmax: 8191, hb: Some(&T24HB), hlen: Some(&T24L) },
+    HuffCodeTab { xlen: 1, ylen: 16, linbits: 0, linmax: 0, hb: Some(&T32HB), hlen: Some(&T32L) },
+    HuffCodeTab { xlen: 1, ylen: 16, linbits: 0, linmax: 0, hb: Some(&T33HB), hlen: Some(&T33L) },
+];

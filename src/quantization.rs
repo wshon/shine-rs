@@ -238,7 +238,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             }
 
             // calculation of number of available bit( per granule )
-            max_bits = shine_max_reservoir_bits(&config.pe[ch as usize][gr as usize], config);
+            max_bits = crate::reservoir::shine_max_reservoir_bits(&config.pe[ch as usize][gr as usize], config);
 
             // reset of iteration variables
             for i in 0..config.scalefactor.l[gr as usize][ch as usize].len() {
