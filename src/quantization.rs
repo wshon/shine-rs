@@ -945,7 +945,6 @@ fn bin_search_step_size(
 mod tests {
     use super::*;
     use crate::types::ShineGlobalConfig;
-    use crate::config::{Config, WaveConfig, MpegConfig, MpegMode, MpegEmphasis};
     use proptest::prelude::*;
     use std::sync::Once;
 
@@ -1212,7 +1211,7 @@ mod tests {
         #[test]
         fn test_shine_loop_initialise() {
             setup_clean_errors();
-            let mut config = create_test_config();
+            let config = create_test_config();
             
             // Verify step tables are initialized
             assert!(config.l3loop.steptab[0] > 0.0, "Step table should be initialized");

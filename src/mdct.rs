@@ -315,7 +315,6 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
     use proptest::prelude::*;
 
     proptest! {
@@ -331,8 +330,7 @@ mod tests {
         fn test_mdct_initialise_coefficients(
             _unit in Just(())
         ) {
-            let config = Config::default();
-            let mut shine_config = ShineGlobalConfig::new(config).unwrap();
+            let mut shine_config = ShineGlobalConfig::new();
             
             shine_mdct_initialise(&mut shine_config);
             
@@ -393,17 +391,17 @@ mod tests {
             _unit in Just(())
         ) {
             // Test that aliasing reduction coefficients are within expected ranges
-            let ca_coeffs = [MDCT_CA0, MDCT_CA1, MDCT_CA2, MDCT_CA3, MDCT_CA4, MDCT_CA5, MDCT_CA6, MDCT_CA7];
-            let cs_coeffs = [MDCT_CS0, MDCT_CS1, MDCT_CS2, MDCT_CS3, MDCT_CS4, MDCT_CS5, MDCT_CS6, MDCT_CS7];
+            let ca_coeffs = [*MDCT_CA0, *MDCT_CA1, *MDCT_CA2, *MDCT_CA3, *MDCT_CA4, *MDCT_CA5, *MDCT_CA6, *MDCT_CA7];
+            let cs_coeffs = [*MDCT_CS0, *MDCT_CS1, *MDCT_CS2, *MDCT_CS3, *MDCT_CS4, *MDCT_CS5, *MDCT_CS6, *MDCT_CS7];
             
-            for &ca in &ca_coeffs {
+            for ca in &ca_coeffs {
                 prop_assert!(ca.abs() <= 0x7fffffff, "CA coefficient should be within range");
-                prop_assert!(ca < 0, "CA coefficients should be negative (from negative input)");
+                prop_assert!(*ca < 0, "CA coefficients should be negative (from negative input)");
             }
             
-            for &cs in &cs_coeffs {
+            for cs in &cs_coeffs {
                 prop_assert!(cs.abs() <= 0x7fffffff, "CS coefficient should be within range");
-                prop_assert!(cs > 0, "CS coefficients should be positive");
+                prop_assert!(*cs > 0, "CS coefficients should be positive");
             }
         }
 
@@ -411,14 +409,13 @@ mod tests {
         fn test_mdct_coefficient_symmetry(
             _unit in Just(())
         ) {
-            let config = Config::default();
-            let mut shine_config = ShineGlobalConfig::new(config).unwrap();
+            let mut shine_config = ShineGlobalConfig::new();
             
             shine_mdct_initialise(&mut shine_config);
             
             // Test that MDCT coefficients have expected properties
             // The coefficients should be deterministic for the same inputs
-            let mut shine_config2 = ShineGlobalConfig::new(Config::default()).unwrap();
+            let mut shine_config2 = ShineGlobalConfig::new();
             shine_mdct_initialise(&mut shine_config2);
             
             for m in 0..18 {
@@ -445,11 +442,11 @@ mod tests {
     #[test]
     fn test_mdct_ca_cs_calculation() {
         // Test specific values to ensure the const fn calculations are correct
-        let ca0_expected = (-0.6 / (1.0 + 0.6 * 0.6).sqrt() * 0x7fffffff as f64) as i32;
-        let cs0_expected = (1.0 / (1.0 + 0.6 * 0.6).sqrt() * 0x7fffffff as f64) as i32;
+        let ca0_expected = (-0.6_f64 / (1.0_f64 + 0.6_f64 * 0.6_f64).sqrt() * 0x7fffffff as f64) as i32;
+        let cs0_expected = (1.0_f64 / (1.0_f64 + 0.6_f64 * 0.6_f64).sqrt() * 0x7fffffff as f64) as i32;
         
         // Allow for small rounding differences in const fn evaluation
-        assert!((MDCT_CA0 - ca0_expected).abs() <= 1);
-        assert!((MDCT_CS0 - cs0_expected).abs() <= 1);
+        assert!((*MDCT_CA0 - ca0_expected).abs() <= 1);
+        assert!((*MDCT_CS0 - cs0_expected).abs() <= 1);
     }
 }

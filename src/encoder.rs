@@ -145,10 +145,10 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 
     let mut config = Box::new(ShineGlobalConfig::default());
 
-    // Initialize submodules (these functions will be implemented in their respective modules)
-    // shine_subband_initialise(config);
-    // shine_mdct_initialise(config);
-    // shine_loop_initialise(config);
+    // Initialize submodules
+    crate::subband::shine_subband_initialise(&mut config.subband);
+    crate::mdct::shine_mdct_initialise(&mut config);
+    crate::quantization::shine_loop_initialise(&mut config);
 
     // Copy public config
     config.wave.channels = pub_config.wave.channels;
@@ -206,7 +206,7 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 
 /// Internal encoding function (matches shine_encode_buffer_internal)
 /// (ref/shine/src/lib/layer3.c:136-158)
-fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, _stride: i32) -> EncodingResult<(&[u8], usize)> {
+fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
     if config.mpeg.frac_slots_per_frame != 0.0 {
         config.mpeg.padding = if config.mpeg.slot_lag <= (config.mpeg.frac_slots_per_frame - 1.0) { 1 } else { 0 };
         config.mpeg.slot_lag += config.mpeg.padding as f64 - config.mpeg.frac_slots_per_frame;
@@ -216,13 +216,13 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, _stride: i32) ->
     config.mean_bits = (config.mpeg.bits_per_frame - config.sideinfo_len) / config.mpeg.granules_per_frame;
 
     // Apply mdct to the polyphase output
-    // shine_mdct_sub(config, stride);
+    crate::mdct::shine_mdct_sub(config, stride);
 
     // Bit and noise allocation
-    // shine_iteration_loop(config);
+    crate::quantization::shine_iteration_loop(config);
 
     // Write the frame to the bitstream
-    // shine_format_bitstream(config);
+    crate::bitstream::format_bitstream(config)?;
 
     // Return data
     let written = config.bs.data_position;
