@@ -104,9 +104,14 @@ impl MdctTransform {
     }
     
     /// Complex multiplication for aliasing reduction (following shine's cmuls macro)
-    /// Original shine cmuls macro from mult_noarch_gcc.h:35-44
+    /// Original shine cmuls macro from mult_noarch_gcc.h:29-41
+    /// Parameters: are, aim (first complex), bre, bim (second complex)
+    /// Returns: (real_result, imag_result)
     #[inline]
     fn cmuls(are: i32, aim: i32, bre: i32, bim: i32) -> (i32, i32) {
+        // Following shine's exact calculation:
+        // tre = (int32_t)(((int64_t)(are) * (int64_t)(bre) - (int64_t)(aim) * (int64_t)(bim)) >> 31);
+        // dim = (int32_t)(((int64_t)(are) * (int64_t)(bim) + (int64_t)(aim) * (int64_t)(bre)) >> 31);
         let tre = (((are as i64) * (bre as i64) - (aim as i64) * (bim as i64)) >> 31) as i32;
         let tim = (((are as i64) * (bim as i64) + (aim as i64) * (bre as i64)) >> 31) as i32;
         (tre, tim)
@@ -284,15 +289,43 @@ impl MdctTransform {
                 let prev_band_offset = (band - 1) * 18;
                 
                 // Apply butterfly operations for each of the 8 aliasing coefficients
-                // Following shine's cmuls calls exactly
-                let (new_curr0, new_prev0) = Self::cmuls(output[band_offset + 0], 0, *MDCT_CS0, *MDCT_CA0);
-                let (new_curr1, new_prev1) = Self::cmuls(output[band_offset + 1], 0, *MDCT_CS1, *MDCT_CA1);
-                let (new_curr2, new_prev2) = Self::cmuls(output[band_offset + 2], 0, *MDCT_CS2, *MDCT_CA2);
-                let (new_curr3, new_prev3) = Self::cmuls(output[band_offset + 3], 0, *MDCT_CS3, *MDCT_CA3);
-                let (new_curr4, new_prev4) = Self::cmuls(output[band_offset + 4], 0, *MDCT_CS4, *MDCT_CA4);
-                let (new_curr5, new_prev5) = Self::cmuls(output[band_offset + 5], 0, *MDCT_CS5, *MDCT_CA5);
-                let (new_curr6, new_prev6) = Self::cmuls(output[band_offset + 6], 0, *MDCT_CS6, *MDCT_CA6);
-                let (new_curr7, new_prev7) = Self::cmuls(output[band_offset + 7], 0, *MDCT_CS7, *MDCT_CA7);
+                // Following shine's cmuls calls exactly:
+                // cmuls(mdct_enc[band][0], mdct_enc[band - 1][17 - 0],
+                //       mdct_enc[band][0], mdct_enc[band - 1][17 - 0], MDCT_CS0, MDCT_CA0);
+                // This means: output to (band[0], band-1[17]), input from (band[0], band-1[17]), multiply by (CS0, CA0)
+                
+                let (new_curr0, new_prev0) = Self::cmuls(
+                    output[band_offset + 0], output[prev_band_offset + 17 - 0],
+                    *MDCT_CS0, *MDCT_CA0
+                );
+                let (new_curr1, new_prev1) = Self::cmuls(
+                    output[band_offset + 1], output[prev_band_offset + 17 - 1],
+                    *MDCT_CS1, *MDCT_CA1
+                );
+                let (new_curr2, new_prev2) = Self::cmuls(
+                    output[band_offset + 2], output[prev_band_offset + 17 - 2],
+                    *MDCT_CS2, *MDCT_CA2
+                );
+                let (new_curr3, new_prev3) = Self::cmuls(
+                    output[band_offset + 3], output[prev_band_offset + 17 - 3],
+                    *MDCT_CS3, *MDCT_CA3
+                );
+                let (new_curr4, new_prev4) = Self::cmuls(
+                    output[band_offset + 4], output[prev_band_offset + 17 - 4],
+                    *MDCT_CS4, *MDCT_CA4
+                );
+                let (new_curr5, new_prev5) = Self::cmuls(
+                    output[band_offset + 5], output[prev_band_offset + 17 - 5],
+                    *MDCT_CS5, *MDCT_CA5
+                );
+                let (new_curr6, new_prev6) = Self::cmuls(
+                    output[band_offset + 6], output[prev_band_offset + 17 - 6],
+                    *MDCT_CS6, *MDCT_CA6
+                );
+                let (new_curr7, new_prev7) = Self::cmuls(
+                    output[band_offset + 7], output[prev_band_offset + 17 - 7],
+                    *MDCT_CS7, *MDCT_CA7
+                );
                 
                 // Update coefficients
                 output[band_offset + 0] = new_curr0;

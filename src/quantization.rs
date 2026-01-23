@@ -98,26 +98,47 @@ impl QuantizationLoop {
     }
     
     /// Initialize quantization lookup tables
+    /// Following shine's l3loop_init exactly (ref/shine/src/lib/l3loop.c:340-362)
     fn initialize_tables(&mut self) {
-        // Initialize step table: 2^(-stepsize/4)
-        // The table is inverted (negative power) from the equation given
-        // in the spec because it is quicker to do x*y than x/y.
-        for i in 0..256 {
-            self.step_table[i] = (2.0_f32).powf((127 - i as i32) as f32 / 4.0);
+        // Initialize step table following shine's logic exactly:
+        // for (i = 128; i--;) {
+        //   config->l3loop.steptab[i] = pow(2.0, (double)(127 - i) / 4);
+        //   if ((config->l3loop.steptab[i] * 2) > 0x7fffffff)
+        //     config->l3loop.steptabi[i] = 0x7fffffff;
+        //   else
+        //     config->l3loop.steptabi[i] = (int32_t)((config->l3loop.steptab[i] * 2) + 0.5);
+        // }
+        
+        // Following shine's exact loop: for (i = 128; i--;) means i goes from 127 down to 0
+        for i in (0..128).rev() {
+            // Following shine's exact formula: pow(2.0, (double)(127 - i) / 4)
+            self.step_table[i] = (2.0_f64).powf((127 - i as i32) as f64 / 4.0) as f32;
             
-            // Convert to fixed point with extra bit of accuracy
-            // The table is multiplied by 2 to give an extra bit of accuracy.
-            if (self.step_table[i] * 2.0) > 0x7fffffff as f32 {
+            // Following shine's fixed point conversion exactly
+            if (self.step_table[i] as f64 * 2.0) > 0x7fffffff as f64 {
                 self.step_table_i32[i] = 0x7fffffff;
             } else {
-                self.step_table_i32[i] = ((self.step_table[i] * 2.0) + 0.5) as i32;
+                // Following shine's rounding: (int32_t)((steptab[i] * 2) + 0.5)
+                self.step_table_i32[i] = ((self.step_table[i] as f64 * 2.0) + 0.5) as i32;
             }
         }
         
-        // Initialize int2idx table: quantization index lookup
-        // The 0.5 is for rounding, the 0.0946 comes from the spec.
-        for i in 0..10000 {
-            let val = (i as f64).sqrt().sqrt() * (i as f64).sqrt() - 0.0946 + 0.5;
+        // Initialize remaining entries (128-255) to safe values
+        for i in 128..256 {
+            self.step_table[i] = 0.0;
+            self.step_table_i32[i] = 0;
+        }
+        
+        // Initialize int2idx table following shine's logic exactly:
+        // for (i = 10000; i--;)
+        //   config->l3loop.int2idx[i] = (int)(sqrt(sqrt((double)i) * (double)i) - 0.0946 + 0.5);
+        
+        // Following shine's exact loop: for (i = 10000; i--;) means i goes from 9999 down to 0
+        for i in (0..10000).rev() {
+            // Following shine's exact formula: sqrt(sqrt((double)i) * (double)i) - 0.0946 + 0.5
+            let i_double = i as f64;
+            let sqrt_i = i_double.sqrt();
+            let val = (sqrt_i * sqrt_i.sqrt()) - 0.0946 + 0.5;
             self.int2idx[i] = val.max(0.0) as u32;
         }
     }
@@ -319,7 +340,7 @@ impl QuantizationLoop {
     
     /// Calculate run length encoding information 
     /// Following shine's calc_runlen exactly (ref/shine/src/lib/l3loop.c:429-450)
-    fn calculate_run_length(&self, quantized: &[i32; GRANULE_SIZE], side_info: &mut GranuleInfo) {
+    pub fn calculate_run_length(&self, quantized: &[i32; GRANULE_SIZE], side_info: &mut GranuleInfo) {
         let mut i = GRANULE_SIZE;
         
         // Count trailing zero pairs - following shine's logic exactly
