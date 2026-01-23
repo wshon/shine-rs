@@ -23,43 +23,47 @@ pub struct QuantizationLoop {
     reservoir: BitReservoir,
 }
 
-/// Granule information structure
-/// Following shine's gr_info structure exactly (ref/shine/src/lib/types.h)
+/// Granule information structure following shine's gr_info exactly
+/// (ref/shine/src/lib/types.h:114-133)
+/// 
+/// This structure must match shine's gr_info field by field, including
+/// field order, types, and memory layout for compatibility.
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub struct GranuleInfo {
     /// Length of part2_3 data in bits
     pub part2_3_length: u32,
-    /// Number of big values
+    /// Number of big values (must be <= 288 per MP3 standard)
     pub big_values: u32,
+    /// Number of count1 quadruples
+    pub count1: u32,
     /// Global gain value
     pub global_gain: u32,
     /// Scale factor compression
     pub scalefac_compress: u32,
-    /// Huffman table selection
+    /// Huffman table selection [region]
     pub table_select: [u32; 3],
     /// Region 0 count
     pub region0_count: u32,
     /// Region 1 count
     pub region1_count: u32,
-    /// Pre-emphasis flag
-    pub preflag: bool,
-    /// Scale factor scale
-    pub scalefac_scale: bool,
-    /// Count1 table selection
-    pub count1table_select: bool,
-    /// Quantizer step size
-    pub quantizer_step_size: i32,
-    /// Number of count1 quadruples
-    pub count1: u32,
+    /// Pre-emphasis flag (stored as u32 to match shine's unsigned)
+    pub preflag: u32,
+    /// Scale factor scale (stored as u32 to match shine's unsigned)
+    pub scalefac_scale: u32,
+    /// Count1 table selection (stored as u32 to match shine's unsigned)
+    pub count1table_select: u32,
     /// Part2 length in bits
     pub part2_length: u32,
+    /// Scale factor band limit for long blocks
+    pub sfb_lmax: u32,
     /// Region addresses for Huffman coding
     pub address1: u32,
     pub address2: u32,
     pub address3: u32,
-    /// Scale factor band limit for long blocks (shine's sfb_lmax)
-    pub sfb_lmax: u32,
-    /// Scale factor lengths (shine's slen[4])
+    /// Quantizer step size (signed to match shine's int)
+    pub quantizer_step_size: i32,
+    /// Scale factor lengths [slen_type]
     pub slen: [u32; 4],
 }
 
@@ -68,21 +72,21 @@ impl Default for GranuleInfo {
         Self {
             part2_3_length: 0,
             big_values: 0,
+            count1: 0,
             global_gain: 210,
             scalefac_compress: 0,
             table_select: [1, 1, 1], // Use table 1 as default (table 0 doesn't exist)
             region0_count: 0,
             region1_count: 0,
-            preflag: false,
-            scalefac_scale: false,
-            count1table_select: false,
-            quantizer_step_size: 0,
-            count1: 0,
+            preflag: 0,
+            scalefac_scale: 0,
+            count1table_select: 0,
             part2_length: 0,
+            sfb_lmax: 20, // SFB_LMAX - 1 = 21 - 1 = 20
             address1: 0,
             address2: 0,
             address3: 0,
-            sfb_lmax: 20, // SFB_LMAX - 1 = 21 - 1 = 20
+            quantizer_step_size: 0,
             slen: [0, 0, 0, 0],
         }
     }
@@ -625,10 +629,10 @@ impl QuantizationLoop {
         //   return sum1;
         // }
         if sum0 < sum1 {
-            info.count1table_select = false;
+            info.count1table_select = 0;
             sum0
         } else {
-            info.count1table_select = true;
+            info.count1table_select = 1;
             sum1
         }
     }

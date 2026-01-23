@@ -7,30 +7,37 @@ use crate::config::{Config, MpegVersion, StereoMode, Emphasis};
 use crate::quantization::GranuleInfo;
 
 /// Bitstream writer for MP3 frame data
+/// Following shine's bitstream_t structure (ref/shine/src/lib/bitstream.h:4-10)
+#[repr(C)]
 #[derive(Debug)]
 pub struct BitstreamWriter {
-    /// Output buffer
+    /// Output buffer (corresponds to shine's data field)
     buffer: Vec<u8>,
-    /// Bit cache for sub-byte operations
+    /// Total data size (corresponds to shine's data_size)
+    data_size: i32,
+    /// Current write position in buffer (corresponds to shine's data_position)
+    position: i32,
+    /// Bit cache for sub-byte operations (corresponds to shine's cache)
     cache: u32,
-    /// Number of bits in cache
-    cache_bits: u8,
-    /// Current write position in buffer
-    position: usize,
+    /// Number of bits in cache (corresponds to shine's cache_bits)
+    cache_bits: i32,
 }
 
 impl BitstreamWriter {
     /// Create a new bitstream writer with specified capacity
+    /// Following shine's shine_open_bit_stream function
     pub fn new(capacity: usize) -> Self {
         Self {
             buffer: Vec::with_capacity(capacity),
+            data_size: capacity as i32,
+            position: 0,
             cache: 0,
             cache_bits: 0,
-            position: 0,
         }
     }
     
     /// Write bits to the bitstream
+    /// Following shine's shine_putbits function logic
     /// 
     /// This method accumulates bits in a cache and writes complete bytes
     /// to the buffer when the cache is full.
@@ -52,8 +59,8 @@ impl BitstreamWriter {
             } else {
                 // Write in chunks that won't cause overflow
                 let available_space = 32 - self.cache_bits;
-                if bits > available_space {
-                    let first_chunk_bits = available_space;
+                if bits as i32 > available_space {
+                    let first_chunk_bits = available_space as u8;
                     let remaining_bits = bits - first_chunk_bits;
                     
                     let first_chunk = value >> remaining_bits;
@@ -73,6 +80,7 @@ impl BitstreamWriter {
     }
     
     /// Internal method to write bits directly without overflow checking
+    /// Following shine's bit accumulation logic
     fn write_bits_direct(&mut self, value: u32, bits: u8) {
         // Mask the value to ensure only the specified number of bits are used
         let masked_value = if bits == 32 {
@@ -87,17 +95,17 @@ impl BitstreamWriter {
         } else {
             self.cache = (self.cache << bits) | masked_value;
         }
-        self.cache_bits += bits;
+        self.cache_bits += bits as i32;
         
         // Write complete bytes to buffer
         while self.cache_bits >= 8 {
             let byte = (self.cache >> (self.cache_bits - 8)) as u8;
             
             // Ensure buffer has enough capacity
-            if self.position >= self.buffer.len() {
+            if self.position as usize >= self.buffer.len() {
                 self.buffer.push(byte);
             } else {
-                self.buffer[self.position] = byte;
+                self.buffer[self.position as usize] = byte;
             }
             
             self.position += 1;
@@ -295,14 +303,14 @@ impl BitstreamWriter {
                     
                     // Pre-flag (1 bit) - only for MPEG-1
                     if config.mpeg_version() == MpegVersion::Mpeg1 {
-                        self.write_bits(if gi.preflag { 1 } else { 0 }, 1);
+                        self.write_bits(gi.preflag, 1);
                     }
                     
                     // Scale factor scale (1 bit)
-                    self.write_bits(if gi.scalefac_scale { 1 } else { 0 }, 1);
+                    self.write_bits(gi.scalefac_scale, 1);
                     
                     // Count1 table select (1 bit)
-                    self.write_bits(if gi.count1table_select { 1 } else { 0 }, 1);
+                    self.write_bits(gi.count1table_select, 1);
                 }
             }
         }
@@ -358,10 +366,10 @@ impl BitstreamWriter {
             let byte = (self.cache >> (self.cache_bits + padding_bits - 8)) as u8;
             
             // Ensure buffer has enough capacity
-            if self.position >= self.buffer.len() {
+            if self.position as usize >= self.buffer.len() {
                 self.buffer.push(byte);
             } else {
-                self.buffer[self.position] = byte;
+                self.buffer[self.position as usize] = byte;
             }
             
             self.position += 1;
@@ -370,7 +378,7 @@ impl BitstreamWriter {
         }
         
         // Ensure buffer is exactly the right size
-        self.buffer.truncate(self.position);
+        self.buffer.truncate(self.position as usize);
         &self.buffer
     }
     
@@ -378,7 +386,7 @@ impl BitstreamWriter {
     pub fn byte_align(&mut self) {
         if self.cache_bits > 0 {
             let padding_bits = 8 - self.cache_bits;
-            self.write_bits(0, padding_bits);
+            self.write_bits(0, padding_bits as u8);
         }
     }
     
@@ -392,17 +400,17 @@ impl BitstreamWriter {
     
     /// Get the number of bits written
     pub fn bits_written(&self) -> usize {
-        self.position * 8 + self.cache_bits as usize
+        (self.position as usize) * 8 + self.cache_bits as usize
     }
     
     /// Get the current buffer contents without flushing
     pub fn buffer(&self) -> &[u8] {
-        &self.buffer[..self.position]
+        &self.buffer[..self.position as usize]
     }
     
     /// Get the number of bytes written (complete bytes only)
     pub fn bytes_written(&self) -> usize {
-        self.position
+        self.position as usize
     }
 }
 
@@ -779,9 +787,9 @@ mod tests {
                 gi.table_select = [1, 2, 3];
                 gi.region0_count = 7;
                 gi.region1_count = 5;
-                gi.preflag = true;
-                gi.scalefac_scale = false;
-                gi.count1table_select = true;
+                gi.preflag = 1;
+                gi.scalefac_scale = 0;
+                gi.count1table_select = 1;
             }
             side_info.granules.push(gi);
         }
@@ -964,9 +972,9 @@ mod tests {
                     table_select: [1, 2, 3],
                     region0_count: 7,
                     region1_count: 5,
-                    preflag: false,
-                    scalefac_scale: false,
-                    count1table_select: false,
+                    preflag: 0,
+                    scalefac_scale: 0,
+                    count1table_select: 0,
                     quantizer_step_size: 0,
                     count1: 0,
                     part2_length: 0,
@@ -1001,9 +1009,9 @@ mod tests {
                 0u32..31,    // table_select[2]
                 0u32..15,    // region0_count
                 0u32..7,     // region1_count
-                any::<bool>(), // preflag
-                any::<bool>(), // scalefac_scale
-                any::<bool>(), // count1table_select
+                any::<bool>().prop_map(|b| if b { 1u32 } else { 0u32 }), // preflag
+                any::<bool>().prop_map(|b| if b { 1u32 } else { 0u32 }), // scalefac_scale
+                any::<bool>().prop_map(|b| if b { 1u32 } else { 0u32 }), // count1table_select
             ).prop_map(|(part2_3_length, big_values, global_gain, scalefac_compress, 
                         table_select_0, table_select_1, table_select_2, region0_count, region1_count, preflag, 
                         scalefac_scale, count1table_select)| {

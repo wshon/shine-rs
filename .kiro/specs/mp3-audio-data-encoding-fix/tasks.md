@@ -6,26 +6,43 @@
 
 ## 任务
 
-- [ ] 1. 文件结构和模块组织一致性检查
-  - 验证Rust模块与shine源文件的对应关系：
-    * `src/quantization.rs` ↔ `ref/shine/src/lib/l3loop.c` (量化循环)
-    * `src/huffman.rs` ↔ `ref/shine/src/lib/huffman.c` (霍夫曼编码)
-    * `src/bitstream.rs` ↔ `ref/shine/src/lib/bitstream.c` + `l3bitstream.c` (比特流处理)
-    * `src/mdct.rs` ↔ `ref/shine/src/lib/l3mdct.c` (MDCT变换)
-    * `src/subband.rs` ↔ `ref/shine/src/lib/l3subband.c` (子带分析)
-    * `src/tables.rs` ↔ `ref/shine/src/lib/tables.c` (查找表)
-    * `src/reservoir.rs` ↔ `ref/shine/src/lib/reservoir.c` (比特储备池)
-    * `src/encoder.rs` ↔ `ref/shine/src/lib/layer3.c` (主编码流程)
-    * `src/shine_config.rs` ↔ `ref/shine/src/lib/types.h` (数据结构定义)
-    * `src/config.rs` ↔ shine配置相关逻辑 (高级配置封装)
-    * `src/error.rs` ↔ shine错误处理逻辑 (Rust错误类型)
-  - 检查函数分布是否与shine文件结构一致
-  - 确保相关功能集中在对应模块中，避免跨模块依赖混乱
-  - 验证是否有遗漏的shine功能模块
-  - 识别需要重构或重新组织的模块
-  - _需求: 2.4, 2.5_
+- [x] 1. 文件结构和模块组织一致性检查
+  - [x] 1.1 核心算法模块对应关系验证
+    - 检查量化模块：`src/quantization.rs` ↔ `ref/shine/src/lib/l3loop.c`
+    - 检查霍夫曼编码：`src/huffman.rs` ↔ `ref/shine/src/lib/huffman.c`
+    - 检查比特流处理：`src/bitstream.rs` ↔ `ref/shine/src/lib/bitstream.c` + `l3bitstream.c`
+    - 检查MDCT变换：`src/mdct.rs` ↔ `ref/shine/src/lib/l3mdct.c`
+    - 验证每个模块的主要函数是否与shine对应文件中的函数匹配
+    - _需求: 2.4, 2.5_
 
-- [ ] 2. 核心数据结构一致性检查
+  - [x] 1.2 数据处理模块对应关系验证
+    - 检查子带分析：`src/subband.rs` ↔ `ref/shine/src/lib/l3subband.c`
+    - 检查查找表：`src/tables.rs` ↔ `ref/shine/src/lib/tables.c`
+    - 检查比特储备池：`src/reservoir.rs` ↔ `ref/shine/src/lib/reservoir.c`
+    - 验证数据结构和常量定义是否完整对应
+    - _需求: 2.4, 2.5_
+
+  - [x] 1.3 控制和配置模块对应关系验证
+    - 检查主编码流程：`src/encoder.rs` ↔ `ref/shine/src/lib/layer3.c`
+    - 检查数据结构定义：`src/shine_config.rs` ↔ `ref/shine/src/lib/types.h`
+    - 检查高级配置封装：`src/config.rs` ↔ shine配置相关逻辑
+    - 检查错误处理：`src/error.rs` ↔ shine错误处理逻辑
+    - _需求: 2.4, 2.5_
+
+  - [x] 1.4 函数分布一致性分析
+    - 分析每个Rust模块中的函数是否都有对应的shine函数
+    - 检查是否有shine函数在Rust中缺失或放错模块
+    - 识别跨模块依赖是否合理，避免循环依赖
+    - _需求: 2.4, 2.5_
+
+  - [x] 1.5 模块完整性和重构需求评估
+    - 验证是否有遗漏的shine功能模块
+    - 识别需要重构或重新组织的模块
+    - 评估模块边界是否清晰，职责是否单一
+    - 制定模块重构计划（如果需要）
+    - _需求: 2.4, 2.5_
+
+- [x] 2. 核心数据结构一致性检查
   - 对比shine/src/lib/types.h中的所有关键结构体定义
   - 验证gr_info、shine_side_info_t、shine_global_config等结构体字段完全一致
   - 检查字段顺序、类型、大小是否与shine匹配

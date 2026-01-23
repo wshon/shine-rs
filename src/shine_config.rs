@@ -26,6 +26,10 @@ pub const HAN_SIZE: usize = 512;
 
 /// L3 loop structure following shine's l3loop_t exactly
 /// (ref/shine/src/lib/types.h:95-102)
+/// 
+/// This structure contains all state needed for the quantization loop
+/// and must match shine's l3loop_t field by field.
+#[repr(C)]
 #[derive(Debug)]
 pub struct L3Loop {
     /// MDCT coefficients pointer (xr in shine)
@@ -36,10 +40,18 @@ pub struct L3Loop {
     pub xrabs: [i32; GRANULE_SIZE],
     /// Maximum absolute coefficient
     pub xrmax: i32,
-    /// Quantization step table (floating point)
-    pub steptab: [f64; 256],
-    /// Integer quantization step table
-    pub steptabi: [i32; 256],
+    /// Total energy per granule [granule]
+    pub en_tot: [i32; MAX_GRANULES],
+    /// Energy per scalefactor band [granule][sfb]
+    pub en: [[i32; 21]; MAX_GRANULES],
+    /// Masking threshold per scalefactor band [granule][sfb]
+    pub xm: [[i32; 21]; MAX_GRANULES],
+    /// Maximum per granule [granule]
+    pub xrmaxl: [i32; MAX_GRANULES],
+    /// Quantization step table (floating point) - 128 elements to match shine
+    pub steptab: [f64; 128],
+    /// Integer quantization step table - 128 elements to match shine
+    pub steptabi: [i32; 128],
     /// Integer to index lookup table
     pub int2idx: [i32; 10000],
 }
@@ -51,8 +63,12 @@ impl Default for L3Loop {
             xrsq: [0; GRANULE_SIZE],
             xrabs: [0; GRANULE_SIZE], 
             xrmax: 0,
-            steptab: [0.0; 256],
-            steptabi: [0; 256],
+            en_tot: [0; MAX_GRANULES],
+            en: [[0; 21]; MAX_GRANULES],
+            xm: [[0; 21]; MAX_GRANULES],
+            xrmaxl: [0; MAX_GRANULES],
+            steptab: [0.0; 128],
+            steptabi: [0; 128],
             int2idx: [0; 10000],
         }
     }
@@ -98,6 +114,7 @@ impl Default for Subband {
 
 /// Side information structure following shine's shine_side_info_t exactly
 /// (ref/shine/src/lib/types.h:135-144)
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub struct ShineSideInfo {
     /// Private bits
@@ -110,6 +127,7 @@ pub struct ShineSideInfo {
     pub gr: [[GranuleChannel; MAX_CHANNELS]; MAX_GRANULES],
 }
 
+#[repr(C)]
 #[derive(Debug, Clone)]
 pub struct GranuleChannel {
     pub tt: GranuleInfo,
@@ -328,7 +346,7 @@ impl ShineGlobalConfig {
         // The table is inverted (negative power) from the equation given
         // in the spec because it is quicker to do x*y than x/y.
         // The 0.5 is for rounding.
-        for i in 0..128 {
+        for i in 0..128 {  // Changed from 128 to match shine's array size
             self.l3loop.steptab[i] = (2.0_f64).powf((127 - i) as f64 / 4.0);
             if (self.l3loop.steptab[i] * 2.0) > 0x7fffffff as f64 {
                 self.l3loop.steptabi[i] = 0x7fffffff;

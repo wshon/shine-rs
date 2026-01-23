@@ -640,9 +640,9 @@ impl Mp3Encoder {
                 cod_info.region0_count = 0;
                 cod_info.region1_count = 0;
                 cod_info.part2_length = 0;
-                cod_info.preflag = false;
-                cod_info.scalefac_scale = false;
-                cod_info.count1table_select = false;
+                cod_info.preflag = 0;
+                cod_info.scalefac_scale = 0;
+                cod_info.count1table_select = 0;
                 
                 // all spectral values zero ? (line 152)
                 // if (config->l3loop.xrmax)

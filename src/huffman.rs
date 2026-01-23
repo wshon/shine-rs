@@ -137,7 +137,7 @@ impl HuffmanEncoder {
         
         // Following shine's Huffmancodebits logic:
         // h = &shine_huffman_table[gi->count1table_select + 32];
-        let table_index = if info.count1table_select { 1 } else { 0 };
+        let table_index = if info.count1table_select != 0 { 1 } else { 0 };
         let h = self.count1_tables[table_index];
         
         // bigvalues = gi->big_values << 1;
@@ -462,7 +462,7 @@ impl HuffmanEncoder {
         let count1_end = big_values + ((info.count1 as usize) << 2);
         
         // Select count1 table (A or B)
-        let table_index = if info.count1table_select { 1 } else { 0 };
+        let table_index = if info.count1table_select != 0 { 1 } else { 0 };
         let table = self.count1_tables[table_index];
         
         let mut total_bits: usize = 0;
@@ -919,7 +919,7 @@ mod tests {
         let mut info = GranuleInfo::default();
         info.big_values = 50; // Count1 region starts after big values
         info.count1 = 5; // 5 quadruples
-        info.count1table_select = false; // Use table A
+        info.count1table_select = 0; // Use table A
         
         let result = encoder.encode_count1(&quantized, &info, &mut output);
         
@@ -1067,7 +1067,7 @@ mod tests {
         let mut info = GranuleInfo::default();
         info.big_values = 50; // Count1 starts at index 100
         info.count1 = 5; // 5 quadruples
-        info.count1table_select = false;
+        info.count1table_select = 0;
         
         let count1_bits = encoder.calculate_count1_bits(&quantized, &info);
         
@@ -1128,7 +1128,7 @@ mod tests {
             table_select_2 in 1u32..=31,
             region0_count in 0u32..=15,
             region1_count in 0u32..=7,
-            count1table_select in any::<bool>(),
+            count1table_select in 0u32..=1,
             count1 in 0u32..=50,
         ) -> GranuleInfo {
             // Calculate addresses based on big_values (simplified)
@@ -1145,8 +1145,8 @@ mod tests {
                 table_select: [table_select_0, table_select_1, table_select_2],
                 region0_count,
                 region1_count,
-                preflag: false,
-                scalefac_scale: false,
+                preflag: 0,
+                scalefac_scale: 0,
                 count1table_select,
                 quantizer_step_size: 0,
                 count1,
