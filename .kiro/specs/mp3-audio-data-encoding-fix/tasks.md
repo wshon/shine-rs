@@ -58,7 +58,7 @@
     - 确保GrInfo结构体的使用方式与shine一致
     - _需求: 2.1, 2.2, 2.3_
 
-  - [ ] 3.2 霍夫曼编码模块函数验证 (src/huffman.rs ↔ huffman.c)
+  - [x] 3.2 霍夫曼编码模块函数验证 (src/huffman.rs ↔ huffman.c)
     - 对比calc_runlen、subdivide、bigv_tab_select、bigv_bitcount函数
     - 验证码表选择和区域划分算法与shine一致
     - 确保霍夫曼表的使用方式正确

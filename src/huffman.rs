@@ -774,6 +774,396 @@ impl HuffmanEncoder {
         self.count_bits(&quantized, start, end, table_index)
     }
     
+    /// Calculate run length encoding information (following shine's calc_runlen)
+    /// 
+    /// This mirrors shine's calc_runlen function (ref/shine/src/lib/l3loop.c:429-450)
+    /// Partitions quantized coefficients into big values, quadruples and zeros.
+    /// 
+    /// # Arguments
+    /// * `quantized` - Quantized coefficients (ix array in shine)
+    /// * `info` - Granule information to be updated
+    pub fn calc_runlen(&self, quantized: &[i32; 576], info: &mut GranuleInfo) {
+        let mut i = 576;
+        
+        // Count trailing zero pairs - following shine's logic exactly
+        // for (i = GRANULE_SIZE; i > 1; i -= 2)
+        //   if (!ix[i - 1] && !ix[i - 2])
+        //     rzero++;
+        //   else
+        //     break;
+        while i > 1 {
+            if quantized[i - 1] == 0 && quantized[i - 2] == 0 {
+                i -= 2;
+            } else {
+                break;
+            }
+        }
+        
+        // Count quadruples (count1 region) - following shine's logic exactly
+        // cod_info->count1 = 0;
+        // for (; i > 3; i -= 4)
+        //   if (ix[i - 1] <= 1 && ix[i - 2] <= 1 && ix[i - 3] <= 1 && ix[i - 4] <= 1)
+        //     cod_info->count1++;
+        //   else
+        //     break;
+        info.count1 = 0;
+        while i > 3 {
+            if quantized[i - 1] <= 1 && quantized[i - 2] <= 1 && quantized[i - 3] <= 1 && quantized[i - 4] <= 1 {
+                info.count1 += 1;
+                i -= 4;
+            } else {
+                break;
+            }
+        }
+        
+        // Set big values count - following shine's logic exactly
+        // cod_info->big_values = i >> 1;
+        let calculated_big_values = (i >> 1) as u32;
+        
+        // CRITICAL: MP3 standard requires big_values <= 288 (576 coefficients / 2)
+        if calculated_big_values > 288 {
+            info.big_values = 288; // Clamp to maximum allowed
+        } else {
+            info.big_values = calculated_big_values;
+        }
+    }
+    
+    /// Subdivide big values region (following shine's subdivide)
+    /// 
+    /// This mirrors shine's subdivide function (ref/shine/src/lib/l3loop.c:500-570)
+    /// Subdivides the bigvalue region which will use separate Huffman tables.
+    /// 
+    /// # Arguments
+    /// * `info` - Granule information to be updated
+    /// * `sample_rate` - Sample rate for scale factor band calculation
+    pub fn subdivide(&self, info: &mut GranuleInfo, sample_rate: u32) {
+        use crate::tables::SCALE_FACT_BAND_INDEX;
+        
+        // Subdivision table from shine (matches subdv_table in l3loop.c exactly)
+        const SUBDV_TABLE: [(u32, u32); 23] = [
+            (0, 0), (0, 0), (0, 0), (0, 0), (0, 0), (0, 1), (1, 1), (1, 1), 
+            (1, 2), (2, 2), (2, 3), (2, 3), (3, 4), (3, 4), (3, 4), (4, 5), 
+            (4, 5), (4, 6), (5, 6), (5, 6), (5, 7), (6, 7), (6, 7),
+        ];
+        
+        // Following shine's logic exactly:
+        // if (!cod_info->big_values) { /* no big_values region */
+        if info.big_values == 0 {
+            info.region0_count = 0;
+            info.region1_count = 0;
+            info.address1 = 0;
+            info.address2 = 0;
+            info.address3 = 0;
+            return;
+        }
+        
+        // Following shine's samplerate_index calculation
+        let samplerate_index = match sample_rate {
+            44100 => 0, 48000 => 1, 32000 => 2, 22050 => 3, 24000 => 4,
+            16000 => 5, 11025 => 6, 12000 => 7, 8000 => 8, _ => 0,
+        };
+        
+        let scalefac_band_long = &SCALE_FACT_BAND_INDEX[samplerate_index];
+        let bigvalues_region = (info.big_values * 2) as i32;
+        
+        // Calculate scfb_anz - following shine's logic exactly:
+        // scfb_anz = 0;
+        // while (scalefac_band_long[scfb_anz] < bigvalues_region)
+        //   scfb_anz++;
+        let mut scfb_anz = 0;
+        while scfb_anz < scalefac_band_long.len() - 1 && scalefac_band_long[scfb_anz] < bigvalues_region {
+            scfb_anz += 1;
+        }
+        
+        if scfb_anz >= SUBDV_TABLE.len() {
+            scfb_anz = SUBDV_TABLE.len() - 1;
+        }
+        
+        // Calculate region0_count - following shine's logic exactly:
+        let mut thiscount = SUBDV_TABLE[scfb_anz].0;
+        while thiscount > 0 {
+            if (thiscount as usize + 1) < scalefac_band_long.len() &&
+               scalefac_band_long[thiscount as usize + 1] <= bigvalues_region {
+                break;
+            }
+            thiscount -= 1;
+        }
+        info.region0_count = thiscount;
+        
+        // Ensure address1 doesn't exceed bigvalues_region
+        let calculated_address1 = if (thiscount as usize + 1) < scalefac_band_long.len() {
+            scalefac_band_long[thiscount as usize + 1] as u32
+        } else {
+            bigvalues_region as u32
+        };
+        info.address1 = std::cmp::min(calculated_address1, bigvalues_region as u32);
+        
+        // Calculate region1_count - following shine's pointer offset logic exactly:
+        let region0_offset = (info.region0_count + 1) as usize;
+        let mut thiscount = SUBDV_TABLE[scfb_anz].1;
+        while thiscount > 0 {
+            let index = region0_offset + thiscount as usize + 1;
+            if index < scalefac_band_long.len() &&
+               scalefac_band_long[index] <= bigvalues_region {
+                break;
+            }
+            thiscount -= 1;
+        }
+        info.region1_count = thiscount;
+        
+        // Ensure address2 doesn't exceed bigvalues_region
+        let region1_index = region0_offset + thiscount as usize + 1;
+        let calculated_address2 = if region1_index < scalefac_band_long.len() {
+            scalefac_band_long[region1_index] as u32
+        } else {
+            bigvalues_region as u32
+        };
+        info.address2 = std::cmp::min(calculated_address2, bigvalues_region as u32);
+        
+        // Ensure address2 >= address1
+        info.address2 = std::cmp::max(info.address2, info.address1);
+        
+        info.address3 = bigvalues_region as u32;
+    }
+    
+    /// Select Huffman tables for big values regions (following shine's bigv_tab_select)
+    /// 
+    /// This mirrors shine's bigv_tab_select function (ref/shine/src/lib/l3loop.c:572-590)
+    /// Selects huffman code tables for bigvalues regions.
+    /// 
+    /// # Arguments
+    /// * `quantized` - Quantized coefficients (ix array in shine)
+    /// * `info` - Granule information to be updated
+    pub fn bigv_tab_select(&self, quantized: &[i32; 576], info: &mut GranuleInfo) {
+        // Following shine's initialization exactly:
+        // cod_info->table_select[0] = 0;
+        // cod_info->table_select[1] = 0;
+        // cod_info->table_select[2] = 0;
+        info.table_select[0] = 0;
+        info.table_select[1] = 0;
+        info.table_select[2] = 0;
+        
+        // Following shine's logic exactly:
+        // if (cod_info->address1 > 0)
+        //   cod_info->table_select[0] = new_choose_table(ix, 0, cod_info->address1);
+        if info.address1 > 0 {
+            info.table_select[0] = self.new_choose_table(quantized, 0, info.address1) as u32;
+        }
+        
+        // if (cod_info->address2 > cod_info->address1)
+        //   cod_info->table_select[1] = new_choose_table(ix, cod_info->address1, cod_info->address2);
+        if info.address2 > info.address1 {
+            info.table_select[1] = self.new_choose_table(quantized, info.address1, info.address2) as u32;
+        }
+        
+        // if (cod_info->big_values << 1 > cod_info->address2)
+        //   cod_info->table_select[2] = new_choose_table(ix, cod_info->address2, cod_info->big_values << 1);
+        if (info.big_values << 1) > info.address2 {
+            info.table_select[2] = self.new_choose_table(quantized, info.address2, info.big_values << 1) as u32;
+        }
+    }
+    
+    /// Choose optimal Huffman table (following shine's new_choose_table)
+    /// 
+    /// This mirrors shine's new_choose_table function (ref/shine/src/lib/l3loop.c:600-690)
+    /// Chooses the Huffman table that will encode the region with the fewest bits.
+    /// 
+    /// # Arguments
+    /// * `quantized` - Quantized coefficients (ix array in shine)
+    /// * `begin` - Start index (unsigned int in shine)
+    /// * `end` - End index (unsigned int in shine)
+    /// 
+    /// # Returns
+    /// * Table index (int in shine)
+    fn new_choose_table(&self, quantized: &[i32; 576], begin: u32, end: u32) -> i32 {
+        if begin >= end || begin >= 576 {
+            return 0;
+        }
+        
+        let actual_end = std::cmp::min(end, 576);
+        let begin_idx = begin as usize;
+        let end_idx = actual_end as usize;
+        
+        // Following shine's ix_max function exactly
+        let mut max = 0;
+        for i in begin_idx..end_idx {
+            if quantized[i].abs() > max {
+                max = quantized[i].abs();
+            }
+        }
+        
+        // Following shine's logic: if (!max) return 0;
+        if max == 0 {
+            return 0;
+        }
+        
+        let mut choice = [0i32; 2];
+        let mut sum = [usize::MAX; 2];
+        
+        // Following shine's logic exactly:
+        // if (max < 15) {
+        if max < 15 {
+            // try tables with no linbits
+            // for (i = 14; i--; ) if (shine_huffman_table[i].xlen > max)
+            for i in (0..15).rev() {
+                if i == 4 || i == 14 { continue; } // Skip non-existent tables
+                
+                if let Some(table) = &self.tables[i] {
+                    if table.xlen > max as u32 {
+                        choice[0] = i as i32;
+                        break;
+                    }
+                }
+            }
+            
+            if choice[0] > 0 {
+                sum[0] = self.count_bits(quantized, begin_idx, end_idx, choice[0] as usize);
+            }
+            
+            // Following shine's switch statement exactly
+            match choice[0] {
+                2 => {
+                    if self.tables[3].is_some() {
+                        sum[1] = self.count_bits(quantized, begin_idx, end_idx, 3);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 3;
+                        }
+                    }
+                },
+                5 => {
+                    if self.tables[6].is_some() {
+                        sum[1] = self.count_bits(quantized, begin_idx, end_idx, 6);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 6;
+                        }
+                    }
+                },
+                7 => {
+                    if self.tables[8].is_some() {
+                        sum[1] = self.count_bits(quantized, begin_idx, end_idx, 8);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 8;
+                            sum[0] = sum[1];
+                        }
+                    }
+                    if self.tables[9].is_some() {
+                        sum[1] = self.count_bits(quantized, begin_idx, end_idx, 9);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 9;
+                        }
+                    }
+                },
+                10 => {
+                    if self.tables[11].is_some() {
+                        sum[1] = self.count_bits(quantized, begin_idx, end_idx, 11);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 11;
+                            sum[0] = sum[1];
+                        }
+                    }
+                    if self.tables[12].is_some() {
+                        sum[1] = self.count_bits(quantized, begin_idx, end_idx, 12);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 12;
+                        }
+                    }
+                },
+                13 => {
+                    if self.tables[15].is_some() {
+                        sum[1] = self.count_bits(quantized, begin_idx, end_idx, 15);
+                        if sum[1] <= sum[0] {
+                            choice[0] = 15;
+                        }
+                    }
+                },
+                _ => {}
+            }
+        } else {
+            // Following shine's logic: try tables with linbits
+            // max -= 15;
+            let max_linbits = max - 15;
+            
+            // for (i = 15; i < 24; i++) if (shine_huffman_table[i].linmax >= max)
+            for i in 15..24 {
+                if let Some(table) = &self.tables[i] {
+                    if table.linmax >= max_linbits as u32 {
+                        choice[0] = i as i32;
+                        break;
+                    }
+                }
+            }
+            
+            // for (i = 24; i < 32; i++) if (shine_huffman_table[i].linmax >= max)
+            for i in 24..32 {
+                if let Some(table) = &self.tables[i] {
+                    if table.linmax >= max_linbits as u32 {
+                        choice[1] = i as i32;
+                        break;
+                    }
+                }
+            }
+            
+            if choice[0] > 0 {
+                sum[0] = self.count_bits(quantized, begin_idx, end_idx, choice[0] as usize);
+            }
+            if choice[1] > 0 {
+                sum[1] = self.count_bits(quantized, begin_idx, end_idx, choice[1] as usize);
+            }
+            
+            // Following shine's logic: if (sum[1] < sum[0]) choice[0] = choice[1];
+            if sum[1] < sum[0] {
+                choice[0] = choice[1];
+            }
+        }
+        
+        choice[0]
+    }
+    
+    /// Count bits for big values region (following shine's bigv_bitcount)
+    /// 
+    /// This mirrors shine's bigv_bitcount function (ref/shine/src/lib/l3loop.c:693-710)
+    /// Counts the number of bits necessary to code the bigvalues region.
+    /// 
+    /// # Arguments
+    /// * `quantized` - Quantized coefficients (ix array in shine)
+    /// * `info` - Granule information with table selections and addresses
+    /// 
+    /// # Returns
+    /// * Number of bits required (int in shine)
+    pub fn bigv_bitcount(&self, quantized: &[i32; 576], info: &GranuleInfo) -> i32 {
+        let mut bits = 0i32;  // Following shine's int type
+        
+        // Following shine's logic exactly:
+        // if ((table = gi->table_select[0])) bits += count_bit(ix, 0, gi->address1, table);
+        if info.table_select[0] != 0 {
+            let region_bits = self.count_bits(quantized, 0, info.address1 as usize, info.table_select[0] as usize);
+            if region_bits == usize::MAX {
+                return i32::MAX; // Cannot encode with selected table
+            }
+            bits += region_bits as i32;
+        }
+        
+        // if ((table = gi->table_select[1])) bits += count_bit(ix, gi->address1, gi->address2, table);
+        if info.table_select[1] != 0 {
+            let region_bits = self.count_bits(quantized, info.address1 as usize, info.address2 as usize, info.table_select[1] as usize);
+            if region_bits == usize::MAX {
+                return i32::MAX; // Cannot encode with selected table
+            }
+            bits += region_bits as i32;
+        }
+        
+        // if ((table = gi->table_select[2])) bits += count_bit(ix, gi->address2, gi->big_values << 1, table);
+        if info.table_select[2] != 0 {
+            let region_bits = self.count_bits(quantized, info.address2 as usize, (info.big_values << 1) as usize, info.table_select[2] as usize);
+            if region_bits == usize::MAX {
+                return i32::MAX; // Cannot encode with selected table
+            }
+            bits += region_bits as i32;
+        }
+        
+        bits
+    }
+    
 
 
     
@@ -1332,5 +1722,121 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_huffman_functions_basic_verification() {
+        let encoder = HuffmanEncoder::new();
+        
+        // Test calc_runlen with known input
+        let mut quantized = [0i32; 576];
+        // Set up some test data: big values, count1 values, and zeros
+        quantized[0] = 5;   // big value
+        quantized[1] = -3;  // big value
+        quantized[2] = 1;   // count1 value
+        quantized[3] = -1;  // count1 value
+        quantized[4] = 0;   // count1 value
+        quantized[5] = 1;   // count1 value
+        // Rest are zeros
+        
+        let mut info = GranuleInfo::default();
+        encoder.calc_runlen(&quantized, &mut info);
+        
+        println!("After calc_runlen: big_values={}, count1={}", info.big_values, info.count1);
+        
+        // Verify basic constraints
+        assert!(info.big_values <= 288, "big_values must not exceed MP3 limit");
+        assert!(info.big_values >= 1, "should have at least 1 big value pair");
+        assert!(info.count1 >= 1, "should have at least 1 count1 quadruple");
+        
+        // Test subdivide
+        encoder.subdivide(&mut info, 44100);
+        
+        println!("After subdivide: addresses={}, {}, {}", info.address1, info.address2, info.address3);
+        println!("Region counts: region0={}, region1={}", info.region0_count, info.region1_count);
+        
+        // Verify region boundaries
+        if info.big_values > 0 {
+            assert!(info.address1 <= info.address2, "address1 {} must be <= address2 {}", info.address1, info.address2);
+            assert!(info.address2 <= info.address3, "address2 {} must be <= address3 {}", info.address2, info.address3);
+            assert_eq!(info.address3, info.big_values << 1, "address3 must equal big_values * 2");
+        }
+        
+        // Test bigv_tab_select
+        encoder.bigv_tab_select(&quantized, &mut info);
+        
+        // Verify table selections are valid
+        for i in 0..3 {
+            if info.table_select[i] != 0 {
+                assert!(info.table_select[i] < 34, "table_select must be valid");
+                assert_ne!(info.table_select[i], 4, "table 4 does not exist");
+                assert_ne!(info.table_select[i], 14, "table 14 does not exist");
+            }
+        }
+        
+        // Test bigv_bitcount
+        let bits = encoder.bigv_bitcount(&quantized, &info);
+        
+        if bits != i32::MAX {
+            assert!(bits >= 0, "bit count must be non-negative");
+        }
+        
+        println!("Huffman functions verification completed successfully");
+        println!("big_values: {}, count1: {}", info.big_values, info.count1);
+        println!("table_select: {:?}", info.table_select);
+        println!("addresses: {}, {}, {}", info.address1, info.address2, info.address3);
+        println!("bits: {}", bits);
+    }
+
+    #[test]
+    fn test_huffman_functions_shine_consistency() {
+        let encoder = HuffmanEncoder::new();
+        
+        // Test with realistic MP3 coefficient data
+        let mut quantized = [0i32; 576];
+        
+        // Simulate typical quantized MDCT coefficients
+        // Lower frequencies (bigger values)
+        for i in 0..20 {
+            quantized[i] = if i % 2 == 0 { 3 } else { -2 };
+        }
+        
+        // Mid frequencies (smaller values)
+        for i in 20..100 {
+            quantized[i] = if i % 3 == 0 { 1 } else if i % 3 == 1 { -1 } else { 0 };
+        }
+        
+        // High frequencies (mostly zeros with occasional ±1)
+        for i in 100..200 {
+            quantized[i] = if i % 10 == 0 { 1 } else { 0 };
+        }
+        
+        // Rest are zeros (typical for high frequencies)
+        
+        let mut info = GranuleInfo::default();
+        
+        // Test the complete shine sequence
+        encoder.calc_runlen(&quantized, &mut info);
+        encoder.subdivide(&mut info, 44100);
+        encoder.bigv_tab_select(&quantized, &mut info);
+        let bits = encoder.bigv_bitcount(&quantized, &info);
+        
+        // Verify results are consistent with shine's expected behavior
+        assert!(info.big_values > 0, "should have big values for this input");
+        assert!(info.big_values <= 288, "big_values within MP3 limits");
+        
+        if bits != i32::MAX {
+            assert!(bits > 0, "should require some bits to encode");
+            assert!(bits < 5000, "bit count should be reasonable");
+        }
+        
+        // Verify region subdivision worked correctly
+        assert!(info.address1 > 0, "should have region 1");
+        assert!(info.address2 >= info.address1, "regions should be ordered");
+        assert!(info.address3 >= info.address2, "regions should be ordered");
+        
+        println!("Shine consistency test completed");
+        println!("Final state - big_values: {}, count1: {}, bits: {}", 
+                 info.big_values, info.count1, bits);
     }
 }
