@@ -4,7 +4,7 @@
 //! functional consistency with shine's C structures.
 
 use rust_mp3_encoder::quantization::GranuleInfo;
-use rust_mp3_encoder::shine_config::{ShineSideInfo, L3Loop, ShineGlobalConfig, MAX_CHANNELS, MAX_GRANULES, GRANULE_SIZE};
+use rust_mp3_encoder::shine_config::{ShineSideInfo, L3Loop, ShineGlobalConfig, MAX_CHANNELS, MAX_GRANULES};
 use rust_mp3_encoder::config::Config;
 use std::mem;
 

@@ -48,13 +48,6 @@ lazy_static! {
     static ref MDCT_CS7: i32 = mdct_cs(-0.0037);
 }
 
-/// Fixed-point multiplication (following shine's mul macro)
-/// Original shine: #define mul(a, b) (int32_t)((((int64_t)a) * ((int64_t)b)) >> 32)
-#[inline]
-fn mul(a: i32, b: i32) -> i32 {
-    (((a as i64) * (b as i64)) >> 32) as i32
-}
-
 /// Complex multiplication for aliasing reduction (following shine's cmuls macro)
 /// Original shine cmuls macro from mult_noarch_gcc.h:29-41
 /// Parameters: are, aim (first complex), bre, bim (second complex)

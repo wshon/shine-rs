@@ -10,6 +10,7 @@ use std::path::Path;
 
 /// MP3 validation errors
 #[derive(Debug)]
+#[allow(dead_code)]
 enum ValidationError {
     IoError(std::io::Error),
     InvalidFileSize(usize),
@@ -66,6 +67,7 @@ impl std::fmt::Display for ValidationError {
 
 /// MP3 Frame Header structure
 #[derive(Debug)]
+#[allow(dead_code)]
 struct FrameHeader {
     sync_word: u16,
     mpeg_version: u8,

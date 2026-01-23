@@ -536,8 +536,6 @@ pub fn shine_window_filter_subband(
     // Apply analysis window (shine_enwindow) to produce windowed samples y[64]
     // Following shine's windowing exactly: for (i = 64; i--;)
     for i in (0..64).rev() {
-        let mut s_value = 0i64;
-        
         // Following shine's 8-fold loop unrolling with mul0 + muladd pattern
         // mul0(s_value, s_value_lo, config->subband.x[ch][...], shine_enwindow[i + (0 << 6)]);
         let i_usize = i as usize;
