@@ -133,6 +133,44 @@ impl Mp3Encoder {
         self.encode_frame_pipeline(channels, samples_per_frame)
     }
     
+    /// Encode a single frame of PCM data (interleaved format: L, R, L, R, ...)
+    /// 
+    /// This method encodes a single frame of interleaved PCM data into MP3 format.
+    /// The input data must be in interleaved format: [L, R, L, R, ...]
+    /// 
+    /// # Arguments
+    /// * `pcm_data` - PCM samples (interleaved format)
+    /// 
+    /// # Returns
+    /// * `Ok(&[u8])` - Encoded MP3 frame data
+    /// * `Err(EncoderError)` - Encoding error
+    pub fn encode_frame_interleaved(&mut self, pcm_data: &[i16]) -> Result<&[u8]> {
+        let channels = self.config.wave.channels as usize;
+        let samples_per_frame = self.public_config.samples_per_frame();
+        let expected_samples = samples_per_frame * channels;
+        
+        // Validate input length
+        if pcm_data.len() != expected_samples {
+            return Err(EncoderError::InputData(InputDataError::InvalidLength {
+                expected: expected_samples,
+                actual: pcm_data.len(),
+            }));
+        }
+        
+        // Clear frame buffer for new frame
+        self.frame_buffer.clear();
+        self.config.bs.reset();
+        
+        // De-interleave PCM data into channel buffers
+        self.deinterleave_pcm_interleaved(pcm_data, channels, samples_per_frame);
+        
+        // Reset buffer counter since we have a complete frame
+        self.samples_in_buffer = 0;
+        
+        // Encode the frame through the complete pipeline
+        self.encode_frame_pipeline(channels, samples_per_frame)
+    }
+    
     /// Encode samples incrementally, buffering until a complete frame is available
     /// 
     /// This method allows encoding PCM data in chunks smaller than a complete frame.
