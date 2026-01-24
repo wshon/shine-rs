@@ -187,7 +187,7 @@ impl Mp3Validator {
         self.frame_count += 1;
         
         if self.verbose {
-            println!("\n🎵 验证第 {} 个帧 (位置: {})", self.frame_count, self.position);
+            println!("\n🎵 验证第 {} 个帧 (位置: {} / 0x{:X})", self.frame_count, self.position, self.position);
         }
         
         // Step 1: Parse frame header
@@ -312,13 +312,15 @@ impl Mp3Validator {
         let bitrate = BITRATES[header.bitrate_index as usize] * 1000; // Convert to bps
         let sample_rate = SAMPLE_RATES[header.sample_rate_index as usize];
         
-        // Frame size calculation for MPEG-1 Layer III
-        // frame_size = (144 * bitrate / sample_rate) + padding
-        let frame_size = (144 * bitrate / sample_rate) as usize + if header.padding_bit { 1 } else { 0 };
+        // Frame size calculation for MPEG-1 Layer III (using floating point for precision)
+        // frame_size = floor(144 * bitrate / sample_rate) + padding
+        // This matches shine's calculation: avg_slots_per_frame with bits_per_slot = 8
+        let frame_size_float = 144.0 * (bitrate as f64) / (sample_rate as f64);
+        let frame_size = frame_size_float as usize + if header.padding_bit { 1 } else { 0 };
         
         if self.verbose {
-            println!("📐 计算帧大小: {} 字节 (bitrate={}kbps, sample_rate={}Hz, padding={})", 
-                    frame_size, bitrate/1000, sample_rate, header.padding_bit);
+            println!("📐 计算帧大小: {} 字节 (bitrate={}kbps, sample_rate={}Hz, padding={}, 精确值={:.2})", 
+                    frame_size, bitrate/1000, sample_rate, header.padding_bit, frame_size_float);
         }
         
         Ok(frame_size)
@@ -435,7 +437,7 @@ impl Mp3Validator {
         self.position = frame_start + frame_size;
         
         if self.verbose {
-            println!("⏭️  跳转到下一帧 (位置: {})", self.position);
+            println!("⏭️  跳转到下一帧 (位置: {} / 0x{:X})", self.position, self.position);
         }
         Ok(())
     }

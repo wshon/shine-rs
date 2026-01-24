@@ -139,6 +139,7 @@ struct Args {
     output_file: String,
     bitrate: i32,
     stereo_mode: i32,
+    verbose: bool,
 }
 
 impl Args {
@@ -148,29 +149,40 @@ impl Args {
         
         if args.len() < 3 {
             return Err(format!(
-                "Usage: {} <input.wav> <output.mp3> [bitrate] [stereo_mode]\n\
+                "Usage: {} <input.wav> <output.mp3> [bitrate] [stereo_mode] [--verbose]\n\
                  \n\
                  Arguments:\n\
                    input.wav    - Input WAV file path\n\
                    output.mp3   - Output MP3 file path\n\
                    bitrate      - MP3 bitrate in kbps (default: 128)\n\
                    stereo_mode  - Stereo mode: mono, stereo, joint_stereo, dual_channel (default: auto)\n\
+                   --verbose    - Enable verbose output with frame details\n\
                  \n\
                  Examples:\n\
                    {} input.wav output.mp3\n\
                    {} input.wav output.mp3 192\n\
-                   {} input.wav output.mp3 128 joint_stereo",
-                args[0], args[0], args[0], args[0]
+                   {} input.wav output.mp3 128 joint_stereo\n\
+                   {} input.wav output.mp3 128 joint_stereo --verbose",
+                args[0], args[0], args[0], args[0], args[0]
             ));
         }
         
         let input_file = args[1].clone();
         let output_file = args[2].clone();
         
+        // Check for verbose flag
+        let verbose = args.iter().any(|arg| arg == "--verbose" || arg == "-v");
+        
+        // Filter out verbose flags for other parsing
+        let filtered_args: Vec<String> = args.iter()
+            .filter(|arg| *arg != "--verbose" && *arg != "-v")
+            .cloned()
+            .collect();
+        
         // Parse bitrate (default: 128)
-        let bitrate = if args.len() > 3 {
-            args[3].parse::<i32>()
-                .map_err(|_| format!("Invalid bitrate: {}", args[3]))?
+        let bitrate = if filtered_args.len() > 3 {
+            filtered_args[3].parse::<i32>()
+                .map_err(|_| format!("Invalid bitrate: {}", filtered_args[3]))?
         } else {
             128
         };
@@ -181,13 +193,13 @@ impl Args {
         }
         
         // Parse stereo mode (default: auto-detect based on channels)
-        let stereo_mode = if args.len() > 4 {
-            match args[4].to_lowercase().as_str() {
+        let stereo_mode = if filtered_args.len() > 4 {
+            match filtered_args[4].to_lowercase().as_str() {
                 "mono" => STEREO_MONO,
                 "stereo" => STEREO_STEREO,
                 "joint_stereo" => STEREO_JOINT_STEREO,
                 "dual_channel" => STEREO_DUAL_CHANNEL,
-                _ => return Err(format!("Invalid stereo mode: {}. Supported: mono, stereo, joint_stereo, dual_channel", args[4])),
+                _ => return Err(format!("Invalid stereo mode: {}. Supported: mono, stereo, joint_stereo, dual_channel", filtered_args[4])),
             }
         } else {
             STEREO_JOINT_STEREO // Will be adjusted based on input channels
@@ -198,6 +210,7 @@ impl Args {
             output_file,
             bitrate,
             stereo_mode,
+            verbose,
         })
     }
 }
@@ -251,30 +264,67 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let total_frames = pcm_data.len() / frame_size;
     println!("Encoding {} frames of {} samples each", total_frames, samples_per_frame);
     
+    if args.verbose {
+        println!("\n=== Verbose Mode: Frame-by-Frame Encoding Details ===");
+        println!("Format: [Frame #] PCM samples, MP3 bytes @ hex offset");
+        println!("─────────────────────────────────────────────────────────────────");
+    }
+    
     // Process complete frames
     let mut frame_count = 0;
+    let mut mp3_offset = 0;
+    
     for chunk in pcm_data.chunks(frame_size) {
         if chunk.len() == frame_size {
             // Convert to raw pointer for shine API
             let data_ptr = chunk.as_ptr();
             
+            let pcm_start = frame_count * frame_size;
+            let pcm_end = pcm_start + frame_size - 1;
+            
             let (frame_data, written) = shine_encode_buffer_interleaved(&mut encoder, data_ptr)?;
             
             if written > 0 {
+                if args.verbose {
+                    println!("[Frame {}] PCM {}-{}, MP3 {} bytes @ 0x{:04X}-0x{:04X}",
+                             frame_count + 1,
+                             pcm_start,
+                             pcm_end,
+                             written,
+                             mp3_offset,
+                             mp3_offset + written - 1);
+                }
+                
                 mp3_data.extend_from_slice(&frame_data[..written]);
+                mp3_offset += written;
+            } else if args.verbose {
+                println!("[Frame {}] PCM {}-{}, MP3 buffered",
+                         frame_count + 1,
+                         pcm_start,
+                         pcm_end);
             }
             
             frame_count += 1;
             
-            if frame_count % 100 == 0 {
+            if !args.verbose && frame_count % 100 == 0 {
                 println!("Encoded {} / {} frames", frame_count, total_frames);
             }
         }
     }
     
+    if args.verbose {
+        println!("─────────────────────────────────────────────────────────────────");
+    }
+    
     // Flush any remaining data
     let (final_data, final_written) = shine_flush(&mut encoder);
     if final_written > 0 {
+        if args.verbose {
+            println!("[Flush] MP3 {} bytes @ 0x{:04X}-0x{:04X}",
+                     final_written,
+                     mp3_offset,
+                     mp3_offset + final_written - 1);
+        }
         mp3_data.extend_from_slice(&final_data[..final_written]);
         println!("Flushed final data: {} bytes", final_written);
     }
@@ -284,10 +334,33 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     
     println!("Total MP3 data: {} bytes", mp3_data.len());
     
+    if args.verbose {
+        println!("\n=== MP3 File Structure Summary ===");
+        println!("Total frames encoded: {}", frame_count);
+        println!("Total MP3 bytes: {} (hex: 0x{:04X})", mp3_data.len(), mp3_data.len());
+        println!("Average bytes per frame: {:.1}", mp3_data.len() as f64 / frame_count as f64);
+        
+        // Show first few bytes of MP3 data (header info)
+        if mp3_data.len() >= 4 {
+            println!("MP3 header bytes: {:02X} {:02X} {:02X} {:02X} (at offset 0x0000)", 
+                     mp3_data[0], mp3_data[1], mp3_data[2], mp3_data[3]);
+        }
+        
+        // Show file structure breakdown
+        if mp3_data.len() > 0 {
+            println!("File range: 0x0000 - 0x{:04X}", mp3_data.len() - 1);
+        }
+    }
+    
     // Write MP3 file
     println!("Writing MP3 file: {}", args.output_file);
     let mut output_file = File::create(&args.output_file)?;
     output_file.write_all(&mp3_data)?;
+    
+    if args.verbose {
+        println!("Successfully wrote {} bytes (0x0000-0x{:04X}) to {}", 
+                 mp3_data.len(), mp3_data.len() - 1, args.output_file);
+    }
     
     // Calculate compression ratio
     let input_size = pcm_data.len() * 2; // 16-bit samples
@@ -301,6 +374,12 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     // Calculate duration
     let duration = pcm_data.len() as f64 / (sample_rate as f64 * channels as f64);
     println!("   Duration:    {:.2} seconds", duration);
+    
+    if args.verbose {
+        println!("   Bitrate:     {} kbps (configured)", args.bitrate);
+        println!("   Actual rate: {:.1} kbps (calculated)", 
+                 (mp3_data.len() as f64 * 8.0) / (duration * 1000.0));
+    }
     
     Ok(())
 }
