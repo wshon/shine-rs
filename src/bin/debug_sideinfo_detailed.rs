@@ -20,11 +20,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     config.mpeg.version = 3; // MPEG_I = 3 (not 1!)
     config.mpeg.layer = 1;   // LAYER_III = 1
     config.mpeg.granules_per_frame = 2;
-    config.mpeg.mode = 1;    // Joint stereo
+    config.mpeg.mode = 0;    // Stereo (not Joint stereo)
     config.mpeg.bitr = 128;
     config.mpeg.bitrate_index = 9;
     config.mpeg.samplerate_index = 0; // 44100 Hz
-    config.mpeg.padding = 0;
+    config.mpeg.padding = 1;  // Enable padding
     config.mpeg.crc = 0;
     config.mpeg.ext = 0;
     config.mpeg.mode_ext = 0;
@@ -43,41 +43,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     
-    // Set up granule information with test values
+    // Set up granule information with minimal test values (all zeros except necessary fields)
     for gr in 0..2 {
         for ch in 0..2 {
             let gi = &mut config.side_info.gr[gr].ch[ch].tt;
             
-            // Set test values that should produce known bit patterns
-            if gr == 0 && ch == 0 {
-                // First granule, first channel - set some realistic values
-                gi.part2_3_length = 3056; // This matches what we saw in debug output
-                gi.big_values = 144;       // Half of 288 (max big_values)
-                gi.global_gain = 210;      // Default value
-                gi.scalefac_compress = 0;
-                gi.table_select = [1, 2, 3]; // Some test table selections
-                gi.region0_count = 7;      // Max 4 bits (0-15)
-                gi.region1_count = 7;      // Max 3 bits (0-7) - FIXED: was 13
-                gi.preflag = 0;
-                gi.scalefac_scale = 0;
-                gi.count1table_select = 0;
-                gi.count1 = 10;
-                gi.part2_length = 56; // Some reasonable part2 length
-            } else {
-                // Other granules/channels - set to minimal values
-                gi.part2_3_length = 0;
-                gi.big_values = 0;
-                gi.global_gain = 210;
-                gi.scalefac_compress = 0;
-                gi.table_select = [0, 0, 0];
-                gi.region0_count = 0;
-                gi.region1_count = 0;
-                gi.preflag = 0;
-                gi.scalefac_scale = 0;
-                gi.count1table_select = 0;
-                gi.count1 = 0;
-                gi.part2_length = 0;
-            }
+            // Set all values to zero/default for easier comparison
+            gi.part2_3_length = 0;
+            gi.big_values = 0;
+            gi.global_gain = 210;      // Keep default global gain
+            gi.scalefac_compress = 0;
+            gi.table_select = [0, 0, 0];
+            gi.region0_count = 0;
+            gi.region1_count = 0;
+            gi.preflag = 0;
+            gi.scalefac_scale = 0;
+            gi.count1table_select = 0;
+            gi.count1 = 0;
+            gi.part2_length = 0;
         }
     }
     
@@ -121,9 +104,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let data = config.bs.get_data();
             println!("Encoded {} bytes", data.len());
             
-            // Print first 32 bytes in hex
-            println!("\nFirst 32 bytes of encoded data:");
-            for (i, &byte) in data.iter().take(32).enumerate() {
+            // Print first 16 bytes in hex (increased from 8)
+            println!("\nFirst 16 bytes of encoded data:");
+            for (i, &byte) in data.iter().take(16).enumerate() {
                 if i % 8 == 0 {
                     print!("\n{:04X}: ", i);
                 }
@@ -131,9 +114,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             println!();
             
-            // Print bit-by-bit analysis of first 8 bytes
-            println!("\nBit-by-bit analysis of first 8 bytes:");
-            for (i, &byte) in data.iter().take(8).enumerate() {
+            // Print bit-by-bit analysis of first 16 bytes (increased from 8)
+            println!("\nBit-by-bit analysis of first 16 bytes:");
+            for (i, &byte) in data.iter().take(16).enumerate() {
                 println!("Byte {}: 0x{:02X} = {:08b}", i, byte, byte);
             }
             
@@ -162,17 +145,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             file.write_all(data)?;
             println!("\nSaved encoded data to debug_sideinfo_output.mp3");
             
-            // Compare with expected shine output
+            // Compare with expected shine output (first 16 bytes)
             println!("\n=== Comparison with Expected Output ===");
-            println!("Our output (first 8 bytes): {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}", 
-                     data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]);
-            println!("Shine output (expected):     FF FB 92 04 00 00 03 93");
+            let shine_output = [0xFFu8, 0xFB, 0x92, 0x04, 0x00, 0x00, 0x0B, 0xF0, 
+                               0x00, 0x69, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+            println!("Our output (first 16 bytes): {}", 
+                     data.iter().take(16).map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" "));
+            println!("Shine output (expected):      {}", 
+                     shine_output.iter().map(|b| format!("{:02X}", b)).collect::<Vec<_>>().join(" "));
             
             // Analyze the differences
-            let expected = [0xFF, 0xFB, 0x92, 0x04, 0x00, 0x00, 0x03, 0x93];
-            for i in 0..8.min(data.len()) {
-                if data[i] != expected[i] {
-                    println!("Difference at byte {}: got 0x{:02X}, expected 0x{:02X}", i, data[i], expected[i]);
+            for i in 0..16.min(data.len()) {
+                if data[i] != shine_output[i] {
+                    println!("Difference at byte {}: got 0x{:02X}, expected 0x{:02X}", i, data[i], shine_output[i]);
                 }
             }
             
