@@ -207,14 +207,27 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 /// Internal encoding function (matches shine_encode_buffer_internal)
 /// (ref/shine/src/lib/layer3.c:136-158)
 fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
+    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    
     // Dynamic padding calculation (matches shine exactly)
     if config.mpeg.frac_slots_per_frame != 0.0 {
+        println!("[RUST DEBUG Frame {}] Before: slot_lag={:.6}, frac_slots={:.6}", 
+                 frame_num, config.mpeg.slot_lag, config.mpeg.frac_slots_per_frame);
         config.mpeg.padding = if config.mpeg.slot_lag <= (config.mpeg.frac_slots_per_frame - 1.0) { 1 } else { 0 };
+        println!("[RUST DEBUG Frame {}] Padding decision: {:.6} <= {:.6} = {}", 
+                 frame_num, config.mpeg.slot_lag, config.mpeg.frac_slots_per_frame - 1.0, config.mpeg.padding);
         config.mpeg.slot_lag += config.mpeg.padding as f64 - config.mpeg.frac_slots_per_frame;
+        println!("[RUST DEBUG Frame {}] After: slot_lag={:.6} (added {:.6})", 
+                 frame_num, config.mpeg.slot_lag, config.mpeg.padding as f64 - config.mpeg.frac_slots_per_frame);
     }
 
     config.mpeg.bits_per_frame = 8 * (config.mpeg.whole_slots_per_frame + config.mpeg.padding);
     config.mean_bits = (config.mpeg.bits_per_frame - config.sideinfo_len) / config.mpeg.granules_per_frame;
+
+    println!("[RUST DEBUG Frame {}] padding={}, bits_per_frame={}, slot_lag={:.6}", 
+             frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, config.mpeg.slot_lag);
 
     // Apply mdct to the polyphase output
     crate::mdct::shine_mdct_sub(config, stride);
@@ -225,9 +238,11 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     // Write the frame to the bitstream
     crate::bitstream::format_bitstream(config)?;
 
-    // Return data
+    // Return data exactly as shine does: return current data_position and reset it
     let written = config.bs.data_position as usize;
     config.bs.data_position = 0;
+
+    println!("[RUST DEBUG Frame {}] written={} bytes", frame_num, written);
 
     Ok((&config.bs.data[..written], written))
 }

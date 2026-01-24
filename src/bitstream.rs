@@ -5,6 +5,8 @@
 //! MP3 frame headers, side information, and main data to the output bitstream.
 
 use crate::error::EncodingResult;
+#[cfg(debug_assertions)]
+use crate::error::EncodingError;
 use crate::huffman::{HuffCodeTab, SHINE_HUFFMAN_TABLE};
 use crate::types::{ShineGlobalConfig, GrInfo, GRANULE_SIZE};
 use crate::tables::{SHINE_SLEN1_TAB, SHINE_SLEN2_TAB, SHINE_SCALE_FACT_BAND_INDEX};
@@ -47,7 +49,6 @@ impl BitstreamWriter {
     pub fn put_bits(&mut self, val: u32, n: i32) -> EncodingResult<()> {
         #[cfg(debug_assertions)]
         {
-            use crate::EncodingError;
             if n > 32 {
                 return Err(EncodingError::BitstreamError("Cannot write more than 32 bits at a time".to_string()));
             }
@@ -214,6 +215,14 @@ fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 /// (ref/shine/src/lib/l3bitstream.c:73-120)
 fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     let si = &config.side_info;
+
+    println!("[RUST DEBUG] Frame header: sync=0x7ff, version={}, layer={}, crc={}", 
+             config.mpeg.version, config.mpeg.layer, if config.mpeg.crc == 0 { 1 } else { 0 });
+    println!("[RUST DEBUG] Frame header: bitrate_idx={}, samplerate_idx={}, padding={}", 
+             config.mpeg.bitrate_index, config.mpeg.samplerate_index % 3, config.mpeg.padding);
+    println!("[RUST DEBUG] Frame header: ext={}, mode={}, mode_ext={}, copyright={}, original={}, emph={}", 
+             config.mpeg.ext, config.mpeg.mode, config.mpeg.mode_ext, 
+             config.mpeg.copyright, config.mpeg.original, config.mpeg.emph);
 
     // Write frame header
     config.bs.put_bits(0x7ff, 11)?; // Sync word
