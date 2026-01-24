@@ -51,13 +51,15 @@ impl BitstreamWriter {
                 return Err(EncodingError::BitstreamError("Cannot write more than 32 bits at a time".to_string()));
             }
             if n < 32 && (val >> n) != 0 {
-                return Err(EncodingError::BitstreamError(format!("Upper bits (higher than {}) are not all zeros", n)));
+                return Err(EncodingError::BitstreamError("Upper bits are not all zeros".to_string()));
             }
         }
 
         if self.cache_bits > n {
             self.cache_bits -= n;
-            self.cache |= val << self.cache_bits;
+            if val != 0 && self.cache_bits < 32 {
+                self.cache |= val << self.cache_bits;
+            }
         } else {
             // Ensure we have enough space in the buffer
             if self.data_position + 4 >= self.data_size {
@@ -201,7 +203,7 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     config.bs.put_bits(0x7ff, 11)?; // Sync word
     config.bs.put_bits(config.mpeg.version as u32, 2)?;
     config.bs.put_bits(config.mpeg.layer as u32, 2)?;
-    config.bs.put_bits((!config.mpeg.crc) as u32, 1)?;
+    config.bs.put_bits(if config.mpeg.crc == 0 { 1 } else { 0 }, 1)?;
     config.bs.put_bits(config.mpeg.bitrate_index as u32, 4)?;
     config.bs.put_bits((config.mpeg.samplerate_index % 3) as u32, 2)?;
     config.bs.put_bits(config.mpeg.padding as u32, 1)?;
