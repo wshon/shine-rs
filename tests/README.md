@@ -1,0 +1,2 @@
+cd "c:\Users\wshon\ws\shine-rs" ; cargo run --bin wav2mp3 .\tests\input\sample-3s.wav .\tests\output\sample-3s-output.mp3
+cd "c:\Users\wshon\ws\shine-rs" ; .\ref\shine\shineenc.exe .\tests\input\sample-3s.wav .\tests\output\sample-3s-shine.mp3
