@@ -151,7 +151,7 @@ pub fn format_bitstream(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 
     encode_side_info(config)?;
     encode_main_data(config)?;
-    
+
     Ok(())
 }
 
@@ -528,13 +528,13 @@ mod tests {
         fn test_abs_and_sign_function(x in -1000i32..1000) {
             let mut x_copy = x;
             let sign = abs_and_sign(&mut x_copy);
-            
-            if x >= 0 {
+
+            if x > 0 {
                 prop_assert_eq!(sign, 0, "Positive numbers should have sign 0");
                 prop_assert_eq!(x_copy, x, "Positive numbers should be unchanged");
             } else {
-                prop_assert_eq!(sign, 1, "Negative numbers should have sign 1");
-                prop_assert_eq!(x_copy, -x, "Negative numbers should be negated");
+                prop_assert_eq!(sign, 1, "Zero and negative numbers should have sign 1");
+                prop_assert_eq!(x_copy, -x, "Numbers should be negated");
             }
         }
     }
