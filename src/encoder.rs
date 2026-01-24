@@ -238,6 +238,9 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     // Write the frame to the bitstream
     crate::bitstream::format_bitstream(config)?;
 
+    // Ensure byte alignment at frame end (matches shine behavior)
+    config.bs.byte_align()?;
+
     // Return data exactly as shine does: return current data_position and reset it
     let written = config.bs.data_position as usize;
     config.bs.data_position = 0;

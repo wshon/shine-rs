@@ -134,6 +134,41 @@ impl BitstreamWriter {
         }
         Ok(())
     }
+
+    /// Align to byte boundary by flushing partial bytes
+    /// This matches shine's byte alignment behavior
+    pub fn byte_align(&mut self) -> EncodingResult<()> {
+        let bits_in_cache = 32 - self.cache_bits;
+        if bits_in_cache > 0 {
+            let bytes_to_flush = (bits_in_cache + 7) / 8;
+            let bits_to_flush = bytes_to_flush * 8;
+            
+            if bits_to_flush > bits_in_cache {
+                // Need to add padding bits to reach byte boundary
+                let padding_bits = bits_to_flush - bits_in_cache;
+                self.put_bits(0, padding_bits)?;
+            }
+            
+            // Now flush the cache to align to byte boundary
+            if self.cache_bits < 32 {
+                // Ensure we have enough space
+                if self.data_position + 4 >= self.data_size {
+                    let new_size = self.data_size + (self.data_size / 2);
+                    let mut new_buffer = vec![0u8; new_size as usize];
+                    new_buffer[..self.data_position as usize].copy_from_slice(&self.data[..self.data_position as usize]);
+                    self.data = new_buffer.into_boxed_slice();
+                    self.data_size = new_size;
+                }
+
+                let cache_bytes = self.cache.to_be_bytes();
+                self.data[self.data_position as usize..self.data_position as usize + 4].copy_from_slice(&cache_bytes);
+                self.data_position += 4;
+                self.cache = 0;
+                self.cache_bits = 32;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Default for BitstreamWriter {
