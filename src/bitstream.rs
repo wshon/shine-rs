@@ -10,27 +10,27 @@ use crate::types::{ShineGlobalConfig, GrInfo, GRANULE_SIZE};
 use crate::tables::{SHINE_SLEN1_TAB, SHINE_SLEN2_TAB, SHINE_SCALE_FACT_BAND_INDEX};
 
 /// Bitstream writer structure (matches shine's bitstream_t exactly)
-/// (ref/shine/src/lib/bitstream.h:35-42)
+/// (ref/shine/src/lib/bitstream.h:4-10)
 #[derive(Debug)]
 pub struct BitstreamWriter {
-    /// Output data buffer
-    pub data: Vec<u8>,
-    /// Current data size
-    pub data_size: usize,
-    /// Current position in data buffer
-    pub data_position: usize,
-    /// Bit cache for accumulating bits
+    /// Processed data
+    pub data: Box<[u8]>,
+    /// Total data size
+    pub data_size: i32,
+    /// Data position
+    pub data_position: i32,
+    /// Bit stream cache
     pub cache: u32,
-    /// Number of bits available in cache
-    pub cache_bits: u32,
+    /// Free bits in cache
+    pub cache_bits: i32,
 }
 
 impl BitstreamWriter {
     /// Open the bitstream for writing (matches shine_open_bit_stream)
     /// (ref/shine/src/lib/bitstream.c:15-22)
-    pub fn new(size: usize) -> Self {
+    pub fn new(size: i32) -> Self {
         Self {
-            data: vec![0u8; size],
+            data: vec![0u8; size as usize].into_boxed_slice(),
             data_size: size,
             data_position: 0,
             cache: 0,
@@ -40,11 +40,11 @@ impl BitstreamWriter {
 
     /// Write N bits into the bit stream (matches shine_putbits exactly)
     /// (ref/shine/src/lib/bitstream.c:30-58)
-    /// 
+    ///
     /// # Arguments
     /// * `val` - value to write into the buffer
     /// * `n` - number of bits of val
-    pub fn put_bits(&mut self, val: u32, n: u32) -> EncodingResult<()> {
+    pub fn put_bits(&mut self, val: u32, n: i32) -> EncodingResult<()> {
         #[cfg(debug_assertions)]
         {
             if n > 32 {
@@ -64,7 +64,9 @@ impl BitstreamWriter {
             // Ensure we have enough space in the buffer
             if self.data_position + 4 >= self.data_size {
                 let new_size = self.data_size + (self.data_size / 2);
-                self.data.resize(new_size, 0);
+                let mut new_buffer = vec![0u8; new_size as usize];
+                new_buffer[..self.data_position as usize].copy_from_slice(&self.data[..self.data_position as usize]);
+                self.data = new_buffer.into_boxed_slice();
                 self.data_size = new_size;
             }
 
@@ -73,30 +75,30 @@ impl BitstreamWriter {
 
             // Write cache to buffer in big-endian format (matches SWAB32 in shine)
             let cache_bytes = self.cache.to_be_bytes();
-            self.data[self.data_position..self.data_position + 4].copy_from_slice(&cache_bytes);
-            
+            self.data[self.data_position as usize..self.data_position as usize + 4].copy_from_slice(&cache_bytes);
+
             self.data_position += 4;
             self.cache_bits = 32 - remaining_n;
-            
+
             if remaining_n != 0 {
                 self.cache = val << self.cache_bits;
             } else {
                 self.cache = 0;
             }
         }
-        
+
         Ok(())
     }
 
     /// Get the current bit count (matches shine_get_bits_count exactly)
     /// (ref/shine/src/lib/bitstream.c:60-62)
     pub fn get_bits_count(&self) -> i32 {
-        (self.data_position * 8 + (32 - self.cache_bits) as usize) as i32
+        self.data_position * 8 + (32 - self.cache_bits)
     }
 
     /// Get the output data
     pub fn get_data(&self) -> &[u8] {
-        &self.data[..self.data_position]
+        &self.data[..self.data_position as usize]
     }
 
     /// Flush any remaining bits in the cache
@@ -105,12 +107,14 @@ impl BitstreamWriter {
             // Ensure we have enough space
             if self.data_position + 4 >= self.data_size {
                 let new_size = self.data_size + (self.data_size / 2);
-                self.data.resize(new_size, 0);
+                let mut new_buffer = vec![0u8; new_size as usize];
+                new_buffer[..self.data_position as usize].copy_from_slice(&self.data[..self.data_position as usize]);
+                self.data = new_buffer.into_boxed_slice();
                 self.data_size = new_size;
             }
 
             let cache_bytes = self.cache.to_be_bytes();
-            self.data[self.data_position..self.data_position + 4].copy_from_slice(&cache_bytes);
+            self.data[self.data_position as usize..self.data_position as usize + 4].copy_from_slice(&cache_bytes);
             self.data_position += 4;
             self.cache = 0;
             self.cache_bits = 32;
@@ -159,28 +163,28 @@ fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
             // Extract values we need before borrowing config mutably
             let scalefac_compress = config.side_info.gr[gr].ch[ch].tt.scalefac_compress;
             let scfsi = config.side_info.scfsi[ch];
-            let slen1 = SHINE_SLEN1_TAB[scalefac_compress as usize] as u32;
-            let slen2 = SHINE_SLEN2_TAB[scalefac_compress as usize] as u32;
+            let slen1 = SHINE_SLEN1_TAB[scalefac_compress as usize];
+            let slen2 = SHINE_SLEN2_TAB[scalefac_compress as usize];
             
             // Write scale factors
             if gr == 0 || scfsi[0] == 0 {
                 for sfb in 0..6 {
-                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen1)?;
+                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen1 as i32)?;
                 }
             }
             if gr == 0 || scfsi[1] == 0 {
                 for sfb in 6..11 {
-                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen1)?;
+                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen1 as i32)?;
                 }
             }
             if gr == 0 || scfsi[2] == 0 {
                 for sfb in 11..16 {
-                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen2)?;
+                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen2 as i32)?;
                 }
             }
             if gr == 0 || scfsi[3] == 0 {
                 for sfb in 16..21 {
-                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen2)?;
+                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen2 as i32)?;
                 }
             }
 
@@ -322,7 +326,7 @@ fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32], gi: &GrInfo) ->
     let bits_used = config.bs.get_bits_count() - bits_start;
     let bits_available = gi.part2_3_length as i32 - gi.part2_length as i32;
     let stuffing_bits = bits_available - bits_used;
-    
+
     if stuffing_bits > 0 {
         let stuffing_words = stuffing_bits / 32;
         let remaining_bits = stuffing_bits % 32;
@@ -332,7 +336,7 @@ fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32], gi: &GrInfo) ->
             config.bs.put_bits(0xffffffff, 32)?;
         }
         if remaining_bits > 0 {
-            config.bs.put_bits((1u32 << remaining_bits) - 1, remaining_bits as u32)?;
+            config.bs.put_bits((1u32 << remaining_bits) - 1, remaining_bits)?;
         }
     }
     
@@ -355,7 +359,7 @@ fn huffman_coder_count1(bs: &mut BitstreamWriter, h: &HuffCodeTab, v: i32, w: i3
     let p = v + (w << 1) + (x << 2) + (y << 3);
     
     if let (Some(table), Some(hlen)) = (h.hb, h.hlen) {
-        bs.put_bits(table[p as usize] as u32, hlen[p as usize] as u32)?;
+        bs.put_bits(table[p as usize] as u32, hlen[p as usize] as i32)?;
 
         let mut code = 0u32;
         let mut cbits = 0u32;
@@ -376,9 +380,9 @@ fn huffman_coder_count1(bs: &mut BitstreamWriter, h: &HuffCodeTab, v: i32, w: i3
             code = (code << 1) | signy;
             cbits += 1;
         }
-        
+
         if cbits > 0 {
-            bs.put_bits(code, cbits)?;
+            bs.put_bits(code, cbits as i32)?;
         }
     }
     
@@ -439,9 +443,9 @@ fn huffman_code(bs: &mut BitstreamWriter, table_select: usize, x: i32, y: i32) -
                 xbits += 1;
             }
 
-            bs.put_bits(code, cbits)?;
+            bs.put_bits(code, cbits as i32)?;
             if xbits > 0 {
-                bs.put_bits(ext, xbits)?;
+                bs.put_bits(ext, xbits as i32)?;
             }
         } else { // No ESC-words
             let idx = (x as usize * ylen) + y as usize;
@@ -459,7 +463,7 @@ fn huffman_code(bs: &mut BitstreamWriter, table_select: usize, x: i32, y: i32) -
                 cbits += 1;
             }
 
-            bs.put_bits(code, cbits)?;
+            bs.put_bits(code, cbits as i32)?;
         }
     }
     
@@ -497,10 +501,10 @@ mod tests {
             bits in 1u32..17
         ) {
             let mut bs = BitstreamWriter::new(1024);
-            
+
             // Should be able to write bits without error
-            prop_assert!(bs.put_bits(val & ((1 << bits) - 1), bits).is_ok(), "Writing bits should succeed");
-            
+            prop_assert!(bs.put_bits(val & ((1 << bits) - 1), bits as i32).is_ok(), "Writing bits should succeed");
+
             // Bit count should increase
             let count = bs.get_bits_count();
             prop_assert!(count >= bits as i32, "Bit count should increase");
@@ -511,12 +515,12 @@ mod tests {
             values in prop::collection::vec(0u32..0x100, 100..200)
         ) {
             let mut bs = BitstreamWriter::new(16); // Small initial size
-            
+
             // Should handle buffer expansion automatically
             for val in values {
                 prop_assert!(bs.put_bits(val, 8).is_ok(), "Buffer expansion should work");
             }
-            
+
             prop_assert!(bs.get_bits_count() > 0, "Should have written data");
         }
 
@@ -547,11 +551,11 @@ mod tests {
     #[test]
     fn test_bitstream_writer_simple_write() {
         let mut bs = BitstreamWriter::new(1024);
-        
+
         // Write some bits
         assert!(bs.put_bits(0b1010, 4).is_ok());
         assert_eq!(bs.get_bits_count(), 4);
-        
+
         assert!(bs.put_bits(0b11, 2).is_ok());
         assert_eq!(bs.get_bits_count(), 6);
     }
@@ -559,10 +563,10 @@ mod tests {
     #[test]
     fn test_bitstream_writer_flush() {
         let mut bs = BitstreamWriter::new(1024);
-        
+
         bs.put_bits(0xff, 8).unwrap();
         bs.flush().unwrap();
-        
+
         let data = bs.get_data();
         assert!(!data.is_empty());
     }

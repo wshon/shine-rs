@@ -11,7 +11,7 @@ use crate::bitstream::BitstreamWriter;
 
 /// Buffer size for bitstream (matches shine BUFFER_SIZE)
 /// (ref/shine/src/lib/bitstream.h:19)
-const BUFFER_SIZE: usize = 4096;
+const BUFFER_SIZE: i32 = 4096;
 
 /// MPEG version constants (matches shine's mpeg_versions enum)
 /// (ref/shine/src/lib/layer3.h:10)
@@ -225,7 +225,7 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     crate::bitstream::format_bitstream(config)?;
 
     // Return data
-    let written = config.bs.data_position;
+    let written = config.bs.data_position as usize;
     config.bs.data_position = 0;
 
     Ok((&config.bs.data[..written], written))
@@ -258,7 +258,7 @@ pub fn shine_encode_buffer_interleaved<'a>(config: &'a mut ShineGlobalConfig, da
 /// Flush remaining data (matches shine_flush)
 /// (ref/shine/src/lib/layer3.c:178-183)
 pub fn shine_flush(config: &mut ShineGlobalConfig) -> (&[u8], usize) {
-    let written = config.bs.data_position;
+    let written = config.bs.data_position as usize;
     config.bs.data_position = 0;
 
     (&config.bs.data[..written], written)
