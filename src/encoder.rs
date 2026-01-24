@@ -214,7 +214,7 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     // Stop after 3 frames for debugging
     if frame_num > 3 {
         println!("[RUST DEBUG] Stopping after 3 frames for comparison");
-        return Ok((&[], 0));
+        std::process::exit(0);
     }
     
     // Dynamic padding calculation (matches shine exactly)

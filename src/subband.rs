@@ -102,13 +102,14 @@ pub fn shine_window_filter_subband(
     let mut y = [0i32; 64];
     
     // Replace 32 oldest samples with 32 new samples
-    // (matches shine implementation exactly)
-    for i in 0..32 {
-        let sample_idx = 31 - i; // Reverse order to match shine's loop
-        if sample_idx * stride < buffer.len() {
-            subband.x[ch][sample_idx + subband.off[ch] as usize] = 
-                (buffer[sample_idx * stride] as i32) << 16;
+    // (matches shine implementation exactly: for (i = 32; i--;))
+    let mut ptr_offset = 0;
+    for i in (0..32).rev() {  // i from 31 down to 0 (matches shine: for (i = 32; i--;))
+        if ptr_offset < buffer.len() {
+            subband.x[ch][i + subband.off[ch] as usize] = 
+                (buffer[ptr_offset] as i32) << 16;
         }
+        ptr_offset += stride;
     }
     
     // Advance buffer pointer (matches shine's pointer arithmetic)
@@ -169,14 +170,13 @@ pub fn shine_window_filter_subband(
     subband.off[ch] = (subband.off[ch] + 480) & (HAN_SIZE as i32 - 1);
 
     // Apply synthesis filterbank (matches shine implementation exactly)
-    for i in 0..SBLIMIT {
-        #[allow(unused_assignments)] // s_value is used but compiler doesn't detect it properly
-        let mut s_value = 0i32;
+    for i in (0..SBLIMIT).rev() {  // i from SBLIMIT-1 down to 0 (matches shine: for (i = SBLIMIT; i--;))
+        let mut s_value: i32;
         
-        // Start with the last coefficient (j=63)
+        // Start with the last coefficient (j=63) (matches shine exactly)
         s_value = mul0(subband.fl[i][63], y[63]);
         
-        // Process remaining coefficients in groups of 7 (matches shine's unrolled loop)
+        // Process remaining coefficients in groups of 7 (matches shine's unrolled loop exactly)
         let mut j = 63;
         while j > 0 {
             if j >= 7 {
@@ -189,11 +189,7 @@ pub fn shine_window_filter_subband(
                 s_value = muladd(s_value, subband.fl[i][j - 7], y[j - 7]);
                 j -= 7;
             } else {
-                // Handle remaining coefficients
-                for k in (0..j).rev() {
-                    s_value = muladd(s_value, subband.fl[i][k], y[k]);
-                }
-                break;
+                break;  // Shine doesn't handle remaining coefficients in this loop
             }
         }
         

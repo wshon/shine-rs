@@ -13,7 +13,8 @@ use lazy_static::lazy_static;
 const PI36: f64 = PI / 36.0;
 
 /// PI/72 constant for MDCT calculations (matches shine PI/72)
-const PI72: f64 = PI / 72.0;
+/// Note: This should be PI/72, not a separate constant
+// const PI72: f64 = PI / 72.0;  // Remove this line since we use PI/72.0 directly
 
 /// Aliasing reduction coefficients (matches shine's MDCT_CA and MDCT_CS macros)
 /// These are table B.9 coefficients for aliasing reduction from the ISO standard
@@ -52,7 +53,7 @@ lazy_static! {
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations
 
-/// Basic multiplication with 32-bit right shift
+/// Basic multiplication with 32-bit right shift (matches shine mul)
 #[inline]
 fn mul(a: i32, b: i32) -> i32 {
     ((a as i64 * b as i64) >> 32) as i32
@@ -76,9 +77,8 @@ fn mulz(value: i32) -> i32 {
     value
 }
 
-/// Complex multiplication (matches shine cmuls macro)
-/// Performs complex multiplication: (are + j*aim) * (bre + j*bim)
-/// Results: dre = are*bre - aim*bim, dim = are*bim + aim*bre
+/// Complex multiplication (matches shine cmuls macro exactly)
+/// Performs complex multiplication with aliasing reduction coefficients
 #[inline]
 fn cmuls(are: i32, aim: i32, bre: i32, bim: i32) -> (i32, i32) {
     let tre = ((are as i64 * bre as i64 - aim as i64 * bim as i64) >> 31) as i32;
@@ -100,7 +100,7 @@ pub fn shine_mdct_initialise(config: &mut ShineGlobalConfig) {
             // (matches shine formula exactly)
             config.mdct.cos_l[m][k] = (
                 (PI36 * (k as f64 + 0.5)).sin() *
-                (PI72 * (2 * k + 19) as f64 * (2 * m + 1) as f64).cos() *
+                ((PI / 72.0) * (2 * k + 19) as f64 * (2 * m + 1) as f64).cos() *
                 0x7fffffff as f64
             ) as i32;
         }
@@ -156,6 +156,12 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     config.l3_sb_sample[ch_idx][gr_idx + 1][k][band] = s_temp[band];
                 }
                 
+                // Debug: Print first few subband samples for comparison
+                if frame_num <= 3 && ch == 0 && gr == 0 && k == 0 {
+                    println!("[RUST DEBUG Frame {}] l3_sb_sample[{}][{}][{}]: first 8 bands: {:?}", 
+                             frame_num, ch, gr + 1, k, &s_temp[0..8]);
+                }
+                
                 // Second subband filtering call
                 // shine_window_filter_subband(&config->buffer[ch], &config->l3_sb_sample[ch][gr + 1][k + 1][0], ch, config, stride);
                 crate::subband::shine_window_filter_subband(
@@ -169,6 +175,12 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                 // Copy results to l3_sb_sample
                 for band in 0..SBLIMIT {
                     config.l3_sb_sample[ch_idx][gr_idx + 1][k + 1][band] = s_temp[band];
+                }
+                
+                // Debug: Print first few subband samples for comparison
+                if frame_num <= 3 && ch == 0 && gr == 0 && k == 0 {
+                    println!("[RUST DEBUG Frame {}] l3_sb_sample[{}][{}][{}]: first 8 bands: {:?}", 
+                             frame_num, ch, gr + 1, k + 1, &s_temp[0..8]);
                 }
                 
                 // Compensate for inversion in the analysis filter
@@ -191,13 +203,12 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                 // In the case of long blocks (block_type 0,1,3) there are
                 // 36 coefficients in the time domain and 18 in the frequency domain
                 for k in (0..18).rev() {  // k from 17 down to 0 (matches shine: for (k = 18; k--;))
-                    #[allow(unused_assignments)] // vm is used but compiler doesn't detect it properly
-                    let mut vm = 0i32;
+                    let mut vm: i32;
                     
                     // Start with the last coefficient (matches shine exactly)
                     vm = mul0(mdct_in[35], config.mdct.cos_l[k][35]);
                     
-                    // Process remaining coefficients in groups of 7 (matches shine's unrolled loop)
+                    // Process remaining coefficients in groups of 7 (matches shine's unrolled loop exactly)
                     let mut j = 35;
                     while j > 0 {
                         if j >= 7 {
@@ -210,10 +221,6 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                             vm = muladd(vm, mdct_in[j - 7], config.mdct.cos_l[k][j - 7]);
                             j -= 7;
                         } else {
-                            // Handle remaining coefficients
-                            for idx in (0..j).rev() {
-                                vm = muladd(vm, mdct_in[idx], config.mdct.cos_l[k][idx]);
-                            }
                             break;
                         }
                     }
@@ -228,84 +235,57 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                 
                 // Perform aliasing reduction butterfly (matches shine exactly)
                 if band != 0 {
-                    // Get references to current and previous band coefficients
-                    let curr_band_base = band * 18;
-                    let prev_band_base = (band - 1) * 18;
-                    
                     // Apply aliasing reduction for each of the 8 coefficients
                     // (matches shine's cmuls calls exactly)
                     
-                    let (new_curr_0, new_prev_17) = cmuls(
-                        config.mdct_freq[ch_idx][gr_idx][curr_band_base + 0],
-                        config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 0],
-                        *MDCT_CS0,
-                        *MDCT_CA0
-                    );
-                    config.mdct_freq[ch_idx][gr_idx][curr_band_base + 0] = new_curr_0;
-                    config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 0] = new_prev_17;
+                    // Get current values
+                    let curr_0 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 0];
+                    let prev_17 = config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 17];
+                    let (new_curr_0, new_prev_17) = cmuls(curr_0, prev_17, *MDCT_CS0, *MDCT_CA0);
+                    config.mdct_freq[ch_idx][gr_idx][band * 18 + 0] = new_curr_0;
+                    config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 17] = new_prev_17;
                     
-                    let (new_curr_1, new_prev_16) = cmuls(
-                        config.mdct_freq[ch_idx][gr_idx][curr_band_base + 1],
-                        config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 1],
-                        *MDCT_CS1,
-                        *MDCT_CA1
-                    );
-                    config.mdct_freq[ch_idx][gr_idx][curr_band_base + 1] = new_curr_1;
-                    config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 1] = new_prev_16;
+                    let curr_1 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 1];
+                    let prev_16 = config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 16];
+                    let (new_curr_1, new_prev_16) = cmuls(curr_1, prev_16, *MDCT_CS1, *MDCT_CA1);
+                    config.mdct_freq[ch_idx][gr_idx][band * 18 + 1] = new_curr_1;
+                    config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 16] = new_prev_16;
                     
-                    let (new_curr_2, new_prev_15) = cmuls(
-                        config.mdct_freq[ch_idx][gr_idx][curr_band_base + 2],
-                        config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 2],
-                        *MDCT_CS2,
-                        *MDCT_CA2
-                    );
-                    config.mdct_freq[ch_idx][gr_idx][curr_band_base + 2] = new_curr_2;
-                    config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 2] = new_prev_15;
+                    let curr_2 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 2];
+                    let prev_15 = config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 15];
+                    let (new_curr_2, new_prev_15) = cmuls(curr_2, prev_15, *MDCT_CS2, *MDCT_CA2);
+                    config.mdct_freq[ch_idx][gr_idx][band * 18 + 2] = new_curr_2;
+                    config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 15] = new_prev_15;
                     
-                    let (new_curr_3, new_prev_14) = cmuls(
-                        config.mdct_freq[ch_idx][gr_idx][curr_band_base + 3],
-                        config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 3],
-                        *MDCT_CS3,
-                        *MDCT_CA3
-                    );
-                    config.mdct_freq[ch_idx][gr_idx][curr_band_base + 3] = new_curr_3;
-                    config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 3] = new_prev_14;
+                    let curr_3 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 3];
+                    let prev_14 = config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 14];
+                    let (new_curr_3, new_prev_14) = cmuls(curr_3, prev_14, *MDCT_CS3, *MDCT_CA3);
+                    config.mdct_freq[ch_idx][gr_idx][band * 18 + 3] = new_curr_3;
+                    config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 14] = new_prev_14;
                     
-                    let (new_curr_4, new_prev_13) = cmuls(
-                        config.mdct_freq[ch_idx][gr_idx][curr_band_base + 4],
-                        config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 4],
-                        *MDCT_CS4,
-                        *MDCT_CA4
-                    );
-                    config.mdct_freq[ch_idx][gr_idx][curr_band_base + 4] = new_curr_4;
-                    config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 4] = new_prev_13;
+                    let curr_4 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 4];
+                    let prev_13 = config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 13];
+                    let (new_curr_4, new_prev_13) = cmuls(curr_4, prev_13, *MDCT_CS4, *MDCT_CA4);
+                    config.mdct_freq[ch_idx][gr_idx][band * 18 + 4] = new_curr_4;
+                    config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 13] = new_prev_13;
                     
-                    let (new_curr_5, new_prev_12) = cmuls(
-                        config.mdct_freq[ch_idx][gr_idx][curr_band_base + 5],
-                        config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 5],
-                        *MDCT_CS5,
-                        *MDCT_CA5
-                    );
-                    config.mdct_freq[ch_idx][gr_idx][curr_band_base + 5] = new_curr_5;
-                    config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 5] = new_prev_12;
+                    let curr_5 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 5];
+                    let prev_12 = config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 12];
+                    let (new_curr_5, new_prev_12) = cmuls(curr_5, prev_12, *MDCT_CS5, *MDCT_CA5);
+                    config.mdct_freq[ch_idx][gr_idx][band * 18 + 5] = new_curr_5;
+                    config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 12] = new_prev_12;
                     
-                    let (new_curr_6, new_prev_11) = cmuls(
-                        config.mdct_freq[ch_idx][gr_idx][curr_band_base + 6],
-                        config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 6],
-                        *MDCT_CS6,
-                        *MDCT_CA6
-                    );
-                    config.mdct_freq[ch_idx][gr_idx][curr_band_base + 6] = new_curr_6;
-                    config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 6] = new_prev_11;
+                    let curr_6 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 6];
+                    let prev_11 = config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 11];
+                    let (new_curr_6, new_prev_11) = cmuls(curr_6, prev_11, *MDCT_CS6, *MDCT_CA6);
+                    config.mdct_freq[ch_idx][gr_idx][band * 18 + 6] = new_curr_6;
+                    config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 11] = new_prev_11;
                     
-                    let (new_curr_7, new_prev_10) = cmuls(
-                        config.mdct_freq[ch_idx][gr_idx][curr_band_base + 7],
-                        config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 7],
-                        *MDCT_CS7,
-                        *MDCT_CA7
-                    );
-                    config.mdct_freq[ch_idx][gr_idx][curr_band_base + 7] = new_curr_7;
-                    config.mdct_freq[ch_idx][gr_idx][prev_band_base + 17 - 7] = new_prev_10;
+                    let curr_7 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 7];
+                    let prev_10 = config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 10];
+                    let (new_curr_7, new_prev_10) = cmuls(curr_7, prev_10, *MDCT_CS7, *MDCT_CA7);
+                    config.mdct_freq[ch_idx][gr_idx][band * 18 + 7] = new_curr_7;
+                    config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 10] = new_prev_10;
                 }
             }
         }
