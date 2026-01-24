@@ -115,10 +115,16 @@ impl BitstreamWriter {
     }
 
     /// Flush any remaining bits in the cache
+    /// This matches shine's behavior when there are remaining bits in cache
     pub fn flush(&mut self) -> EncodingResult<()> {
+        // Only flush if there are bits in the cache (cache_bits < 32)
         if self.cache_bits < 32 {
+            // Calculate how many bytes we need to write
+            let bits_in_cache = 32 - self.cache_bits;
+            let bytes_to_write = (bits_in_cache + 7) / 8; // Round up to nearest byte
+            
             // Ensure we have enough space
-            if self.data_position + 4 >= self.data_size {
+            if self.data_position + bytes_to_write >= self.data_size {
                 let new_size = self.data_size + (self.data_size / 2);
                 let mut new_buffer = vec![0u8; new_size as usize];
                 new_buffer[..self.data_position as usize].copy_from_slice(&self.data[..self.data_position as usize]);
@@ -126,9 +132,14 @@ impl BitstreamWriter {
                 self.data_size = new_size;
             }
 
+            // Write the cache bytes in big-endian format (matches shine's SWAB32)
             let cache_bytes = self.cache.to_be_bytes();
-            self.data[self.data_position as usize..self.data_position as usize + 4].copy_from_slice(&cache_bytes);
-            self.data_position += 4;
+            for i in 0..bytes_to_write {
+                self.data[self.data_position as usize + i as usize] = cache_bytes[i as usize];
+            }
+            self.data_position += bytes_to_write;
+            
+            // Clear the cache
             self.cache = 0;
             self.cache_bits = 32;
         }

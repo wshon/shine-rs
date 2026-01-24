@@ -231,7 +231,7 @@ impl Default for Granule {
 #[derive(Debug, Clone)]
 pub struct ShineSideInfo {
     pub private_bits: u32,
-    pub resv_drain: i32,
+    pub resv_drain: i32,  // matches resvDrain in shine
     pub scfsi: [[u32; 4]; MAX_CHANNELS],
     pub gr: [Granule; MAX_GRANULES],
 }
