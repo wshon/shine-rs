@@ -5,18 +5,18 @@ fn main() {
 
     // Write some bits that would trigger the cache write
     bs.put_bits(0x7ff, 11).unwrap(); // Sync word
-    bs.put_bits(3, 2); // Version (3 = MPEG-1)
-    bs.put_bits(1, 2); // Layer (1 = Layer III)
-    bs.put_bits(1, 1); // CRC
-    bs.put_bits(9, 4); // Bitrate index
-    bs.put_bits(0, 2); // Sample rate
-    bs.put_bits(1, 1); // Padding
-    bs.put_bits(0, 1); // Extension
-    bs.put_bits(1, 2); // Mode
-    bs.put_bits(0, 2); // Mode extension
-    bs.put_bits(0, 1); // Copyright
-    bs.put_bits(1, 1); // Original
-    bs.put_bits(0, 2); // Emphasis
+    let _ = bs.put_bits(3, 2); // Version (3 = MPEG-1)
+    let _ = bs.put_bits(1, 2); // Layer (1 = Layer III)
+    let _ = bs.put_bits(1, 1); // CRC
+    let _ = bs.put_bits(9, 4); // Bitrate index
+    let _ = bs.put_bits(0, 2); // Sample rate
+    let _ = bs.put_bits(1, 1); // Padding
+    let _ = bs.put_bits(0, 1); // Extension
+    let _ = bs.put_bits(1, 2); // Mode
+    let _ = bs.put_bits(0, 2); // Mode extension
+    let _ = bs.put_bits(0, 1); // Copyright
+    let _ = bs.put_bits(1, 1); // Original
+    let _ = bs.put_bits(0, 2); // Emphasis
 
     // Write 0 for 9 bits (main data begin)
     bs.put_bits(0, 9).unwrap();

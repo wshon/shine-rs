@@ -207,6 +207,7 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 /// Internal encoding function (matches shine_encode_buffer_internal)
 /// (ref/shine/src/lib/layer3.c:136-158)
 fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
+    // Dynamic padding calculation (matches shine exactly)
     if config.mpeg.frac_slots_per_frame != 0.0 {
         config.mpeg.padding = if config.mpeg.slot_lag <= (config.mpeg.frac_slots_per_frame - 1.0) { 1 } else { 0 };
         config.mpeg.slot_lag += config.mpeg.padding as f64 - config.mpeg.frac_slots_per_frame;

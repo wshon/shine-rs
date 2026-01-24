@@ -4,7 +4,7 @@
 //! in shine's bitstream.c and l3bitstream.c. It provides functions to write
 //! MP3 frame headers, side information, and main data to the output bitstream.
 
-use crate::error::{EncodingError, EncodingResult};
+use crate::error::EncodingResult;
 use crate::huffman::{HuffCodeTab, SHINE_HUFFMAN_TABLE};
 use crate::types::{ShineGlobalConfig, GrInfo, GRANULE_SIZE};
 use crate::tables::{SHINE_SLEN1_TAB, SHINE_SLEN2_TAB, SHINE_SCALE_FACT_BAND_INDEX};
@@ -47,8 +47,12 @@ impl BitstreamWriter {
     pub fn put_bits(&mut self, val: u32, n: i32) -> EncodingResult<()> {
         #[cfg(debug_assertions)]
         {
+            use crate::EncodingError;
             if n > 32 {
                 return Err(EncodingError::BitstreamError("Cannot write more than 32 bits at a time".to_string()));
+            }
+            if n < 0 {
+                return Err(EncodingError::BitstreamError("Cannot write negative number of bits".to_string()));
             }
             if n < 32 && (val >> n) != 0 {
                 return Err(EncodingError::BitstreamError("Upper bits are not all zeros".to_string()));
@@ -56,11 +60,13 @@ impl BitstreamWriter {
         }
 
         if self.cache_bits > n {
+            // Cache has enough space for the new bits
             self.cache_bits -= n;
-            if val != 0 && self.cache_bits < 32 {
+            if self.cache_bits < 32 {
                 self.cache |= val << self.cache_bits;
             }
         } else {
+            // Cache doesn't have enough space, need to flush and write to buffer
             // Ensure we have enough space in the buffer
             if self.data_position + 4 >= self.data_size {
                 let new_size = self.data_size + (self.data_size / 2);
@@ -70,6 +76,7 @@ impl BitstreamWriter {
                 self.data_size = new_size;
             }
 
+            // Match shine's logic exactly
             let remaining_n = n - self.cache_bits;
             self.cache |= val >> remaining_n;
 
@@ -81,7 +88,12 @@ impl BitstreamWriter {
             self.cache_bits = 32 - remaining_n;
 
             if remaining_n != 0 {
-                self.cache = val << self.cache_bits;
+                // Only shift if we have bits to write and cache_bits < 32
+                if self.cache_bits < 32 {
+                    self.cache = val << self.cache_bits;
+                } else {
+                    self.cache = 0;
+                }
             } else {
                 self.cache = 0;
             }
