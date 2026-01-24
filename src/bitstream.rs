@@ -275,7 +275,7 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 
 /// Huffman encode the quantized values (matches Huffmancodebits exactly)
 /// (ref/shine/src/lib/l3bitstream.c:123-165)
-fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32; GRANULE_SIZE], gi: &GrInfo) -> EncodingResult<()> {
+fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32], gi: &GrInfo) -> EncodingResult<()> {
     let scalefac = &SHINE_SCALE_FACT_BAND_INDEX[config.mpeg.samplerate_index as usize];
     let bits_start = config.bs.get_bits_count();
 

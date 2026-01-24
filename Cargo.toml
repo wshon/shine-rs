@@ -10,16 +10,16 @@ keywords = ["mp3", "audio", "encoder", "codec"]
 categories = ["multimedia::audio", "encoding"]
 
 [[bin]]
+name = "wav2mp3"
+path = "src/bin/wav2mp3.rs"
+
+[[bin]]
 name = "mp3_validator"
 path = "src/bin/mp3_validator.rs"
 
 [[bin]]
 name = "mp3_hexdump"
 path = "src/bin/mp3_hexdump.rs"
-
-[[bin]]
-name = "wav2mp3"
-path = "src/bin/wav2mp3.rs"
 
 [dependencies]
 thiserror = "1.0"
@@ -32,6 +32,10 @@ criterion = { version = "0.5", features = ["html_reports"] }
 [[bench]]
 name = "encoder_benchmark"
 harness = false
+
+[profile.dev]
+debug = true
+overflow-checks = true
 
 [profile.release]
 opt-level = 3

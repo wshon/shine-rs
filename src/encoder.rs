@@ -354,10 +354,10 @@ mod tests {
 
     #[test]
     fn test_shine_samples_per_pass() {
-        let mut config = ShineGlobalConfig::default();
+        let mut config = Box::new(ShineGlobalConfig::default());
         config.mpeg.granules_per_frame = 2; // MPEG-I
         
-        let samples = shine_samples_per_pass(&config);
+        let samples = shine_samples_per_pass(&*config);
         assert_eq!(samples, 2 * GRANULE_SIZE as i32);
     }
 

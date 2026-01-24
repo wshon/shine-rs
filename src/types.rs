@@ -72,9 +72,9 @@ pub struct L3Loop {
     /// Magnitudes of the spectral values
     pub xr: *mut i32,
     /// xr squared
-    pub xrsq: [i32; GRANULE_SIZE],
+    pub xrsq: Box<[i32; GRANULE_SIZE]>,  // Move to heap
     /// xr absolute
-    pub xrabs: [i32; GRANULE_SIZE],
+    pub xrabs: Box<[i32; GRANULE_SIZE]>,  // Move to heap
     /// Maximum of xrabs array
     pub xrmax: i32,
     /// Total energy per granule
@@ -90,15 +90,15 @@ pub struct L3Loop {
     /// 2**(-x/4) for x = -127..0 (integer version)
     pub steptabi: [i32; 128],
     /// x**(3/4) for x = 0..9999
-    pub int2idx: [i32; 10000],
+    pub int2idx: Box<[i32; 10000]>,  // Move to heap
 }
 
 impl Default for L3Loop {
     fn default() -> Self {
         Self {
             xr: std::ptr::null_mut(),
-            xrsq: [0; GRANULE_SIZE],
-            xrabs: [0; GRANULE_SIZE],
+            xrsq: Box::new([0; GRANULE_SIZE]),
+            xrabs: Box::new([0; GRANULE_SIZE]),
             xrmax: 0,
             en_tot: [0; MAX_GRANULES],
             en: [[0; 21]; MAX_GRANULES],
@@ -106,7 +106,7 @@ impl Default for L3Loop {
             xrmaxl: [0; MAX_GRANULES],
             steptab: [0.0; 128],
             steptabi: [0; 128],
-            int2idx: [0; 10000],
+            int2idx: Box::new([0; 10000]),
         }
     }
 }
@@ -134,7 +134,7 @@ impl Default for Mdct {
 pub struct Subband {
     pub off: [i32; MAX_CHANNELS],
     pub fl: [[i32; 64]; SBLIMIT],
-    pub x: [[i32; HAN_SIZE]; MAX_CHANNELS],
+    pub x: Box<[[i32; HAN_SIZE]; MAX_CHANNELS]>,  // Move to heap
 }
 
 impl Default for Subband {
@@ -142,7 +142,7 @@ impl Default for Subband {
         Self {
             off: [0; MAX_CHANNELS],
             fl: [[0; 64]; SBLIMIT],
-            x: [[0; HAN_SIZE]; MAX_CHANNELS],
+            x: Box::new([[0; HAN_SIZE]; MAX_CHANNELS]),
         }
     }
 }
@@ -252,13 +252,13 @@ impl Default for ShineSideInfo {
 #[repr(C)]
 #[derive(Debug)]
 pub struct ShinePsyRatio {
-    pub l: [[[f64; 21]; MAX_CHANNELS]; MAX_GRANULES],
+    pub l: Box<[[[f64; 21]; MAX_CHANNELS]; MAX_GRANULES]>,  // Move to heap
 }
 
 impl Default for ShinePsyRatio {
     fn default() -> Self {
         Self {
-            l: [[[0.0; 21]; MAX_CHANNELS]; MAX_GRANULES],
+            l: Box::new([[[0.0; 21]; MAX_CHANNELS]; MAX_GRANULES]),
         }
     }
 }
@@ -268,13 +268,13 @@ impl Default for ShinePsyRatio {
 #[repr(C)]
 #[derive(Debug)]
 pub struct ShinePsyXmin {
-    pub l: [[[f64; 21]; MAX_CHANNELS]; MAX_GRANULES],
+    pub l: Box<[[[f64; 21]; MAX_CHANNELS]; MAX_GRANULES]>,  // Move to heap
 }
 
 impl Default for ShinePsyXmin {
     fn default() -> Self {
         Self {
-            l: [[[0.0; 21]; MAX_CHANNELS]; MAX_GRANULES],
+            l: Box::new([[[0.0; 21]; MAX_CHANNELS]; MAX_GRANULES]),
         }
     }
 }
@@ -285,16 +285,16 @@ impl Default for ShinePsyXmin {
 #[derive(Debug)]
 pub struct ShineScalefac {
     /// Long block scale factors [granule][channel][scalefactor_band]
-    pub l: [[[i32; 22]; MAX_CHANNELS]; MAX_GRANULES],
+    pub l: Box<[[[i32; 22]; MAX_CHANNELS]; MAX_GRANULES]>,  // Move to heap
     /// Short block scale factors [granule][channel][scalefactor_band][window]
-    pub s: [[[[i32; 3]; 13]; MAX_CHANNELS]; MAX_GRANULES],
+    pub s: Box<[[[[i32; 3]; 13]; MAX_CHANNELS]; MAX_GRANULES]>,  // Move to heap
 }
 
 impl Default for ShineScalefac {
     fn default() -> Self {
         Self {
-            l: [[[0; 22]; MAX_CHANNELS]; MAX_GRANULES],
-            s: [[[[0; 3]; 13]; MAX_CHANNELS]; MAX_GRANULES],
+            l: Box::new([[[0; 22]; MAX_CHANNELS]; MAX_GRANULES]),
+            s: Box::new([[[[0; 3]; 13]; MAX_CHANNELS]; MAX_GRANULES]),
         }
     }
 }
@@ -427,7 +427,7 @@ mod tests {
 
     #[test]
     fn test_default_values() {
-        let config = ShineGlobalConfig::default();
+        let config = Box::new(ShineGlobalConfig::default());
         
         // Verify default values match shine's expectations
         assert_eq!(config.wave.channels, 2);
@@ -449,7 +449,7 @@ mod tests {
     #[test]
     fn test_array_bounds() {
         // Test that array indices are within expected bounds
-        let config = ShineGlobalConfig::default();
+        let config = Box::new(ShineGlobalConfig::default());
         
         // Verify array dimensions match shine's expectations
         assert_eq!(config.l3_enc.len(), MAX_CHANNELS);
