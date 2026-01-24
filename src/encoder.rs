@@ -211,6 +211,12 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
     let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
     
+    // Stop after 3 frames for debugging
+    if frame_num > 3 {
+        println!("[RUST DEBUG] Stopping after 3 frames for comparison");
+        return Ok((&[], 0));
+    }
+    
     // Dynamic padding calculation (matches shine exactly)
     if config.mpeg.frac_slots_per_frame != 0.0 {
         println!("[RUST DEBUG Frame {}] Before: slot_lag={:.6}, frac_slots={:.6}", 

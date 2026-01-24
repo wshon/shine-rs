@@ -114,6 +114,12 @@ pub fn shine_mdct_initialise(config: &mut ShineGlobalConfig) {
 /// 2. MDCT transformation of subband samples to frequency domain
 /// 3. Aliasing reduction butterfly operations
 pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
+    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    
+    println!("[RUST DEBUG Frame {}] === Starting MDCT analysis ===", frame_num);
+    
     let mut mdct_in = [0i32; 36];
     
     // Process each channel (matches shine: for (ch = config->wave.channels; ch--;))
@@ -123,6 +129,8 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
         // Process each granule (matches shine: for (gr = 0; gr < config->mpeg.granules_per_frame; gr++))
         for gr in 0..config.mpeg.granules_per_frame {
             let gr_idx = gr as usize;
+            
+            println!("[RUST DEBUG Frame {}] Processing MDCT ch={}, gr={}", frame_num, ch, gr);
             
             // Polyphase filtering (matches shine implementation exactly)
             // for (k = 0; k < 18; k += 2)

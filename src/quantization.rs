@@ -171,15 +171,22 @@ pub fn shine_outer_loop(
 /// Main iteration loop for encoding
 /// Corresponds to shine_iteration_loop() in l3loop.c
 pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
+    let frame_num = FRAME_COUNT.load(Ordering::SeqCst) + 1;
+    
     let mut l3_xmin = ShinePsyXmin::default();
     let mut max_bits: i32;
     let mut ix: *mut i32;
+
+    println!("[RUST DEBUG Frame {}] === Starting quantization iteration loop ===", frame_num);
 
     // Following shine's exact loop structure:
     // for (ch = config->wave.channels; ch--;)
     for ch in (0..config.wave.channels).rev() {
         // for (gr = 0; gr < config->mpeg.granules_per_frame; gr++)
         for gr in 0..config.mpeg.granules_per_frame {
+            println!("[RUST DEBUG Frame {}] Processing ch={}, gr={}", frame_num, ch, gr);
             // setup pointers
             ix = config.l3_enc[ch as usize][gr as usize].as_mut_ptr();
             config.l3loop.xr = config.mdct_freq[ch as usize][gr as usize].as_ptr() as *mut i32;
@@ -194,6 +201,8 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                     config.l3loop.xrmax = config.l3loop.xrabs[i];
                 }
             }
+
+            println!("[RUST DEBUG Frame {}] ch={}, gr={}: xrmax={}", frame_num, ch, gr, config.l3loop.xrmax);
 
             // Set sfb_lmax and calculate xmin
             {
@@ -210,6 +219,8 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             // calculation of number of available bit( per granule )
             let pe_value = config.pe[ch as usize][gr as usize].clone();
             max_bits = crate::reservoir::shine_max_reservoir_bits(&pe_value, &config);
+
+            println!("[RUST DEBUG Frame {}] ch={}, gr={}: max_bits={}", frame_num, ch, gr, max_bits);
 
             // reset of iteration variables
             for i in 0..config.scalefactor.l[gr as usize][ch as usize].len() {
@@ -255,9 +266,13 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                     config,
                 ) as u32;
                 
+                println!("[RUST DEBUG Frame {}] ch={}, gr={}: part2_3_length={}", frame_num, ch, gr, part2_3_length);
+                
                 // Update part2_3_length after outer loop
                 let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
                 cod_info.part2_3_length = part2_3_length;
+            } else {
+                println!("[RUST DEBUG Frame {}] ch={}, gr={}: All spectral values zero", frame_num, ch, gr);
             }
 
             // Adjust reservoir and set global gain
@@ -266,6 +281,12 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 let quantizer_step_size = cod_info.quantizer_step_size;
                 let cod_info_copy = cod_info.clone(); // Clone for immutable reference
                 cod_info.global_gain = (quantizer_step_size + 210) as u32;
+                
+                println!("[RUST DEBUG Frame {}] ch={}, gr={}: quantizer_step_size={}, global_gain={}", 
+                         frame_num, ch, gr, quantizer_step_size, cod_info.global_gain);
+                println!("[RUST DEBUG Frame {}] ch={}, gr={}: scalefac_compress={}, big_values={}, count1={}", 
+                         frame_num, ch, gr, cod_info.scalefac_compress, cod_info.big_values, cod_info.count1);
+                
                 // Call reservoir adjust with the copied data
                 crate::reservoir::shine_resv_adjust(&cod_info_copy, config);
             }

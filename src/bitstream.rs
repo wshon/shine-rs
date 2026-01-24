@@ -194,6 +194,14 @@ impl Default for BitstreamWriter {
 /// This is called after a frame of audio has been quantized and coded.
 /// It will write the encoded audio to the bitstream.
 pub fn format_bitstream(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
+    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    
+    println!("[RUST DEBUG Frame {}] === Starting bitstream formatting ===", frame_num);
+    println!("[RUST DEBUG Frame {}] Before format_bitstream: data_position={}, cache_bits={}, cache=0x{:08X}", 
+             frame_num, config.bs.data_position, config.bs.cache_bits, config.bs.cache);
+    
     // Apply sign correction to quantized values (matches shine exactly)
     for ch in 0..config.wave.channels as usize {
         for gr in 0..config.mpeg.granules_per_frame as usize {
@@ -210,6 +218,9 @@ pub fn format_bitstream(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 
     encode_side_info(config)?;
     encode_main_data(config)?;
+
+    println!("[RUST DEBUG Frame {}] After format_bitstream: data_position={}, cache_bits={}, cache=0x{:08X}", 
+             frame_num, config.bs.data_position, config.bs.cache_bits, config.bs.cache);
 
     Ok(())
 }
@@ -260,14 +271,19 @@ fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 /// Encode the side information (matches encodeSideInfo exactly)
 /// (ref/shine/src/lib/l3bitstream.c:73-120)
 fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
+    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    
     let si = &config.side_info;
 
-    println!("[RUST DEBUG] Frame header: sync=0x7ff, version={}, layer={}, crc={}", 
-             config.mpeg.version, config.mpeg.layer, if config.mpeg.crc == 0 { 1 } else { 0 });
-    println!("[RUST DEBUG] Frame header: bitrate_idx={}, samplerate_idx={}, padding={}", 
-             config.mpeg.bitrate_index, config.mpeg.samplerate_index % 3, config.mpeg.padding);
-    println!("[RUST DEBUG] Frame header: ext={}, mode={}, mode_ext={}, copyright={}, original={}, emph={}", 
-             config.mpeg.ext, config.mpeg.mode, config.mpeg.mode_ext, 
+    println!("[RUST DEBUG Frame {}] === Encoding side information ===", frame_num);
+    println!("[RUST DEBUG Frame {}] Frame header: sync=0x7ff, version={}, layer={}, crc={}", 
+             frame_num, config.mpeg.version, config.mpeg.layer, if config.mpeg.crc == 0 { 1 } else { 0 });
+    println!("[RUST DEBUG Frame {}] Frame header: bitrate_idx={}, samplerate_idx={}, padding={}", 
+             frame_num, config.mpeg.bitrate_index, config.mpeg.samplerate_index % 3, config.mpeg.padding);
+    println!("[RUST DEBUG Frame {}] Frame header: ext={}, mode={}, mode_ext={}, copyright={}, original={}, emph={}", 
+             frame_num, config.mpeg.ext, config.mpeg.mode, config.mpeg.mode_ext, 
              config.mpeg.copyright, config.mpeg.original, config.mpeg.emph);
 
     // Write frame header
@@ -315,6 +331,13 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     for gr in 0..config.mpeg.granules_per_frame as usize {
         for ch in 0..config.wave.channels as usize {
             let gi = &si.gr[gr].ch[ch].tt;
+
+            println!("[RUST DEBUG Frame {}] gr={}, ch={}: part2_3_length={}, big_values={}, global_gain={}", 
+                     frame_num, gr, ch, gi.part2_3_length, gi.big_values, gi.global_gain);
+            println!("[RUST DEBUG Frame {}] gr={}, ch={}: scalefac_compress={}, table_select=[{},{},{}]", 
+                     frame_num, gr, ch, gi.scalefac_compress, gi.table_select[0], gi.table_select[1], gi.table_select[2]);
+            println!("[RUST DEBUG Frame {}] gr={}, ch={}: region0_count={}, region1_count={}", 
+                     frame_num, gr, ch, gi.region0_count, gi.region1_count);
 
             config.bs.put_bits(gi.part2_3_length, 12)?;
             config.bs.put_bits(gi.big_values, 9)?;
