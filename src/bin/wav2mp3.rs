@@ -202,7 +202,7 @@ impl Args {
                 _ => return Err(format!("Invalid stereo mode: {}. Supported: mono, stereo, joint_stereo, dual_channel", filtered_args[4])),
             }
         } else {
-            STEREO_JOINT_STEREO // Will be adjusted based on input channels
+            STEREO_STEREO // Default to stereo mode (matches shine default)
         };
         
         Ok(Args {
