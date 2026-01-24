@@ -43,24 +43,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     
-    // Set up granule information with minimal test values (all zeros except necessary fields)
+    // Set up granule information to match shine's actual output
     for gr in 0..2 {
         for ch in 0..2 {
             let gi = &mut config.side_info.gr[gr].ch[ch].tt;
             
-            // Set all values to zero/default for easier comparison
-            gi.part2_3_length = 0;
-            gi.big_values = 0;
-            gi.global_gain = 210;      // Keep default global gain
-            gi.scalefac_compress = 0;
-            gi.table_select = [0, 0, 0];
-            gi.region0_count = 0;
-            gi.region1_count = 0;
-            gi.preflag = 0;
-            gi.scalefac_scale = 0;
-            gi.count1table_select = 0;
-            gi.count1 = 0;
-            gi.part2_length = 0;
+            if gr == 0 && ch == 0 {
+                // First granule, first channel - shine sets this to 3056
+                gi.part2_3_length = 3056;
+                gi.big_values = 0;
+                gi.global_gain = 210;
+                gi.scalefac_compress = 0;
+                gi.table_select = [0, 0, 0];
+                gi.region0_count = 0;
+                gi.region1_count = 0;
+                gi.preflag = 0;
+                gi.scalefac_scale = 0;
+                gi.count1table_select = 0;
+                gi.count1 = 0;
+                gi.part2_length = 0;
+            } else {
+                // Other granules/channels - set to zero
+                gi.part2_3_length = 0;
+                gi.big_values = 0;
+                gi.global_gain = 210;
+                gi.scalefac_compress = 0;
+                gi.table_select = [0, 0, 0];
+                gi.region0_count = 0;
+                gi.region1_count = 0;
+                gi.preflag = 0;
+                gi.scalefac_scale = 0;
+                gi.count1table_select = 0;
+                gi.count1 = 0;
+                gi.part2_length = 0;
+            }
         }
     }
     
