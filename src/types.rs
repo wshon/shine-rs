@@ -332,8 +332,8 @@ impl ShineGlobalConfig {
                 samplerate: 44100,
             },
             mpeg: PrivShineMpeg {
-                version: 1,
-                layer: 1,
+                version: 3,  // MPEG_I = 3
+                layer: 1,    // LAYER_III = 1
                 granules_per_frame: 2,
                 mode: 1,
                 bitr: 128,

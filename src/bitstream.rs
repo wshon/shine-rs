@@ -56,7 +56,7 @@ impl BitstreamWriter {
                 return Err(EncodingError::BitstreamError("Cannot write negative number of bits".to_string()));
             }
             if n < 32 && (val >> n) != 0 {
-                return Err(EncodingError::BitstreamError("Upper bits are not all zeros".to_string()));
+                return Err(EncodingError::BitstreamError(format!("Upper bits are not all zeros: val=0x{:X}, n={}, val>>n=0x{:X}", val, n, val >> n)));
             }
         }
 
@@ -286,7 +286,7 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     config.bs.put_bits(config.mpeg.emph as u32, 2)?;
 
     // Write side information
-    if config.mpeg.version == 1 { // MPEG_I
+    if config.mpeg.version == 3 { // MPEG_I = 3
         config.bs.put_bits(0, 9)?; // Main data begin
         if config.wave.channels == 2 {
             config.bs.put_bits(si.private_bits, 3)?;
@@ -303,7 +303,7 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     }
 
     // Write SCFSI (only for MPEG-I)
-    if config.mpeg.version == 1 {
+    if config.mpeg.version == 3 {
         for ch in 0..config.wave.channels as usize {
             for scfsi_band in 0..4 {
                 config.bs.put_bits(si.scfsi[ch][scfsi_band], 1)?;
@@ -320,7 +320,7 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
             config.bs.put_bits(gi.big_values, 9)?;
             config.bs.put_bits(gi.global_gain, 8)?;
             
-            if config.mpeg.version == 1 { // MPEG_I
+            if config.mpeg.version == 3 { // MPEG_I = 3
                 config.bs.put_bits(gi.scalefac_compress, 4)?;
             } else {
                 config.bs.put_bits(gi.scalefac_compress, 9)?;
@@ -335,7 +335,7 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
             config.bs.put_bits(gi.region0_count, 4)?;
             config.bs.put_bits(gi.region1_count, 3)?;
 
-            if config.mpeg.version == 1 { // MPEG_I
+            if config.mpeg.version == 3 { // MPEG_I = 3
                 config.bs.put_bits(gi.preflag, 1)?;
             }
             config.bs.put_bits(gi.scalefac_scale, 1)?;
