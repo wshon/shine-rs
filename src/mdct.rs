@@ -13,8 +13,7 @@ use lazy_static::lazy_static;
 const PI36: f64 = PI / 36.0;
 
 /// PI/72 constant for MDCT calculations (matches shine PI/72)
-/// Note: This should be PI/72, not a separate constant
-// const PI72: f64 = PI / 72.0;  // Remove this line since we use PI/72.0 directly
+const PI72: f64 = PI / 72.0;
 
 /// Aliasing reduction coefficients (matches shine's MDCT_CA and MDCT_CS macros)
 /// These are table B.9 coefficients for aliasing reduction from the ISO standard
