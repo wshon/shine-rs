@@ -56,7 +56,7 @@ cd tools && cargo run --bin wav2mp3 input.wav output.mp3 --max-frames 10
 
 ```toml
 [dependencies]
-shine-rs = { path = "." }
+shine-rs = { git = "https://github.com/wshon/shine-rs" }
 ```
 
 ```rust
