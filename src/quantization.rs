@@ -211,7 +211,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 calc_xmin(&config.ratio, cod_info, &mut l3_xmin, gr, ch);
             }
 
-            if config.mpeg.version == 1 {
+            if config.mpeg.version == 3 { // MPEG_I = 3
                 // MPEG_I - handle borrowing carefully by cloning l3_xmin temporarily
                 calc_scfsi(&mut l3_xmin, ch, gr, config);
             }
@@ -363,11 +363,20 @@ fn calc_scfsi(
             // The spectral values are not all zero
             if config.l3loop.xrmaxl[gr2] != 0 {
                 condition += 1;
+                println!("[RUST DEBUG] SCFSI condition: xrmaxl[{}]={} != 0, condition={}", gr2, config.l3loop.xrmaxl[gr2], condition);
+            } else {
+                println!("[RUST DEBUG] SCFSI condition: xrmaxl[{}]={} == 0", gr2, config.l3loop.xrmaxl[gr2]);
             }
             condition += 1;
+            println!("[RUST DEBUG] SCFSI condition: always increment, condition={}", condition);
         }
         if (config.l3loop.en_tot[0] - config.l3loop.en_tot[1]).abs() < EN_TOT_KRIT {
             condition += 1;
+            println!("[RUST DEBUG] SCFSI condition: en_tot diff {} < {}, condition={}", 
+                     (config.l3loop.en_tot[0] - config.l3loop.en_tot[1]).abs(), EN_TOT_KRIT, condition);
+        } else {
+            println!("[RUST DEBUG] SCFSI condition: en_tot diff {} >= {}", 
+                     (config.l3loop.en_tot[0] - config.l3loop.en_tot[1]).abs(), EN_TOT_KRIT);
         }
         let mut tp = 0;
         for sfb in (0..21).rev() {
@@ -375,8 +384,12 @@ fn calc_scfsi(
         }
         if tp < EN_DIF_KRIT {
             condition += 1;
+            println!("[RUST DEBUG] SCFSI condition: tp {} < {}, condition={}", tp, EN_DIF_KRIT, condition);
+        } else {
+            println!("[RUST DEBUG] SCFSI condition: tp {} >= {}", tp, EN_DIF_KRIT);
         }
 
+        println!("[RUST DEBUG] SCFSI final condition: {} (need 6 for SCFSI=1)", condition);
         if condition == 6 {
             for scfsi_band in 0..4 {
                 let mut sum0 = 0;
@@ -391,8 +404,12 @@ fn calc_scfsi(
 
                 if sum0 < EN_SCFSI_BAND_KRIT && sum1 < XM_SCFSI_BAND_KRIT {
                     l3_side.scfsi[ch as usize][scfsi_band] = 1;
+                    println!("[RUST DEBUG] SCFSI band {}: sum0={} < {}, sum1={} < {}, SCFSI=1", 
+                             scfsi_band, sum0, EN_SCFSI_BAND_KRIT, sum1, XM_SCFSI_BAND_KRIT);
                 } else {
                     l3_side.scfsi[ch as usize][scfsi_band] = 0;
+                    println!("[RUST DEBUG] SCFSI band {}: sum0={} >= {} OR sum1={} >= {}, SCFSI=0", 
+                             scfsi_band, sum0, EN_SCFSI_BAND_KRIT, sum1, XM_SCFSI_BAND_KRIT);
                 }
             }
         } else {

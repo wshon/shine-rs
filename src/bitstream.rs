@@ -415,17 +415,23 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 
     // Write side information
     if config.mpeg.version == 3 { // MPEG_I = 3
+        println!("[SHINE DEBUG Frame {}] Main data begin: 0 (9 bits)", frame_num);
         config.bs.put_bits(0, 9)?; // Main data begin
         if config.wave.channels == 2 {
+            println!("[SHINE DEBUG Frame {}] Private bits: {} (3 bits, stereo)", frame_num, si.private_bits);
             config.bs.put_bits(si.private_bits, 3)?;
         } else {
+            println!("[SHINE DEBUG Frame {}] Private bits: {} (5 bits, mono)", frame_num, si.private_bits);
             config.bs.put_bits(si.private_bits, 5)?;
         }
     } else {
+        println!("[SHINE DEBUG Frame {}] Main data begin: 0 (8 bits)", frame_num);
         config.bs.put_bits(0, 8)?; // Main data begin
         if config.wave.channels == 2 {
+            println!("[SHINE DEBUG Frame {}] Private bits: {} (2 bits, stereo)", frame_num, si.private_bits);
             config.bs.put_bits(si.private_bits, 2)?;
         } else {
+            println!("[SHINE DEBUG Frame {}] Private bits: {} (1 bit, mono)", frame_num, si.private_bits);
             config.bs.put_bits(si.private_bits, 1)?;
         }
     }
@@ -433,6 +439,8 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     // Write SCFSI (only for MPEG-I)
     if config.mpeg.version == 3 {
         for ch in 0..config.wave.channels as usize {
+            println!("[SHINE DEBUG Frame {}] SCFSI ch={}: [{},{},{},{}]", 
+                     frame_num, ch, si.scfsi[ch][0], si.scfsi[ch][1], si.scfsi[ch][2], si.scfsi[ch][3]);
             for scfsi_band in 0..4 {
                 config.bs.put_bits(si.scfsi[ch][scfsi_band], 1)?;
             }
