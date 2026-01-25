@@ -9,6 +9,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process;
+use log::{info, error};
 
 /// Stereo mode constants (matches shine's stereo modes)
 const STEREO_MONO: i32 = 3;
@@ -244,18 +245,18 @@ impl Args {
 
 /// Convert WAV file to MP3
 fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Reading WAV file: {}", args.input_file);
+    info!("Reading WAV file: {}", args.input_file);
     
     // Set max frames environment variable if specified
     if let Some(max_frames) = args.max_frames {
         std::env::set_var("RUST_MP3_MAX_FRAMES", max_frames.to_string());
-        println!("Frame limit set to: {} frames", max_frames);
+        info!("Frame limit set to: {} frames", max_frames);
     }
     
     // Read WAV file
     let (pcm_data, sample_rate, channels) = WavReader::read_wav_file(&args.input_file)?;
     
-    println!("WAV info: {} Hz, {} channels, {} samples", 
+    info!("WAV info: {} Hz, {} channels, {} samples", 
              sample_rate, channels, pcm_data.len());
     
     // Adjust stereo mode based on input channels
@@ -285,7 +286,7 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     config.mpeg.bitr = args.bitrate; // Override default bitrate
     config.mpeg.mode = stereo_mode;  // Override default mode
     
-    println!("Encoding with: {} kbps, mode {}", args.bitrate, stereo_mode);
+    info!("Encoding with: {} kbps, mode {}", args.bitrate, stereo_mode);
     
     let mut encoder = shine_initialise(&config)?;
     
@@ -295,7 +296,7 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let mut mp3_data = Vec::new();
     
     let total_frames = pcm_data.len() / frame_size;
-    println!("Encoding {} frames of {} samples each", total_frames, samples_per_frame);
+    info!("Encoding {} frames of {} samples each", total_frames, samples_per_frame);
     
     if args.verbose {
         println!("\n=== Verbose Mode: Frame-by-Frame Encoding Details ===");
@@ -427,24 +428,33 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn main() {
+    // Initialize logger with configurable level
+    // Set RUST_LOG=debug to see debug messages, RUST_LOG=info for info level (default)
+    env_logger::Builder::from_default_env()
+        .filter_level(log::LevelFilter::Info)
+        .format_timestamp(None)
+        .format_module_path(false)
+        .format_target(false)
+        .init();
+    
     // Parse command line arguments
     let args = match Args::parse() {
         Ok(args) => args,
         Err(err) => {
-            eprintln!("Error: {}", err);
+            error!("Error: {}", err);
             process::exit(1);
         }
     };
     
     // Check if input file exists
     if !Path::new(&args.input_file).exists() {
-        eprintln!("Error: Input file '{}' does not exist", args.input_file);
+        error!("Input file '{}' does not exist", args.input_file);
         process::exit(1);
     }
     
     // Perform conversion
     if let Err(err) = convert_wav_to_mp3(args) {
-        eprintln!("Conversion failed: {}", err);
+        error!("Conversion failed: {}", err);
         process::exit(1);
     }
 }

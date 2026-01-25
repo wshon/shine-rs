@@ -217,7 +217,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             // Print key quantization parameters for verification (debug mode only)
             #[cfg(debug_assertions)]
             if frame_num <= 6 && ch == 0 && gr == 0 {
-                println!("[RUST F{}] xrmax={}, max_bits={}", frame_num, config.l3loop.xrmax, max_bits);
+                log::debug!("[Frame {}] xrmax={}, max_bits={}", frame_num, config.l3loop.xrmax, max_bits);
             }
 
             // reset of iteration variables
@@ -282,7 +282,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 // Print key quantization results for verification (debug mode only)
                 #[cfg(debug_assertions)]
                 if frame_num <= 6 && ch == 0 && gr == 0 {
-                    println!("[RUST F{}] part2_3_length={}, quantizer_step_size={}, global_gain={}", 
+                    log::debug!("[Frame {}] part2_3_length={}, quantizer_step_size={}, global_gain={}", 
                              frame_num, part2_3_length, quantizer_step_size, cod_info.global_gain);
                     // Record quantization data for test collection
                     crate::test_data::record_quant_data(

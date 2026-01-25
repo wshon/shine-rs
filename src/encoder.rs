@@ -240,7 +240,7 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
 
     // Print key parameters for verification (debug mode only)
     #[cfg(debug_assertions)]
-    println!("[RUST F{}] pad={}, bits={}, written={}, slot_lag={:.6}", 
+    log::debug!("[Frame {}] pad={}, bits={}, written={}, slot_lag={:.6}", 
              frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, written, config.mpeg.slot_lag);
 
     // Record bitstream data for test collection
@@ -259,7 +259,7 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
         if let Ok(max_frames_str) = std::env::var("RUST_MP3_MAX_FRAMES") {
             if let Ok(max_frames) = max_frames_str.parse::<i32>() {
                 if frame_num > max_frames {
-                    println!("[RUST] Stopping after {} frames for comparison", max_frames);
+                    log::info!("[RUST] Stopping after {} frames for comparison", max_frames);
                     // Return a special error to indicate we should stop encoding but still write the file
                     return Err(EncodingError::StopAfterFrames);
                 }

@@ -218,7 +218,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     // Print key MDCT coefficients for verification (debug mode only)
                     #[cfg(debug_assertions)]
                     if frame_num <= 6 && ch == 0 && gr == 0 && band == 0 && k >= 15 {
-                        println!("[RUST F{}] MDCT[{}][{}][{}][{}] = {}", 
+                        log::debug!("[Frame {}] MDCT[{}][{}][{}][{}] = {}", 
                                  frame_num, ch, gr, band, k, vm);
                         // Record MDCT coefficient for test collection
                         crate::test_data::record_mdct_coeff(k, vm);
@@ -294,7 +294,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
         // Debug: Print saved data for verification (debug mode only)
         #[cfg(debug_assertions)]
         if frame_num <= 6 && ch == 0 {
-            println!("[RUST F{}] Saved l3_sb_sample[{}][0][0][0] = {}", 
+            log::debug!("[Frame {}] Saved l3_sb_sample[{}][0][0][0] = {}", 
                      frame_num, ch, config.l3_sb_sample[ch_idx][0][0][0]);
             // Record l3_sb_sample for test collection
             crate::test_data::record_sb_sample(ch as usize, config.l3_sb_sample[ch_idx][0][0][0]);

@@ -6,6 +6,9 @@
 use crate::encoder::*;
 use crate::types::*;
 
+// Import constants from encoder module
+use crate::encoder::{MPEG_I, MPEG_II, MPEG_25, NONE, LAYER_III};
+
 #[cfg(test)]
 mod tests {
     use super::*;
