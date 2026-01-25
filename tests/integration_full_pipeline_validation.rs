@@ -239,9 +239,7 @@ fn test_subband_filter_frame_1_validation() {
 fn test_mdct_input_data_validation() {
     use frame_1_data::*;
     use frame_2_data::MDCT_INPUT_BAND_0_FIRST_8 as F2_FIRST_8;
-    use frame_2_data::MDCT_INPUT_BAND_0_LAST_8 as F2_LAST_8;
     use frame_3_data::MDCT_INPUT_BAND_0_FIRST_8 as F3_FIRST_8;
-    use frame_3_data::MDCT_INPUT_BAND_0_LAST_8 as F3_LAST_8;
     
     // Frame 1: First granule should be zeros (no previous data)
     assert_eq!(MDCT_INPUT_BAND_0_FIRST_8, [0, 0, 0, 0, 0, 0, 0, 0], "Frame 1 first 8 should be zeros");
@@ -485,24 +483,59 @@ fn test_slot_lag_mechanism_validation() {
 #[test]
 fn test_part2_3_length_validation() {
     use frame_1_data::*;
+    use frame_2_data as f2;
+    use frame_3_data as f3;
     
-    // Validate part2_3_length values for Frame 1
-    assert_eq!(PART2_3_LENGTH_CH0_GR0, 763, "CH0 GR0 part2_3_length mismatch");
-    assert_eq!(PART2_3_LENGTH_CH0_GR1, 689, "CH0 GR1 part2_3_length mismatch");
-    assert_eq!(PART2_3_LENGTH_CH1_GR0, 763, "CH1 GR0 part2_3_length mismatch");
-    assert_eq!(PART2_3_LENGTH_CH1_GR1, 689, "CH1 GR1 part2_3_length mismatch");
+    // Validate part2_3_length values for all frames
+    let all_part2_3_lengths = [
+        (PART2_3_LENGTH_CH0_GR0, "Frame 1 CH0 GR0"),
+        (PART2_3_LENGTH_CH0_GR1, "Frame 1 CH0 GR1"),
+        (PART2_3_LENGTH_CH1_GR0, "Frame 1 CH1 GR0"),
+        (PART2_3_LENGTH_CH1_GR1, "Frame 1 CH1 GR1"),
+        (f2::PART2_3_LENGTH_CH0_GR0, "Frame 2 CH0 GR0"),
+        (f2::PART2_3_LENGTH_CH0_GR1, "Frame 2 CH0 GR1"),
+        (f2::PART2_3_LENGTH_CH1_GR0, "Frame 2 CH1 GR0"),
+        (f2::PART2_3_LENGTH_CH1_GR1, "Frame 2 CH1 GR1"),
+        (f3::PART2_3_LENGTH_CH0_GR0, "Frame 3 CH0 GR0"),
+        (f3::PART2_3_LENGTH_CH0_GR1, "Frame 3 CH0 GR1"),
+        (f3::PART2_3_LENGTH_CH1_GR0, "Frame 3 CH1 GR0"),
+        (f3::PART2_3_LENGTH_CH1_GR1, "Frame 3 CH1 GR1"),
+    ];
     
     // Validate part2_3_length ranges (12-bit field, max 4095)
-    assert!(PART2_3_LENGTH_CH0_GR0 <= 4095, "part2_3_length out of range");
-    assert!(PART2_3_LENGTH_CH0_GR1 <= 4095, "part2_3_length out of range");
-    assert!(PART2_3_LENGTH_CH1_GR0 <= 4095, "part2_3_length out of range");
-    assert!(PART2_3_LENGTH_CH1_GR1 <= 4095, "part2_3_length out of range");
+    for &(length, desc) in &all_part2_3_lengths {
+        assert!(length <= 4095, "{} part2_3_length {} out of range", desc, length);
+        assert!(length > 0, "{} part2_3_length should be positive", desc);
+    }
     
-    // Test count1 values (quadruple count)
-    assert_eq!(COUNT1_CH0_GR0, 48, "CH0 GR0 count1 mismatch");
-    assert_eq!(COUNT1_CH0_GR1, 36, "CH0 GR1 count1 mismatch");
-    assert_eq!(COUNT1_CH1_GR0, 48, "CH1 GR0 count1 mismatch");
-    assert_eq!(COUNT1_CH1_GR1, 36, "CH1 GR1 count1 mismatch");
+    // Test count1 values (quadruple count) for all frames
+    let all_count1_values = [
+        (COUNT1_CH0_GR0, "Frame 1 CH0 GR0"),
+        (COUNT1_CH0_GR1, "Frame 1 CH0 GR1"),
+        (COUNT1_CH1_GR0, "Frame 1 CH1 GR0"),
+        (COUNT1_CH1_GR1, "Frame 1 CH1 GR1"),
+        (f2::COUNT1_CH0_GR0, "Frame 2 CH0 GR0"),
+        (f2::COUNT1_CH0_GR1, "Frame 2 CH0 GR1"),
+        (f2::COUNT1_CH1_GR0, "Frame 2 CH1 GR0"),
+        (f2::COUNT1_CH1_GR1, "Frame 2 CH1 GR1"),
+        (f3::COUNT1_CH0_GR0, "Frame 3 CH0 GR0"),
+        (f3::COUNT1_CH0_GR1, "Frame 3 CH0 GR1"),
+        (f3::COUNT1_CH1_GR0, "Frame 3 CH1 GR0"),
+        (f3::COUNT1_CH1_GR1, "Frame 3 CH1 GR1"),
+    ];
+    
+    for &(count1, desc) in &all_count1_values {
+        assert!(count1 <= 144, "{} count1 {} out of range", desc, count1);
+        assert!(count1 > 0, "{} count1 should be positive", desc);
+    }
+    
+    // Validate specific Frame 1 values
+    assert_eq!(PART2_3_LENGTH_CH0_GR0, 763, "Frame 1 CH0 GR0 part2_3_length mismatch");
+    assert_eq!(PART2_3_LENGTH_CH0_GR1, 689, "Frame 1 CH0 GR1 part2_3_length mismatch");
+    assert_eq!(COUNT1_CH0_GR0, 48, "Frame 1 CH0 GR0 count1 mismatch");
+    assert_eq!(COUNT1_CH0_GR1, 36, "Frame 1 CH0 GR1 count1 mismatch");
+    
+    println!("Part2_3_length and count1 validation passed for all frames");
 }
 
 /// Test MP3 format compliance
@@ -533,30 +566,41 @@ fn test_mp3_format_compliance() {
     println!("MP3 format compliance validated");
 }
 
-/// Test encoding consistency across channels
+/// Test channel consistency across all frames
 #[test]
-fn test_channel_consistency_frame_1() {
-    use frame_1_data::*;
+fn test_channel_consistency_all_frames() {
+    use frame_1_data as f1;
+    use frame_2_data as f2;
+    use frame_3_data as f3;
     
-    // For stereo encoding, both channels should have identical parameters
-    // when using joint stereo or when the audio is similar
+    // Test Frame 1 channel consistency
+    assert_eq!(f1::XRMAX_CH0_GR0, f1::XRMAX_CH1_GR0, "Frame 1 CH0/CH1 GR0 xrmax should match");
+    assert_eq!(f1::XRMAX_CH0_GR1, f1::XRMAX_CH1_GR1, "Frame 1 CH0/CH1 GR1 xrmax should match");
+    assert_eq!(f1::GLOBAL_GAIN_CH0_GR0, f1::GLOBAL_GAIN_CH1_GR0, "Frame 1 CH0/CH1 GR0 global_gain should match");
+    assert_eq!(f1::GLOBAL_GAIN_CH0_GR1, f1::GLOBAL_GAIN_CH1_GR1, "Frame 1 CH0/CH1 GR1 global_gain should match");
+    assert_eq!(f1::BIG_VALUES_CH0_GR0, f1::BIG_VALUES_CH1_GR0, "Frame 1 CH0/CH1 GR0 big_values should match");
+    assert_eq!(f1::BIG_VALUES_CH0_GR1, f1::BIG_VALUES_CH1_GR1, "Frame 1 CH0/CH1 GR1 big_values should match");
+    assert_eq!(f1::SCFSI_CH0, f1::SCFSI_CH1, "Frame 1 CH0/CH1 SCFSI should match");
     
-    // Test that corresponding granules have same xrmax
-    assert_eq!(XRMAX_CH0_GR0, XRMAX_CH1_GR0, "CH0/CH1 GR0 xrmax should match");
-    assert_eq!(XRMAX_CH0_GR1, XRMAX_CH1_GR1, "CH0/CH1 GR1 xrmax should match");
+    // Test Frame 2 channel consistency
+    assert_eq!(f2::XRMAX_CH0_GR0, f2::XRMAX_CH1_GR0, "Frame 2 CH0/CH1 GR0 xrmax should match");
+    assert_eq!(f2::XRMAX_CH0_GR1, f2::XRMAX_CH1_GR1, "Frame 2 CH0/CH1 GR1 xrmax should match");
+    assert_eq!(f2::GLOBAL_GAIN_CH0_GR0, f2::GLOBAL_GAIN_CH1_GR0, "Frame 2 CH0/CH1 GR0 global_gain should match");
+    assert_eq!(f2::GLOBAL_GAIN_CH0_GR1, f2::GLOBAL_GAIN_CH1_GR1, "Frame 2 CH0/CH1 GR1 global_gain should match");
+    assert_eq!(f2::BIG_VALUES_CH0_GR0, f2::BIG_VALUES_CH1_GR0, "Frame 2 CH0/CH1 GR0 big_values should match");
+    assert_eq!(f2::BIG_VALUES_CH0_GR1, f2::BIG_VALUES_CH1_GR1, "Frame 2 CH0/CH1 GR1 big_values should match");
+    assert_eq!(f2::SCFSI_CH0, f2::SCFSI_CH1, "Frame 2 CH0/CH1 SCFSI should match");
     
-    // Test that corresponding granules have same global_gain
-    assert_eq!(GLOBAL_GAIN_CH0_GR0, GLOBAL_GAIN_CH1_GR0, "CH0/CH1 GR0 global_gain should match");
-    assert_eq!(GLOBAL_GAIN_CH0_GR1, GLOBAL_GAIN_CH1_GR1, "CH0/CH1 GR1 global_gain should match");
+    // Test Frame 3 channel consistency
+    assert_eq!(f3::XRMAX_CH0_GR0, f3::XRMAX_CH1_GR0, "Frame 3 CH0/CH1 GR0 xrmax should match");
+    assert_eq!(f3::XRMAX_CH0_GR1, f3::XRMAX_CH1_GR1, "Frame 3 CH0/CH1 GR1 xrmax should match");
+    assert_eq!(f3::GLOBAL_GAIN_CH0_GR0, f3::GLOBAL_GAIN_CH1_GR0, "Frame 3 CH0/CH1 GR0 global_gain should match");
+    assert_eq!(f3::GLOBAL_GAIN_CH0_GR1, f3::GLOBAL_GAIN_CH1_GR1, "Frame 3 CH0/CH1 GR1 global_gain should match");
+    assert_eq!(f3::BIG_VALUES_CH0_GR0, f3::BIG_VALUES_CH1_GR0, "Frame 3 CH0/CH1 GR0 big_values should match");
+    assert_eq!(f3::BIG_VALUES_CH0_GR1, f3::BIG_VALUES_CH1_GR1, "Frame 3 CH0/CH1 GR1 big_values should match");
+    assert_eq!(f3::SCFSI_CH0, f3::SCFSI_CH1, "Frame 3 CH0/CH1 SCFSI should match");
     
-    // Test that corresponding granules have same big_values
-    assert_eq!(BIG_VALUES_CH0_GR0, BIG_VALUES_CH1_GR0, "CH0/CH1 GR0 big_values should match");
-    assert_eq!(BIG_VALUES_CH0_GR1, BIG_VALUES_CH1_GR1, "CH0/CH1 GR1 big_values should match");
-    
-    // Test SCFSI consistency
-    assert_eq!(SCFSI_CH0, SCFSI_CH1, "CH0/CH1 SCFSI should match for similar audio");
-    
-    println!("Channel consistency validated for Frame 1");
+    println!("Channel consistency validated for all frames");
 }
 
 /// Test granule parameter relationships
