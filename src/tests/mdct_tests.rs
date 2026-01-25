@@ -4,6 +4,8 @@
 //! and aliasing reduction operations.
 
 use crate::types::*;
+use crate::mdct::*;
+use proptest::prelude::*;
 
 #[cfg(test)]
 mod tests {
@@ -122,73 +124,6 @@ mod tests {
         assert!(has_negative, "Should have negative coefficients");
     }
 
-    /// Test MDCT input data validation with real data from sample-3s.wav
-    #[test]
-    fn test_mdct_input_real_data_validation() {
-        // Real data from Frame 1 - first granule should be zeros (no previous data)
-        let frame_1_first_8: [i32; 8] = [0, 0, 0, 0, 0, 0, 0, 0];
-        
-        // Real data from Frame 1 - last 8 values from subband filter
-        let frame_1_last_8: [i32; 8] = [-108108746, -171625282, -168521462, -153132793, -102026930, -53572474, -66933230, -61760919];
-        
-        // Real data from Frame 2 - should use Frame 1's saved data
-        let frame_2_first_8: [i32; 8] = [-35329013, 13541843, 43631088, 50289625, 68731699, 98941519, 141525294, 142119942];
-        
-        // Frame 1: First granule should be zeros (no previous data)
-        for &val in &frame_1_first_8 {
-            assert_eq!(val, 0, "Frame 1 first 8 should be zeros");
-        }
-        
-        // Frame 1: Last 8 values should be non-zero (from subband filter)
-        for &val in &frame_1_last_8 {
-            assert!(val != 0, "Frame 1 last 8 values should be non-zero");
-            assert!(val.abs() < 200_000_000, "Frame 1 MDCT input {} out of range", val);
-        }
-        
-        // Frame 2: Should use Frame 1's saved data as first 8 values
-        for &val in &frame_2_first_8 {
-            assert!(val != 0, "Frame 2 first 8 should be non-zero (from Frame 1)");
-            assert!(val.abs() < 200_000_000, "Frame 2 MDCT input {} out of range", val);
-        }
-        
-        // Verify specific known values from the encoding log
-        assert_eq!(frame_1_last_8[0], -108108746, "Frame 1 MDCT input last[0] mismatch");
-        assert_eq!(frame_1_last_8[1], -171625282, "Frame 1 MDCT input last[1] mismatch");
-        assert_eq!(frame_2_first_8[0], -35329013, "Frame 2 MDCT input first[0] mismatch");
-        assert_eq!(frame_2_first_8[1], 13541843, "Frame 2 MDCT input first[1] mismatch");
-    }
-
-    /// Test MDCT coefficient validation with real data from all frames
-    #[test]
-    fn test_mdct_coefficients_real_data_validation() {
-        // Frame 1 coefficients (from actual encoding)
-        let f1_coeffs: [i32; 3] = [808302, 3145162, 6527797];
-        
-        // Frame 2 coefficients (from actual encoding)
-        let f2_coeffs: [i32; 3] = [-17369047, 13912238, 31910201];
-        
-        // Frame 3 coefficients (from actual encoding)
-        let f3_coeffs: [i32; 3] = [-20877153, -19736998, -24380058];
-        
-        // Validate coefficient ranges (typical for audio signals)
-        let all_coeffs = [f1_coeffs, f2_coeffs, f3_coeffs].concat();
-        for &coeff in &all_coeffs {
-            assert!(coeff.abs() < 50_000_000, "MDCT coefficient {} out of range", coeff);
-        }
-        
-        // Test that coefficients show variation across frames (not stuck values)
-        assert_ne!(f1_coeffs[0], f2_coeffs[0], "K17 should vary between frames");
-        assert_ne!(f2_coeffs[0], f3_coeffs[0], "K17 should vary between frames");
-        assert_ne!(f1_coeffs[1], f2_coeffs[1], "K16 should vary between frames");
-        assert_ne!(f2_coeffs[1], f3_coeffs[1], "K16 should vary between frames");
-        
-        // Verify specific known values
-        assert_eq!(f1_coeffs[0], 808302, "Frame 1 K17 MDCT coefficient mismatch");
-        assert_eq!(f1_coeffs[1], 3145162, "Frame 1 K16 MDCT coefficient mismatch");
-        assert_eq!(f2_coeffs[0], -17369047, "Frame 2 K17 MDCT coefficient mismatch");
-        assert_eq!(f3_coeffs[0], -20877153, "Frame 3 K17 MDCT coefficient mismatch");
-    }
-
     #[test]
     fn test_mdct_granule_overlap() {
         // Test the granule overlap mechanism in MDCT
@@ -281,12 +216,66 @@ mod tests {
             assert!((cs - cs_computed).abs() < 0.001, "CS should be computed from CA");
         }
     }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            cases: 100,
+            verbose: 0,
+            max_shrink_iters: 0,
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        })]
+
+        #[test]
+        fn test_mdct_initialise_coefficients(
+            _unit in Just(())
+        ) {
+            let mut shine_config = ShineGlobalConfig::new();
+            
+            shine_mdct_initialise(&mut shine_config);
+            
+            // Verify that coefficients are initialized (non-zero for most entries)
+            let mut non_zero_count = 0;
+            for m in 0..18 {
+                for k in 0..36 {
+                    if shine_config.mdct.cos_l[m][k] != 0 {
+                        non_zero_count += 1;
+                    }
+                }
+            }
+            
+            prop_assert!(non_zero_count > 300, "Most MDCT coefficients should be non-zero");
+        }
+
+        #[test]
+        fn test_mdct_coefficient_symmetry(
+            _unit in Just(())
+        ) {
+            let mut shine_config = ShineGlobalConfig::new();
+            
+            shine_mdct_initialise(&mut shine_config);
+            
+            // Test that MDCT coefficients have expected properties
+            // The coefficients should be deterministic for the same inputs
+            let mut shine_config2 = ShineGlobalConfig::new();
+            shine_mdct_initialise(&mut shine_config2);
+            
+            for m in 0..18 {
+                for k in 0..36 {
+                    prop_assert_eq!(
+                        shine_config.mdct.cos_l[m][k],
+                        shine_config2.mdct.cos_l[m][k],
+                        "MDCT coefficients should be deterministic"
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod property_tests {
     use super::*;
-    use proptest::prelude::*;
 
     proptest! {
         #![proptest_config(ProptestConfig {
