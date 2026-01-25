@@ -9,7 +9,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 use std::process;
-use log::{info, error};
+use log::{info, debug, error};
 
 /// Stereo mode constants (matches shine's stereo modes)
 const STEREO_MONO: i32 = 3;
@@ -299,9 +299,9 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     info!("Encoding {} frames of {} samples each", total_frames, samples_per_frame);
     
     if args.verbose {
-        println!("\n=== Verbose Mode: Frame-by-Frame Encoding Details ===");
-        println!("Format: [Frame #] PCM samples, MP3 bytes @ hex offset");
-        println!("─────────────────────────────────────────────────────────────────");
+        info!("\n=== Verbose Mode: Frame-by-Frame Encoding Details ===");
+        info!("Format: [Frame #] PCM samples, MP3 bytes @ hex offset");
+        info!("─────────────────────────────────────────────────────────────────");
     }
     
     // Process complete frames
@@ -320,7 +320,7 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                 Ok((frame_data, written)) => {
                     if written > 0 {
                         if args.verbose {
-                            println!("[Frame {}] PCM {}-{}, MP3 {} bytes @ 0x{:04X}-0x{:04X}",
+                            debug!("[Frame {}] PCM {}-{}, MP3 {} bytes @ 0x{:04X}-0x{:04X}",
                                      frame_count + 1,
                                      pcm_start,
                                      pcm_end,
@@ -332,7 +332,7 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                         mp3_data.extend_from_slice(&frame_data[..written]);
                         mp3_offset += written;
                     } else if args.verbose {
-                        println!("[Frame {}] PCM {}-{}, MP3 buffered",
+                        debug!("[Frame {}] PCM {}-{}, MP3 buffered",
                                  frame_count + 1,
                                  pcm_start,
                                  pcm_end);
@@ -341,13 +341,13 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                     frame_count += 1;
                     
                     if !args.verbose && frame_count % 100 == 0 {
-                        println!("Encoded {} / {} frames", frame_count, total_frames);
+                        info!("Encoded {} / {} frames", frame_count, total_frames);
                     }
                 },
                 #[cfg(debug_assertions)]
                 Err(shine_rs::error::EncodingError::StopAfterFrames) => {
                     // This is expected when we stop after a certain number of frames in debug mode
-                    println!("Stopped encoding after {} frames as requested", frame_count);
+                    info!("Stopped encoding after {} frames as requested", frame_count);
                     break;
                 },
                 Err(e) => return Err(e.into()),
@@ -356,52 +356,52 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     }
     
     if args.verbose {
-        println!("─────────────────────────────────────────────────────────────────");
+        info!("─────────────────────────────────────────────────────────────────");
     }
     
     // Flush any remaining data
     let (final_data, final_written) = shine_flush(&mut encoder);
     if final_written > 0 {
         if args.verbose {
-            println!("[Flush] MP3 {} bytes @ 0x{:04X}-0x{:04X}",
+            debug!("[Flush] MP3 {} bytes @ 0x{:04X}-0x{:04X}",
                      final_written,
                      mp3_offset,
                      mp3_offset + final_written - 1);
         }
         mp3_data.extend_from_slice(&final_data[..final_written]);
-        println!("Flushed final data: {} bytes", final_written);
+        info!("Flushed final data: {} bytes", final_written);
     }
     
     // Close encoder
     shine_close(encoder);
     
-    println!("Total MP3 data: {} bytes", mp3_data.len());
+    info!("Total MP3 data: {} bytes", mp3_data.len());
     
     if args.verbose {
-        println!("\n=== MP3 File Structure Summary ===");
-        println!("Total frames encoded: {}", frame_count);
-        println!("Total MP3 bytes: {} (hex: 0x{:04X})", mp3_data.len(), mp3_data.len());
-        println!("Average bytes per frame: {:.1}", mp3_data.len() as f64 / frame_count as f64);
+        info!("\n=== MP3 File Structure Summary ===");
+        info!("Total frames encoded: {}", frame_count);
+        info!("Total MP3 bytes: {} (hex: 0x{:04X})", mp3_data.len(), mp3_data.len());
+        info!("Average bytes per frame: {:.1}", mp3_data.len() as f64 / frame_count as f64);
         
         // Show first few bytes of MP3 data (header info)
         if mp3_data.len() >= 4 {
-            println!("MP3 header bytes: {:02X} {:02X} {:02X} {:02X} (at offset 0x0000)", 
+            info!("MP3 header bytes: {:02X} {:02X} {:02X} {:02X} (at offset 0x0000)", 
                      mp3_data[0], mp3_data[1], mp3_data[2], mp3_data[3]);
         }
         
         // Show file structure breakdown
         if mp3_data.len() > 0 {
-            println!("File range: 0x0000 - 0x{:04X}", mp3_data.len() - 1);
+            info!("File range: 0x0000 - 0x{:04X}", mp3_data.len() - 1);
         }
     }
     
     // Write MP3 file
-    println!("Writing MP3 file: {}", args.output_file);
+    info!("Writing MP3 file: {}", args.output_file);
     let mut output_file = File::create(&args.output_file)?;
     output_file.write_all(&mp3_data)?;
     
     if args.verbose {
-        println!("Successfully wrote {} bytes (0x0000-0x{:04X}) to {}", 
+        info!("Successfully wrote {} bytes (0x0000-0x{:04X}) to {}", 
                  mp3_data.len(), mp3_data.len() - 1, args.output_file);
     }
     
@@ -409,18 +409,19 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let input_size = pcm_data.len() * 2; // 16-bit samples
     let compression_ratio = input_size as f64 / mp3_data.len() as f64;
     
+    // Calculate duration
+    let duration = pcm_data.len() as f64 / (sample_rate as f64 * channels as f64);
+    
+    // Final success message and statistics (always show to user)
     println!("✅ Conversion completed successfully!");
     println!("   Input size:  {} bytes", input_size);
     println!("   Output size: {} bytes", mp3_data.len());
     println!("   Compression: {:.1}:1", compression_ratio);
-    
-    // Calculate duration
-    let duration = pcm_data.len() as f64 / (sample_rate as f64 * channels as f64);
     println!("   Duration:    {:.2} seconds", duration);
     
     if args.verbose {
-        println!("   Bitrate:     {} kbps (configured)", args.bitrate);
-        println!("   Actual rate: {:.1} kbps (calculated)", 
+        info!("   Bitrate:     {} kbps (configured)", args.bitrate);
+        info!("   Actual rate: {:.1} kbps (calculated)", 
                  (mp3_data.len() as f64 * 8.0) / (duration * 1000.0));
     }
     

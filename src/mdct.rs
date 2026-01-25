@@ -9,6 +9,9 @@ use crate::types::{ShineGlobalConfig, GRANULE_SIZE, SBLIMIT};
 use std::f64::consts::PI;
 use lazy_static::lazy_static;
 
+#[cfg(debug_assertions)]
+use log;
+
 /// PI/36 constant for MDCT calculations (matches shine PI36)
 const PI36: f64 = PI / 36.0;
 

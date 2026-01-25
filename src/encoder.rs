@@ -9,6 +9,9 @@ use crate::types::{ShineGlobalConfig, ShineSideInfo, GRANULE_SIZE};
 use crate::tables::{SAMPLERATES, BITRATES};
 use crate::bitstream::BitstreamWriter;
 
+#[cfg(debug_assertions)]
+use log;
+
 /// Buffer size for bitstream (matches shine BUFFER_SIZE)
 /// (ref/shine/src/lib/bitstream.h:19)
 const BUFFER_SIZE: i32 = 4096;

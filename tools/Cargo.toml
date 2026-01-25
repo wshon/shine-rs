@@ -1,10 +1,6 @@
 [workspace]
 members = [
     "wav2mp3",
-    "collect_test_data",
-    "validate_test_data",
-    "mp3_validator",
-    "mp3_hexdump",
 ]
 
 [workspace.dependencies]

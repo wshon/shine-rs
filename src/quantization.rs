@@ -12,6 +12,9 @@ use crate::tables::{SHINE_SCALE_FACT_BAND_INDEX, SHINE_SLEN1_TAB, SHINE_SLEN2_TA
 use crate::huffman::SHINE_HUFFMAN_TABLE;
 use std::f64::consts::LN_2;
 
+#[cfg(debug_assertions)]
+use log;
+
 /// Constants from shine (matches l3loop.c exactly)
 #[allow(dead_code)] // May be used in future implementations
 const CBLIMIT: usize = 21;
