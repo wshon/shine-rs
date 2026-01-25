@@ -325,3 +325,126 @@ pub fn record_bitstream_data(padding: i32, bits_per_frame: i32, written: usize, 
         TestDataCollector::record_bitstream(padding, bits_per_frame, written, slot_lag);
     }
 }
+
+// High-level encoder interface for integration testing
+use crate::error::EncodingResult;
+use crate::encoder::{shine_initialise, shine_encode_buffer_interleaved, ShineConfig, ShineWave, ShineMpeg};
+use crate::types::ShineGlobalConfig;
+
+/// Channel mode enumeration
+#[derive(Debug, Clone)]
+pub enum ChannelMode {
+    Mono,
+    Stereo,
+}
+
+/// Complete frame encoding result for validation
+#[derive(Debug, Clone)]
+pub struct EncodedFrame {
+    pub mdct_data: MdctData,
+    pub quantization_data: QuantizationData,
+    pub bitstream_data: BitstreamData,
+    pub frame_data: Vec<u8>,
+}
+
+/// High-level MP3 encoder for integration testing
+pub struct Encoder {
+    config: Box<ShineGlobalConfig>,
+}
+
+impl Encoder {
+    /// Create a new encoder with the given configuration
+    pub fn new(encoding_config: EncodingConfig) -> EncodingResult<Self> {
+        // Create shine configuration
+        let shine_config = ShineConfig {
+            wave: ShineWave {
+                channels: encoding_config.channels,
+                samplerate: encoding_config.sample_rate,
+            },
+            mpeg: ShineMpeg {
+                mode: if encoding_config.channels == 1 { 3 } else { 1 }, // MPG_MD_MONO or MPG_MD_STEREO
+                bitr: encoding_config.bitrate,
+                emph: 0,
+                copyright: 0,
+                original: 1,
+            },
+        };
+
+        // Initialize encoder
+        let config = shine_initialise(&shine_config)?;
+
+        Ok(Self { config })
+    }
+
+    /// Encode a frame and capture intermediate data
+    pub fn encode_frame(&mut self, samples: &[i16]) -> EncodingResult<EncodedFrame> {
+        // Prepare sample data
+        let sample_ptr = samples.as_ptr();
+
+        // Encode frame and immediately copy the data to avoid borrow issues
+        let (frame_data_slice, written) = shine_encode_buffer_interleaved(&mut self.config, sample_ptr)?;
+        let frame_data = frame_data_slice.to_vec(); // Copy immediately
+
+        // Now we can safely access self.config again
+        let mdct_data = self.capture_mdct_data();
+        let quantization_data = self.capture_quantization_data();
+
+        // Create bitstream data
+        let bitstream_data = BitstreamData {
+            written,
+            bits_per_frame: self.config.mpeg.bits_per_frame,
+            slot_lag: self.config.mpeg.slot_lag,
+            padding: self.config.mpeg.padding,
+        };
+
+        Ok(EncodedFrame {
+            mdct_data,
+            quantization_data,
+            bitstream_data,
+            frame_data,
+        })
+    }
+
+    /// Capture MDCT coefficients from the encoder state
+    fn capture_mdct_data(&self) -> MdctData {
+        let mut coefficients = Vec::new();
+        let mut l3_sb_sample = Vec::new();
+
+        // Extract key MDCT coefficients (positions 15, 16, 17 from first channel/granule)
+        if self.config.mpeg.granules_per_frame > 0 {
+            for k in 15..18 {
+                if k < crate::types::GRANULE_SIZE {
+                    coefficients.push(self.config.mdct_freq[0][0][k]);
+                }
+            }
+        }
+
+        // Extract l3_sb_sample data from first channel
+        for gr in 0..std::cmp::min(self.config.mpeg.granules_per_frame as usize, 1) {
+            for sb in 0..std::cmp::min(18, 3) { // Limit to first few subbands
+                for i in 0..std::cmp::min(crate::types::SBLIMIT, 8) { // Limit samples
+                    l3_sb_sample.push(self.config.l3_sb_sample[0][gr][sb][i]);
+                }
+            }
+        }
+
+        MdctData {
+            coefficients,
+            l3_sb_sample,
+        }
+    }
+
+    /// Capture quantization parameters from the encoder state
+    fn capture_quantization_data(&self) -> QuantizationData {
+        // Get data from the first granule and channel
+        let gr_info = &self.config.side_info.gr[0].ch[0].tt;
+
+        QuantizationData {
+            global_gain: gr_info.global_gain,
+            part2_3_length: gr_info.part2_3_length,
+            max_bits: self.config.mean_bits,
+            xrmax: self.config.l3loop.xrmax,
+            quantizer_step_size: gr_info.quantizer_step_size,
+        }
+    }
+}
