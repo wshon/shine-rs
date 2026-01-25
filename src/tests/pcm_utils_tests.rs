@@ -3,7 +3,7 @@
 //! Tests the PCM data processing functions including deinterleaving
 //! and format conversion utilities.
 
-use crate::pcm_utils::*;
+use util::*;
 
 #[cfg(test)]
 mod tests {

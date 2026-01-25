@@ -327,8 +327,11 @@ pub fn record_bitstream_data(padding: i32, bits_per_frame: i32, written: usize, 
 }
 
 // High-level encoder interface for integration testing
+#[cfg(feature = "diagnostics")]
 use crate::error::EncodingResult;
+#[cfg(feature = "diagnostics")]
 use crate::encoder::{shine_initialise, shine_encode_buffer_interleaved, ShineConfig, ShineWave, ShineMpeg};
+#[cfg(feature = "diagnostics")]
 use crate::types::ShineGlobalConfig;
 
 /// Channel mode enumeration
@@ -339,6 +342,7 @@ pub enum ChannelMode {
 }
 
 /// Complete frame encoding result for validation
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone)]
 pub struct EncodedFrame {
     pub mdct_data: MdctData,
@@ -348,10 +352,12 @@ pub struct EncodedFrame {
 }
 
 /// High-level MP3 encoder for integration testing
+#[cfg(feature = "diagnostics")]
 pub struct Encoder {
     config: Box<ShineGlobalConfig>,
 }
 
+#[cfg(feature = "diagnostics")]
 impl Encoder {
     /// Create a new encoder with the given configuration
     pub fn new(encoding_config: EncodingConfig) -> EncodingResult<Self> {

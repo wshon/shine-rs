@@ -11,8 +11,8 @@ use std::path::Path;
 use std::io::{Read, Write};
 use serde_json;
 use sha2::{Sha256, Digest};
-use shine_rs::test_data::{TestDataSet, Encoder, EncodingConfig, TestDataCollector, TestCaseData};
-use shine_rs::pcm_utils::read_wav_file;
+use shine_rs::tests::test_data::{TestDataSet, Encoder, EncodingConfig, TestDataCollector, TestCaseData};
+use util::read_wav_file;
 use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
 
 /// Calculate SHA256 hash of data

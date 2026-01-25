@@ -25,15 +25,11 @@ pub mod encoder;
 pub mod error;
 pub mod huffman;
 pub mod mdct;
-pub mod pcm_utils;
 pub mod quantization;
 pub mod reservoir;
 pub mod subband;
 pub mod tables;
 pub mod types;
-
-#[cfg(feature = "diagnostics")]
-pub mod test_data;
 
 #[cfg(test)]
 pub mod tests;
