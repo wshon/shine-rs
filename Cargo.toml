@@ -9,26 +9,6 @@ repository = "https://github.com/example/rust-mp3-encoder"
 keywords = ["mp3", "audio", "encoder", "codec"]
 categories = ["multimedia::audio", "encoding"]
 
-[[bin]]
-name = "wav2mp3"
-path = "src/bin/wav2mp3.rs"
-
-[[bin]]
-name = "collect_test_data"
-path = "src/bin/collect_test_data.rs"
-
-[[bin]]
-name = "validate_test_data"
-path = "src/bin/validate_test_data.rs"
-
-[[bin]]
-name = "mp3_validator"
-path = "src/bin/mp3_validator.rs"
-
-[[bin]]
-name = "mp3_hexdump"
-path = "src/bin/mp3_hexdump.rs"
-
 [dependencies]
 thiserror = "1.0"
 lazy_static = "1.4"

@@ -1,0 +1,8 @@
+[package]
+name = "mp3_hexdump"
+version = "0.1.0"
+edition = "2021"
+description = "MP3 file hexdump tool"
+
+[dependencies]
+rust-mp3-encoder = { path = "../.." }
