@@ -53,6 +53,10 @@ path = "testing/integration/integration_full_pipeline_validation.rs"
 name = "integration_scfsi_consistency"
 path = "testing/integration/integration_scfsi_consistency.rs"
 
+[[test]]
+name = "integration_data_driven_validation"
+path = "testing/integration/integration_data_driven_validation.rs"
+
 [profile.dev]
 debug = true
 overflow-checks = true
