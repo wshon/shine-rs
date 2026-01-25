@@ -47,30 +47,6 @@ impl BitstreamWriter {
     /// * `val` - value to write into the buffer
     /// * `n` - number of bits of val
     pub fn put_bits(&mut self, val: u32, n: i32) -> EncodingResult<()> {
-        use std::sync::atomic::{AtomicI32, Ordering};
-        static BIT_COUNT: AtomicI32 = AtomicI32::new(0);
-        static FIRST_FRAME: AtomicI32 = AtomicI32::new(1);
-        static CALL_COUNT: AtomicI32 = AtomicI32::new(0);
-        
-        let bit_count = BIT_COUNT.fetch_add(n, Ordering::SeqCst);
-        let first_frame = FIRST_FRAME.load(Ordering::SeqCst);
-        let call_num = CALL_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-        
-        // Debug first frame header bits (match Shine's exact format)
-        if first_frame == 1 && bit_count < 32 {
-            println!("[SHINE DEBUG] putbits: val=0x{:X}, N={}, bit_count={}", val, n, bit_count);
-        }
-        
-        // Log cache state for detailed comparison (first 50 calls)
-        if call_num <= 50 {
-            println!("[SHINE CACHE {}] Before: cache=0x{:08X}, cache_bits={}, data_pos={}", 
-                     call_num, self.cache, self.cache_bits, self.data_position);
-        }
-        
-        if bit_count + n >= 32 && first_frame == 1 {
-            FIRST_FRAME.store(0, Ordering::SeqCst);
-        }
-        
         #[cfg(debug_assertions)]
         {
             if n > 32 {
@@ -86,51 +62,18 @@ impl BitstreamWriter {
 
         // Handle the special case where n=0 (no bits to write)
         if n == 0 {
-            println!("[SHINE CACHE] n=0 case: returning early, no bits to write");
             return Ok(());
-        }
-
-        // Log detailed state for debugging overflow and edge cases
-        if call_num <= 100 {
-            println!("[SHINE CACHE {}] Before: cache=0x{:08X}, cache_bits={}, data_pos={}, val=0x{:X}, n={}", 
-                     call_num, self.cache, self.cache_bits, self.data_position, val, n);
-            
-            // Log potential overflow conditions
-            if self.cache_bits == 32 {
-                println!("[SHINE CACHE {}] WARNING: cache_bits=32 (fully empty cache)", call_num);
-            }
-            if n >= 32 {
-                println!("[SHINE CACHE {}] WARNING: n={} (writing 32+ bits)", call_num, n);
-            }
-            if self.cache_bits <= n {
-                println!("[SHINE CACHE {}] Will flush: cache_bits({}) <= n({})", call_num, self.cache_bits, n);
-            }
         }
         
         if self.cache_bits > n {
             // Cache has enough space for the new bits
-            let old_cache_bits = self.cache_bits;
             self.cache_bits -= n;
-            
-            // Log the shift operation details
-            if call_num <= 100 {
-                println!("[SHINE CACHE {}] Simple case: {} - {} = {}, shifting val(0x{:X}) left by {}", 
-                         call_num, old_cache_bits, n, self.cache_bits, val, self.cache_bits);
-            }
             
             // Add safety check to prevent overflow
             if self.cache_bits >= 0 && self.cache_bits < 32 {
                 let shifted_val = val << self.cache_bits;
                 self.cache |= shifted_val;
-                
-                if call_num <= 100 {
-                    println!("[SHINE CACHE {}] Shift result: 0x{:X} << {} = 0x{:X}", 
-                             call_num, val, self.cache_bits, shifted_val);
-                }
             } else {
-                // This should never happen if logic is correct
-                println!("[ERROR] Invalid cache_bits after subtraction: {}, original: {}, n: {}", 
-                         self.cache_bits, old_cache_bits, n);
                 return Err(EncodingError::BitstreamError(format!("Invalid cache_bits: {}", self.cache_bits)));
             }
         } else {
@@ -146,21 +89,7 @@ impl BitstreamWriter {
 
             // Match shine's logic exactly
             let remaining_n = n - self.cache_bits;
-            
-            if call_num <= 100 {
-                println!("[SHINE CACHE {}] Flush case: remaining_n = {} - {} = {}", 
-                         call_num, n, self.cache_bits, remaining_n);
-                println!("[SHINE CACHE {}] Right shift: val(0x{:X}) >> {} = 0x{:X}", 
-                         call_num, val, remaining_n, val >> remaining_n);
-            }
-            
             self.cache |= val >> remaining_n;
-
-            // Log cache flush for detailed comparison
-            if call_num <= 100 {
-                println!("[SHINE CACHE {}] Flushing: cache=0x{:08X} to position {}", 
-                         call_num, self.cache, self.data_position);
-            }
 
             // Write cache to buffer using SWAB32 equivalent (byte swap on little-endian)
             let cache_bytes = self.cache.to_be_bytes();
@@ -174,29 +103,8 @@ impl BitstreamWriter {
             if remaining_n != 0 && self.cache_bits > 0 && self.cache_bits < 32 {
                 let new_cache = val << self.cache_bits;
                 self.cache = new_cache;
-                
-                if call_num <= 100 {
-                    println!("[SHINE CACHE {}] New cache: val(0x{:X}) << {} = 0x{:X}", 
-                             call_num, val, self.cache_bits, new_cache);
-                }
             } else {
                 self.cache = 0;
-                
-                if call_num <= 100 {
-                    println!("[SHINE CACHE {}] New cache set to 0 (remaining_n={}, cache_bits={})", 
-                             call_num, remaining_n, self.cache_bits);
-                }
-            }
-        }
-
-        // Log final cache state for detailed comparison (first 100 calls)
-        if call_num <= 100 {
-            println!("[SHINE CACHE {}] After: cache=0x{:08X}, cache_bits={}, data_pos={}", 
-                     call_num, self.cache, self.cache_bits, self.data_position);
-            
-            // Log any unusual states
-            if self.cache_bits < 0 || self.cache_bits > 32 {
-                println!("[SHINE CACHE {}] WARNING: Unusual cache_bits value: {}", call_num, self.cache_bits);
             }
         }
 
@@ -294,16 +202,6 @@ impl Default for BitstreamWriter {
 /// This is called after a frame of audio has been quantized and coded.
 /// It will write the encoded audio to the bitstream.
 pub fn format_bitstream(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
-    use std::sync::atomic::{AtomicI32, Ordering};
-    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
-    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-    
-    println!("[SHINE DEBUG Frame {}] === Starting bitstream formatting ===", frame_num);
-    println!("[SHINE DEBUG Frame {}] Before format_bitstream: data_position={}, cache_bits={}, cache=0x{:08X}", 
-             frame_num, config.bs.data_position, config.bs.cache_bits, config.bs.cache);
-    
-    let initial_position = config.bs.data_position;
-    
     // Apply sign correction to quantized values (matches shine exactly)
     for ch in 0..config.wave.channels as usize {
         for gr in 0..config.mpeg.granules_per_frame as usize {
@@ -321,21 +219,12 @@ pub fn format_bitstream(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     encode_side_info(config)?;
     encode_main_data(config)?;
 
-    let written_bytes = config.bs.data_position - initial_position;
-    println!("[SHINE DEBUG Frame {}] After format_bitstream: data_position={}, cache_bits={}, cache=0x{:08X}", 
-             frame_num, config.bs.data_position, config.bs.cache_bits, config.bs.cache);
-    println!("[SHINE DEBUG Frame {}] written={} bytes", frame_num, written_bytes);
-
     Ok(())
 }
 
 /// Encode the main data section (matches encodeMainData exactly)
 /// (ref/shine/src/lib/l3bitstream.c:46-71)
 fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
-    use std::sync::atomic::{AtomicI32, Ordering};
-    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
-    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-    
     for gr in 0..config.mpeg.granules_per_frame as usize {
         for ch in 0..config.wave.channels as usize {
             // Extract values we need before borrowing config mutably
@@ -383,20 +272,7 @@ fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 /// Encode the side information (matches encodeSideInfo exactly)
 /// (ref/shine/src/lib/l3bitstream.c:73-120)
 fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
-    use std::sync::atomic::{AtomicI32, Ordering};
-    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
-    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
-    
     let si = &config.side_info;
-
-    println!("[SHINE DEBUG Frame {}] === Encoding side information ===", frame_num);
-    println!("[SHINE DEBUG Frame {}] Frame header: sync=0x7ff, version={}, layer={}, crc={}", 
-             frame_num, config.mpeg.version, config.mpeg.layer, if config.mpeg.crc == 0 { 1 } else { 0 });
-    println!("[SHINE DEBUG Frame {}] Frame header: bitrate_idx={}, samplerate_idx={}, padding={}", 
-             frame_num, config.mpeg.bitrate_index, config.mpeg.samplerate_index % 3, config.mpeg.padding);
-    println!("[SHINE DEBUG Frame {}] Frame header: ext={}, mode={}, mode_ext={}, copyright={}, original={}, emph={}", 
-             frame_num, config.mpeg.ext, config.mpeg.mode, config.mpeg.mode_ext, 
-             config.mpeg.copyright, config.mpeg.original, config.mpeg.emph);
 
     // Write frame header
     config.bs.put_bits(0x7ff, 11)?; // Sync word
@@ -415,23 +291,17 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 
     // Write side information
     if config.mpeg.version == 3 { // MPEG_I = 3
-        println!("[SHINE DEBUG Frame {}] Main data begin: 0 (9 bits)", frame_num);
         config.bs.put_bits(0, 9)?; // Main data begin
         if config.wave.channels == 2 {
-            println!("[SHINE DEBUG Frame {}] Private bits: {} (3 bits, stereo)", frame_num, si.private_bits);
             config.bs.put_bits(si.private_bits, 3)?;
         } else {
-            println!("[SHINE DEBUG Frame {}] Private bits: {} (5 bits, mono)", frame_num, si.private_bits);
             config.bs.put_bits(si.private_bits, 5)?;
         }
     } else {
-        println!("[SHINE DEBUG Frame {}] Main data begin: 0 (8 bits)", frame_num);
         config.bs.put_bits(0, 8)?; // Main data begin
         if config.wave.channels == 2 {
-            println!("[SHINE DEBUG Frame {}] Private bits: {} (2 bits, stereo)", frame_num, si.private_bits);
             config.bs.put_bits(si.private_bits, 2)?;
         } else {
-            println!("[SHINE DEBUG Frame {}] Private bits: {} (1 bit, mono)", frame_num, si.private_bits);
             config.bs.put_bits(si.private_bits, 1)?;
         }
     }
@@ -439,8 +309,6 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     // Write SCFSI (only for MPEG-I)
     if config.mpeg.version == 3 {
         for ch in 0..config.wave.channels as usize {
-            println!("[SHINE DEBUG Frame {}] SCFSI ch={}: [{},{},{},{}]", 
-                     frame_num, ch, si.scfsi[ch][0], si.scfsi[ch][1], si.scfsi[ch][2], si.scfsi[ch][3]);
             for scfsi_band in 0..4 {
                 config.bs.put_bits(si.scfsi[ch][scfsi_band], 1)?;
             }
@@ -451,13 +319,6 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     for gr in 0..config.mpeg.granules_per_frame as usize {
         for ch in 0..config.wave.channels as usize {
             let gi = &si.gr[gr].ch[ch].tt;
-
-            println!("[SHINE DEBUG Frame {}] gr={}, ch={}: part2_3_length={}, big_values={}, global_gain={}", 
-                     frame_num, gr, ch, gi.part2_3_length, gi.big_values, gi.global_gain);
-            println!("[SHINE DEBUG Frame {}] gr={}, ch={}: scalefac_compress={}, table_select=[{},{},{}]", 
-                     frame_num, gr, ch, gi.scalefac_compress, gi.table_select[0], gi.table_select[1], gi.table_select[2]);
-            println!("[SHINE DEBUG Frame {}] gr={}, ch={}: region0_count={}, region1_count={}", 
-                     frame_num, gr, ch, gi.region0_count, gi.region1_count);
 
             config.bs.put_bits(gi.part2_3_length, 12)?;
             config.bs.put_bits(gi.big_values, 9)?;
