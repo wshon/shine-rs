@@ -287,8 +287,8 @@ fn main() {
         eprintln!("  bitrate      - MP3 bitrate in kbps (default: 128)");
         eprintln!("");
         eprintln!("Examples:");
-        eprintln!("  {} test_input.wav test_data.json", args[0]);
-        eprintln!("  {} test_input.wav test_data.json 192", args[0]);
+        eprintln!("  {} sample-3s.wav test_data.json", args[0]);
+        eprintln!("  {} sample-3s.wav test_data.json 192", args[0]);
         process::exit(1);
     }
     

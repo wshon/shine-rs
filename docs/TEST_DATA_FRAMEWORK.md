@@ -22,7 +22,7 @@
 cargo run --bin collect_test_data -- <input.wav> <output.json> [bitrate]
 
 # 示例
-cargo run --bin collect_test_data -- testing/fixtures/audio/test_input.wav testing/fixtures/data/test_data.json 128
+cargo run --bin collect_test_data -- testing/fixtures/audio/sample-3s.wav testing/fixtures/data/test_data.json 128
 cargo run --bin collect_test_data -- testing/fixtures/audio/sample-3s.wav testing/fixtures/data/sample_3s_test_data.json 192
 ```
 
@@ -52,11 +52,11 @@ cargo run --bin validate_test_data -- testing/fixtures/data/sample_3s_test_data.
 ```json
 {
   "name": "test_case_test_input_44100hz_2ch_128kbps",
-  "input_file": "testing/fixtures/audio/test_input.wav",
+  "input_file": "testing/fixtures/audio/sample-3s.wav",
   "expected_output_size": 1252,
   "expected_hash": "861b8689d7eee5d408feec61cfa6ce6932168e35e6f86fa92bc5f3c77eb37c32",
   "created_at": "2026-01-25T03:20:58.540642300+00:00",
-  "description": "Test case for test_input.wav at 128 kbps"
+  "description": "Test case for sample-3s.wav at 128 kbps"
 }
 ```
 
