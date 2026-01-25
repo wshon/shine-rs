@@ -1,0 +1,54 @@
+# Rust
+/target/
+**/target/
+**/*.rs.bk
+*.pdb
+Cargo.lock
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dll
+*.exe
+
+# Audio test files (keep test audio files but ignore generated ones)
+/output/
+/test_output/
+*.mp3
+*.wav
+!testing/fixtures/audio/*.mp3
+!testing/fixtures/audio/*.wav
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Documentation build
+/doc/
+
+# Benchmark results
+/benches/results/
+
+# Coverage reports
+/coverage/
+*.profraw

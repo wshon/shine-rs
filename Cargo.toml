@@ -1,0 +1,55 @@
+[package]
+name = "rust-mp3-encoder"
+version = "0.1.0"
+edition = "2021"
+authors = ["MP3 Encoder Team"]
+description = "A pure Rust MP3 encoder based on the shine library"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/example/rust-mp3-encoder"
+keywords = ["mp3", "audio", "encoder", "codec"]
+categories = ["multimedia::audio", "encoding"]
+
+[dependencies]
+thiserror = "1.0"
+lazy_static = "1.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+sha2 = "0.10"
+log = "0.4"
+
+[dev-dependencies]
+proptest = "1.4"
+criterion = { version = "0.5", features = ["html_reports"] }
+env_logger = "0.10"
+
+[[bench]]
+name = "encoder_benchmark"
+harness = false
+
+[[test]]
+name = "integration_full_pipeline_validation"
+path = "testing/integration/integration_full_pipeline_validation.rs"
+
+[[test]]
+name = "integration_scfsi_consistency"
+path = "testing/integration/integration_scfsi_consistency.rs"
+
+[[test]]
+name = "integration_data_driven_validation"
+path = "testing/integration/integration_data_driven_validation.rs"
+
+[profile.dev]
+debug = true
+overflow-checks = true
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1
