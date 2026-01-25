@@ -47,6 +47,14 @@ impl BitstreamWriter {
     /// * `val` - value to write into the buffer
     /// * `n` - number of bits of val
     pub fn put_bits(&mut self, val: u32, n: i32) -> EncodingResult<()> {
+        use std::sync::atomic::{AtomicI32, Ordering};
+        static CALL_COUNT: AtomicI32 = AtomicI32::new(0);
+        let call_num = CALL_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+        
+        // Log all put_bits calls for detailed comparison
+        println!("[RUST BITSTREAM {}] put_bits: val=0x{:X}, N={}, before: cache=0x{:08X}, bits={}, pos={}", 
+                 call_num, val, n, self.cache, self.cache_bits, self.data_position);
+        
         #[cfg(debug_assertions)]
         {
             if n > 32 {
@@ -98,6 +106,11 @@ impl BitstreamWriter {
             } else {
                 self.cache = 0;
             }
+        }
+
+        if call_num <= 200 {
+            println!("[RUST BITSTREAM {}] put_bits: after: cache=0x{:08X}, bits={}, pos={}", 
+                     call_num, self.cache, self.cache_bits, self.data_position);
         }
 
         Ok(())
@@ -228,6 +241,12 @@ pub fn format_bitstream(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 /// Encode the main data section (matches encodeMainData exactly)
 /// (ref/shine/src/lib/l3bitstream.c:46-71)
 fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
+    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    
+    println!("[RUST SCALEFAC Frame {}] === Encoding main data ===", frame_num);
+    
     for gr in 0..config.mpeg.granules_per_frame as usize {
         for ch in 0..config.wave.channels as usize {
             // Extract values we need before borrowing config mutably
@@ -236,25 +255,40 @@ fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
             let slen1 = SHINE_SLEN1_TAB[scalefac_compress as usize];
             let slen2 = SHINE_SLEN2_TAB[scalefac_compress as usize];
             
+            println!("[RUST SCALEFAC Frame {}] gr={}, ch={}: scalefac_compress={}, slen1={}, slen2={}", 
+                     frame_num, gr, ch, scalefac_compress, slen1, slen2);
+            
             // Write scale factors
             if gr == 0 || scfsi[0] == 0 {
                 for sfb in 0..6 {
-                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen1 as i32)?;
+                    let sf_val = config.scalefactor.l[gr][ch][sfb];
+                    println!("[RUST SCALEFAC Frame {}] gr={}, ch={}, sfb={}: scalefac={} (slen1={})", 
+                             frame_num, gr, ch, sfb, sf_val, slen1);
+                    config.bs.put_bits(sf_val as u32, slen1 as i32)?;
                 }
             }
             if gr == 0 || scfsi[1] == 0 {
                 for sfb in 6..11 {
-                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen1 as i32)?;
+                    let sf_val = config.scalefactor.l[gr][ch][sfb];
+                    println!("[RUST SCALEFAC Frame {}] gr={}, ch={}, sfb={}: scalefac={} (slen1={})", 
+                             frame_num, gr, ch, sfb, sf_val, slen1);
+                    config.bs.put_bits(sf_val as u32, slen1 as i32)?;
                 }
             }
             if gr == 0 || scfsi[2] == 0 {
                 for sfb in 11..16 {
-                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen2 as i32)?;
+                    let sf_val = config.scalefactor.l[gr][ch][sfb];
+                    println!("[RUST SCALEFAC Frame {}] gr={}, ch={}, sfb={}: scalefac={} (slen2={})", 
+                             frame_num, gr, ch, sfb, sf_val, slen2);
+                    config.bs.put_bits(sf_val as u32, slen2 as i32)?;
                 }
             }
             if gr == 0 || scfsi[3] == 0 {
                 for sfb in 16..21 {
-                    config.bs.put_bits(config.scalefactor.l[gr][ch][sfb] as u32, slen2 as i32)?;
+                    let sf_val = config.scalefactor.l[gr][ch][sfb];
+                    println!("[RUST SCALEFAC Frame {}] gr={}, ch={}, sfb={}: scalefac={} (slen2={})", 
+                             frame_num, gr, ch, sfb, sf_val, slen2);
+                    config.bs.put_bits(sf_val as u32, slen2 as i32)?;
                 }
             }
 
@@ -372,6 +406,14 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 /// Huffman encode the quantized values (matches Huffmancodebits exactly)
 /// (ref/shine/src/lib/l3bitstream.c:123-165)
 fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32], gi: &GrInfo) -> EncodingResult<()> {
+    use std::sync::atomic::{AtomicI32, Ordering};
+    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
+    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    
+    println!("[RUST HUFFMAN Frame {}] === Starting Huffman encoding ===", frame_num);
+    println!("[RUST HUFFMAN Frame {}] big_values={}, count1={}, part2_3_length={}", 
+             frame_num, gi.big_values, gi.count1, gi.part2_3_length);
+    
     let scalefac = &SHINE_SCALE_FACT_BAND_INDEX[config.mpeg.samplerate_index as usize];
     let bits_start = config.bs.get_bits_count();
 
@@ -383,7 +425,11 @@ fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32], gi: &GrInfo) ->
     let scalefac_index = scalefac_index + gi.region1_count + 1;
     let region2_start = scalefac[scalefac_index as usize] as usize;
 
+    println!("[RUST HUFFMAN Frame {}] region1_start={}, region2_start={}", 
+             frame_num, region1_start, region2_start);
+
     let mut i = 0;
+    let mut pair_count = 0;
     while i < bigvalues {
         // Get table pointer
         let idx = if i >= region1_start { 1 } else { 0 } + if i >= region2_start { 1 } else { 0 };
@@ -393,23 +439,41 @@ fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32], gi: &GrInfo) ->
         if table_index != 0 {
             let x = ix[i];
             let y = ix[i + 1];
+            
+            if pair_count < 10 { // Log first 10 pairs
+                println!("[RUST HUFFMAN Frame {}] bigval pair {}: x={}, y={}, table={}", 
+                         frame_num, pair_count, x, y, table_index);
+            }
+            
             huffman_code(&mut config.bs, table_index as usize, x, y)?;
         }
         i += 2;
+        pair_count += 1;
     }
 
     // 2: Write count1 area
     let h = &SHINE_HUFFMAN_TABLE[(gi.count1table_select + 32) as usize];
     let count1_end = bigvalues + ((gi.count1 << 2) as usize);
     
+    println!("[RUST HUFFMAN Frame {}] count1_end={}, count1table_select={}", 
+             frame_num, count1_end, gi.count1table_select);
+    
     let mut i = bigvalues;
+    let mut quad_count = 0;
     while i < count1_end {
         let v = ix[i];
         let w = ix[i + 1];
         let x = ix[i + 2];
         let y = ix[i + 3];
+        
+        if quad_count < 5 { // Log first 5 quads
+            println!("[RUST HUFFMAN Frame {}] count1 quad {}: v={}, w={}, x={}, y={}", 
+                     frame_num, quad_count, v, w, x, y);
+        }
+        
         huffman_coder_count1(&mut config.bs, h, v, w, x, y)?;
         i += 4;
+        quad_count += 1;
     }
 
     // 3: Pad with stuffing bits if necessary
@@ -417,9 +481,15 @@ fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32], gi: &GrInfo) ->
     let bits_available = gi.part2_3_length as i32 - gi.part2_length as i32;
     let stuffing_bits = bits_available - bits_used;
 
+    println!("[RUST HUFFMAN Frame {}] bits_used={}, bits_available={}, stuffing_bits={}", 
+             frame_num, bits_used, bits_available, stuffing_bits);
+
     if stuffing_bits > 0 {
         let stuffing_words = stuffing_bits / 32;
         let remaining_bits = stuffing_bits % 32;
+
+        println!("[RUST HUFFMAN Frame {}] stuffing: words={}, remaining={}", 
+                 frame_num, stuffing_words, remaining_bits);
 
         // Due to the nature of the Huffman code tables, we will pad with ones
         for _ in 0..stuffing_words {
