@@ -4,9 +4,7 @@
 //! in shine's bitstream.c and l3bitstream.c. It provides functions to write
 //! MP3 frame headers, side information, and main data to the output bitstream.
 
-use crate::error::EncodingResult;
-#[cfg(debug_assertions)]
-use crate::error::EncodingError;
+use crate::error::{EncodingResult, EncodingError};
 use crate::huffman::{HuffCodeTab, SHINE_HUFFMAN_TABLE};
 use crate::types::{ShineGlobalConfig, GrInfo, GRANULE_SIZE};
 use crate::tables::{SHINE_SLEN1_TAB, SHINE_SLEN2_TAB, SHINE_SCALE_FACT_BAND_INDEX};

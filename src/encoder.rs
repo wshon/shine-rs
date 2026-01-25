@@ -211,12 +211,6 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
     let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
     
-    // Stop after 6 frames for debugging
-    if frame_num > 6 {
-        println!("[RUST] Stopping after 6 frames for comparison");
-        std::process::exit(0);
-    }
-    
     // Dynamic padding calculation (matches shine exactly)
     if config.mpeg.frac_slots_per_frame != 0.0 {
         config.mpeg.padding = if config.mpeg.slot_lag <= (config.mpeg.frac_slots_per_frame - 1.0) { 1 } else { 0 };
@@ -242,6 +236,13 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     // Print key parameters for verification
     println!("[RUST F{}] pad={}, bits={}, written={}, slot_lag={:.6}", 
              frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, written, config.mpeg.slot_lag);
+
+    // Stop after 6 frames for debugging (after encoding is complete)
+    if frame_num >= 6 {
+        println!("[RUST] Stopping after 6 frames for comparison");
+        // Return a special error to indicate we should stop encoding but still write the file
+        return Err(EncodingError::StopAfterFrames);
+    }
 
     Ok((&config.bs.data[..written], written))
 }

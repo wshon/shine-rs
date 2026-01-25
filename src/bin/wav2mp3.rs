@@ -282,32 +282,40 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             let pcm_start = frame_count * frame_size;
             let pcm_end = pcm_start + frame_size - 1;
             
-            let (frame_data, written) = shine_encode_buffer_interleaved(&mut encoder, data_ptr)?;
-            
-            if written > 0 {
-                if args.verbose {
-                    println!("[Frame {}] PCM {}-{}, MP3 {} bytes @ 0x{:04X}-0x{:04X}",
-                             frame_count + 1,
-                             pcm_start,
-                             pcm_end,
-                             written,
-                             mp3_offset,
-                             mp3_offset + written - 1);
-                }
-                
-                mp3_data.extend_from_slice(&frame_data[..written]);
-                mp3_offset += written;
-            } else if args.verbose {
-                println!("[Frame {}] PCM {}-{}, MP3 buffered",
-                         frame_count + 1,
-                         pcm_start,
-                         pcm_end);
-            }
-            
-            frame_count += 1;
-            
-            if !args.verbose && frame_count % 100 == 0 {
-                println!("Encoded {} / {} frames", frame_count, total_frames);
+            match shine_encode_buffer_interleaved(&mut encoder, data_ptr) {
+                Ok((frame_data, written)) => {
+                    if written > 0 {
+                        if args.verbose {
+                            println!("[Frame {}] PCM {}-{}, MP3 {} bytes @ 0x{:04X}-0x{:04X}",
+                                     frame_count + 1,
+                                     pcm_start,
+                                     pcm_end,
+                                     written,
+                                     mp3_offset,
+                                     mp3_offset + written - 1);
+                        }
+                        
+                        mp3_data.extend_from_slice(&frame_data[..written]);
+                        mp3_offset += written;
+                    } else if args.verbose {
+                        println!("[Frame {}] PCM {}-{}, MP3 buffered",
+                                 frame_count + 1,
+                                 pcm_start,
+                                 pcm_end);
+                    }
+                    
+                    frame_count += 1;
+                    
+                    if !args.verbose && frame_count % 100 == 0 {
+                        println!("Encoded {} / {} frames", frame_count, total_frames);
+                    }
+                },
+                Err(rust_mp3_encoder::error::EncodingError::StopAfterFrames) => {
+                    // This is expected when we stop after a certain number of frames
+                    println!("Stopped encoding after {} frames as requested", frame_count);
+                    break;
+                },
+                Err(e) => return Err(e.into()),
             }
         }
     }
