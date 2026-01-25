@@ -45,6 +45,14 @@ criterion = { version = "0.5", features = ["html_reports"] }
 name = "encoder_benchmark"
 harness = false
 
+[[test]]
+name = "integration_full_pipeline_validation"
+path = "testing/integration/integration_full_pipeline_validation.rs"
+
+[[test]]
+name = "integration_scfsi_consistency"
+path = "testing/integration/integration_scfsi_consistency.rs"
+
 [profile.dev]
 debug = true
 overflow-checks = true

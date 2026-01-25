@@ -22,8 +22,8 @@
 cargo run --bin collect_test_data -- <input.wav> <output.json> [bitrate]
 
 # 示例
-cargo run --bin collect_test_data -- test_input.wav test_data.json 128
-cargo run --bin collect_test_data -- tests/input/sample-3s.wav sample_3s_test_data.json 192
+cargo run --bin collect_test_data -- testing/test_inputs/test_input.wav testing/test_data/test_data.json 128
+cargo run --bin collect_test_data -- testing/test_inputs/sample-3s.wav testing/test_data/sample_3s_test_data.json 192
 ```
 
 **参数说明：**
@@ -40,8 +40,8 @@ cargo run --bin collect_test_data -- tests/input/sample-3s.wav sample_3s_test_da
 cargo run --bin validate_test_data -- <test_data.json>
 
 # 示例
-cargo run --bin validate_test_data -- test_data.json
-cargo run --bin validate_test_data -- sample_3s_test_data.json
+cargo run --bin validate_test_data -- testing/test_data/test_data.json
+cargo run --bin validate_test_data -- testing/test_data/sample_3s_test_data.json
 ```
 
 ## JSON数据格式
@@ -52,7 +52,7 @@ cargo run --bin validate_test_data -- sample_3s_test_data.json
 ```json
 {
   "name": "test_case_test_input_44100hz_2ch_128kbps",
-  "input_file": "test_input.wav",
+  "input_file": "testing/test_inputs/test_input.wav",
   "expected_output_size": 1252,
   "expected_hash": "861b8689d7eee5d408feec61cfa6ce6932168e35e6f86fa92bc5f3c77eb37c32",
   "created_at": "2026-01-25T03:20:58.540642300+00:00",
@@ -162,8 +162,8 @@ cargo run --bin validate_test_data -- platform_a_test.json
 ## 扩展测试用例
 
 ### 添加新的音频文件
-1. 将WAV文件放入 `tests/input/` 目录
-2. 使用 `collect_test_data` 生成测试数据
+1. 将WAV文件放入 `testing/test_inputs/` 目录
+2. 使用 `collect_test_data` 生成测试数据到 `testing/test_data/` 目录
 3. 手动更新JSON中的 `expected_output_size` 和 `expected_hash`
 4. 使用 `validate_test_data` 验证
 
@@ -244,7 +244,7 @@ cargo run --release --bin wav2mp3 -- input.wav output.mp3
 
 项目包含以下预定义测试用例：
 
-1. **test_data.json** - 基础测试用例（44.1kHz, 立体声, 128kbps）
-2. **sample_3s_test_data.json** - 长音频测试用例（3秒音频）
+1. **test_data/test_data.json** - 基础测试用例（44.1kHz, 立体声, 128kbps）
+2. **test_data/sample_3s_test_data.json** - 长音频测试用例（3秒音频）
 
 这些测试用例覆盖了常见的编码场景，可以作为回归测试的基础。
