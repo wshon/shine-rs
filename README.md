@@ -137,7 +137,7 @@ cargo run --example basic_encoding
 
 ## 许可证
 
-本项目采用 MIT 或 Apache-2.0 双重许可证。详见 [LICENSE-MIT](LICENSE-MIT) 和 [LICENSE-APACHE](LICENSE-APACHE) 文件。
+本项目采用 GNU Lesser General Public License v2.1 (LGPL-2.1) 或更高版本发布。详见 [LICENSE](LICENSE) 文件。
 
 ## 贡献
 
