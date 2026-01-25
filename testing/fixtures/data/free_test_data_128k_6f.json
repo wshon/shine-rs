@@ -1,11 +1,11 @@
 {
   "metadata": {
-    "name": "test_case_sample-3s_44100hz_2ch_128kbps",
-    "input_file": "tests\\input\\sample-3s.wav",
+    "name": "test_case_Free_Test_Data_500KB_WAV_44100hz_2ch_128kbps",
+    "input_file": "testing/fixtures/audio/Free_Test_Data_500KB_WAV.wav",
     "expected_output_size": 0,
     "expected_hash": "",
-    "created_at": "2026-01-25T03:21:57.061257600+00:00",
-    "description": "Test case for tests\\input\\sample-3s.wav at 128 kbps"
+    "created_at": "2026-01-25T05:01:11.646530400+00:00",
+    "description": "Test case for testing/fixtures/audio/Free_Test_Data_500KB_WAV.wav at 128 kbps"
   },
   "config": {
     "sample_rate": 44100,
@@ -19,20 +19,20 @@
       "frame_number": 1,
       "mdct_coefficients": {
         "coefficients": [
-          808302,
-          3145162,
-          6527797
+          -384292,
+          -736927,
+          -815897
         ],
         "l3_sb_sample": [
-          -35329013
+          8936736
         ]
       },
       "quantization": {
-        "xrmax": 174601576,
+        "xrmax": 24028904,
         "max_bits": 764,
-        "part2_3_length": 763,
-        "quantizer_step_size": -40,
-        "global_gain": 170
+        "part2_3_length": 704,
+        "quantizer_step_size": -37,
+        "global_gain": 173
       },
       "bitstream": {
         "padding": 1,
@@ -45,18 +45,18 @@
       "frame_number": 2,
       "mdct_coefficients": {
         "coefficients": [
-          -17369047,
-          13912238,
-          31910201
+          -2981398,
+          4785555,
+          3650199
         ],
         "l3_sb_sample": [
-          -35918628
+          10504397
         ]
       },
       "quantization": {
-        "xrmax": 761934185,
+        "xrmax": 111586881,
         "max_bits": 764,
-        "part2_3_length": 714,
+        "part2_3_length": 681,
         "quantizer_step_size": -35,
         "global_gain": 175
       },
@@ -71,20 +71,20 @@
       "frame_number": 3,
       "mdct_coefficients": {
         "coefficients": [
-          -20877153,
-          -19736998,
-          -24380058
+          4630593,
+          -8686421,
+          -8205674
         ],
         "l3_sb_sample": [
-          -58580032
+          -17915249
         ]
       },
       "quantization": {
-        "xrmax": 398722265,
+        "xrmax": 87438275,
         "max_bits": 764,
-        "part2_3_length": 684,
-        "quantizer_step_size": -37,
-        "global_gain": 173
+        "part2_3_length": 694,
+        "quantizer_step_size": -38,
+        "global_gain": 172
       },
       "bitstream": {
         "padding": 1,
@@ -97,20 +97,20 @@
       "frame_number": 4,
       "mdct_coefficients": {
         "coefficients": [
-          10486152,
-          -34650535,
-          58506478
+          1502311,
+          1054052,
+          -9313681
         ],
         "l3_sb_sample": [
-          -129372343
+          11007880
         ]
       },
       "quantization": {
-        "xrmax": 223035175,
+        "xrmax": 58204940,
         "max_bits": 764,
-        "part2_3_length": 762,
-        "quantizer_step_size": -40,
-        "global_gain": 170
+        "part2_3_length": 726,
+        "quantizer_step_size": -42,
+        "global_gain": 168
       },
       "bitstream": {
         "padding": 1,
@@ -123,20 +123,20 @@
       "frame_number": 5,
       "mdct_coefficients": {
         "coefficients": [
-          16112036,
-          -8241122,
-          -22467073
+          -4690359,
+          10836199,
+          -5484704
         ],
         "l3_sb_sample": [
-          -4562230
+          -8615995
         ]
       },
       "quantization": {
-        "xrmax": 319186150,
+        "xrmax": 54884886,
         "max_bits": 764,
-        "part2_3_length": 676,
-        "quantizer_step_size": -40,
-        "global_gain": 170
+        "part2_3_length": 734,
+        "quantizer_step_size": -44,
+        "global_gain": 166
       },
       "bitstream": {
         "padding": 1,
@@ -149,20 +149,20 @@
       "frame_number": 6,
       "mdct_coefficients": {
         "coefficients": [
-          20428273,
-          -17120832,
-          29649731
+          3426250,
+          13106638,
+          -434664
         ],
         "l3_sb_sample": [
-          19585887
+          -9943270
         ]
       },
       "quantization": {
-        "xrmax": 198391783,
+        "xrmax": 91685698,
         "max_bits": 764,
-        "part2_3_length": 711,
-        "quantizer_step_size": -41,
-        "global_gain": 169
+        "part2_3_length": 700,
+        "quantizer_step_size": -46,
+        "global_gain": 164
       },
       "bitstream": {
         "padding": 1,
