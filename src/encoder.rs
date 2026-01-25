@@ -211,29 +211,20 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
     let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
     
-    // Stop after 3 frames for debugging
-    if frame_num > 3 {
-        println!("[RUST DEBUG] Stopping after 3 frames for comparison");
+    // Stop after 6 frames for debugging
+    if frame_num > 6 {
+        println!("[RUST] Stopping after 6 frames for comparison");
         std::process::exit(0);
     }
     
     // Dynamic padding calculation (matches shine exactly)
     if config.mpeg.frac_slots_per_frame != 0.0 {
-        println!("[RUST DEBUG Frame {}] Before: slot_lag={:.6}, frac_slots={:.6}", 
-                 frame_num, config.mpeg.slot_lag, config.mpeg.frac_slots_per_frame);
         config.mpeg.padding = if config.mpeg.slot_lag <= (config.mpeg.frac_slots_per_frame - 1.0) { 1 } else { 0 };
-        println!("[RUST DEBUG Frame {}] Padding decision: {:.6} <= {:.6} = {}", 
-                 frame_num, config.mpeg.slot_lag, config.mpeg.frac_slots_per_frame - 1.0, config.mpeg.padding);
         config.mpeg.slot_lag += config.mpeg.padding as f64 - config.mpeg.frac_slots_per_frame;
-        println!("[RUST DEBUG Frame {}] After: slot_lag={:.6} (added {:.6})", 
-                 frame_num, config.mpeg.slot_lag, config.mpeg.padding as f64 - config.mpeg.frac_slots_per_frame);
     }
 
     config.mpeg.bits_per_frame = 8 * (config.mpeg.whole_slots_per_frame + config.mpeg.padding);
     config.mean_bits = (config.mpeg.bits_per_frame - config.sideinfo_len) / config.mpeg.granules_per_frame;
-
-    println!("[RUST DEBUG Frame {}] padding={}, bits_per_frame={}, slot_lag={:.6}", 
-             frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, config.mpeg.slot_lag);
 
     // Apply mdct to the polyphase output
     crate::mdct::shine_mdct_sub(config, stride);
@@ -248,7 +239,9 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     let written = config.bs.data_position as usize;
     config.bs.data_position = 0;
 
-    println!("[RUST DEBUG Frame {}] written={} bytes", frame_num, written);
+    // Print key parameters for verification
+    println!("[RUST F{}] pad={}, bits={}, written={}, slot_lag={:.6}", 
+             frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, written, config.mpeg.slot_lag);
 
     Ok((&config.bs.data[..written], written))
 }

@@ -114,8 +114,7 @@ pub fn shine_mdct_initialise(config: &mut ShineGlobalConfig) {
 /// 3. Aliasing reduction butterfly operations
 pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
     use std::sync::atomic::{AtomicI32, Ordering};
-    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
-    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    
     
     let mut mdct_in = [0i32; 36];
     
@@ -127,6 +126,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
         for gr in 0..config.mpeg.granules_per_frame {
             let gr_idx = gr as usize;
             
+            
             // Polyphase filtering (matches shine implementation exactly)
             // for (k = 0; k < 18; k += 2)
             for k in (0..18).step_by(2) {
@@ -136,6 +136,9 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     std::slice::from_raw_parts(config.buffer[ch_idx], GRANULE_SIZE)
                 };
                 let mut buffer_ref = buffer_slice;
+                
+                // Debug: Print buffer input for first call
+                }
                 
                 // First subband filtering call - directly write to l3_sb_sample
                 // shine_window_filter_subband(&config->buffer[ch], &config->l3_sb_sample[ch][gr + 1][k][0], ch, config, stride);
@@ -147,6 +150,12 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     stride as usize
                 );
                 
+                // Debug: Print first few subband samples for comparison
+                }
+                
+                // Debug: Print buffer input for second call
+                }
+                
                 // Second subband filtering call - directly write to l3_sb_sample
                 // CRITICAL: Use the updated buffer_ref from the first call
                 // shine_window_filter_subband(&config->buffer[ch], &config->l3_sb_sample[ch][gr + 1][k + 1][0], ch, config, stride);
@@ -157,6 +166,9 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     &mut config.subband,
                     stride as usize
                 );
+                
+                // Debug: Print first few subband samples for comparison
+                }
                 
                 // Update the main buffer pointer to reflect the consumed samples
                 // This is critical - we need to advance the buffer pointer for the next k iteration
@@ -179,7 +191,26 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     mdct_in[k + 18] = config.l3_sb_sample[ch_idx][gr_idx + 1][k][band];
                 }
                 
-
+                // Debug: Print MDCT input for first band of first frame
+                    
+                    // Debug: Print the source arrays
+                             [config.l3_sb_sample[ch_idx][gr_idx][0][band],
+                              config.l3_sb_sample[ch_idx][gr_idx][1][band],
+                              config.l3_sb_sample[ch_idx][gr_idx][2][band],
+                              config.l3_sb_sample[ch_idx][gr_idx][3][band],
+                              config.l3_sb_sample[ch_idx][gr_idx][4][band],
+                              config.l3_sb_sample[ch_idx][gr_idx][5][band],
+                              config.l3_sb_sample[ch_idx][gr_idx][6][band],
+                              config.l3_sb_sample[ch_idx][gr_idx][7][band]]);
+                             [config.l3_sb_sample[ch_idx][gr_idx + 1][0][band],
+                              config.l3_sb_sample[ch_idx][gr_idx + 1][1][band],
+                              config.l3_sb_sample[ch_idx][gr_idx + 1][2][band],
+                              config.l3_sb_sample[ch_idx][gr_idx + 1][3][band],
+                              config.l3_sb_sample[ch_idx][gr_idx + 1][4][band],
+                              config.l3_sb_sample[ch_idx][gr_idx + 1][5][band],
+                              config.l3_sb_sample[ch_idx][gr_idx + 1][6][band],
+                              config.l3_sb_sample[ch_idx][gr_idx + 1][7][band]]);
+                }
                 
                 // Calculation of the MDCT
                 // In the case of long blocks (block_type 0,1,3) there are
@@ -214,10 +245,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     // This means mdct_freq[ch][gr][band*18 + k]
                     config.mdct_freq[ch_idx][gr_idx][band * 18 + k] = vm;
                     
-                    // Print key MDCT coefficients for verification
-                    if frame_num <= 6 && ch == 0 && gr == 0 && band == 0 && k >= 15 {
-                        println!("[RUST F{}] MDCT[{}][{}][{}][{}] = {}", 
-                                 frame_num, ch, gr, band, k, vm);
+                    // Debug: Print first few MDCT coefficients for first band
                     }
                 }
                 
@@ -287,10 +315,15 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
             }
         }
         
-        // Debug: Print saved data for verification
-        if frame_num <= 6 && ch == 0 {
-            println!("[RUST F{}] Saved l3_sb_sample[{}][0][0][0] = {}", 
-                     frame_num, ch, config.l3_sb_sample[ch_idx][0][0][0]);
+        // Debug: Print saved data for first few k values and band 0
+                     [config.l3_sb_sample[ch_idx][0][0][0],
+                      config.l3_sb_sample[ch_idx][0][1][0],
+                      config.l3_sb_sample[ch_idx][0][2][0],
+                      config.l3_sb_sample[ch_idx][0][3][0],
+                      config.l3_sb_sample[ch_idx][0][4][0],
+                      config.l3_sb_sample[ch_idx][0][5][0],
+                      config.l3_sb_sample[ch_idx][0][6][0],
+                      config.l3_sb_sample[ch_idx][0][7][0]]);
         }
     }
 }

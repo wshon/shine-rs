@@ -108,12 +108,6 @@ pub fn shine_window_filter_subband(
         if ptr_offset < buffer.len() {
             subband.x[ch][i + subband.off[ch] as usize] = 
                 (buffer[ptr_offset] as i32) << 16;
-            
-            // Debug: Print first few samples being read
-            if ch == 0 && i >= 28 {
-                println!("[SUBBAND DEBUG] ch={}, i={}, ptr_offset={}, sample={}", 
-                         ch, i, ptr_offset, buffer[ptr_offset]);
-            }
         }
         ptr_offset += stride;
     }
