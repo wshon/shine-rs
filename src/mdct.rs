@@ -113,10 +113,8 @@ pub fn shine_mdct_initialise(config: &mut ShineGlobalConfig) {
 /// 2. MDCT transformation of subband samples to frequency domain
 /// 3. Aliasing reduction butterfly operations
 pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
     let frame_num = crate::get_current_frame_number();
-    #[cfg(not(debug_assertions))]
-    let _frame_num = crate::get_current_frame_number();
     
     let mut mdct_in = [0i32; 36];
     
@@ -216,11 +214,19 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     config.mdct_freq[ch_idx][gr_idx][band * 18 + k] = vm;
                     
                     // Print key MDCT coefficients for verification (debug mode only)
-                    #[cfg(debug_assertions)]
-                    if frame_num <= 6 && ch == 0 && gr == 0 && band == 0 && k >= 15 {
-                        log::debug!("[Frame {}] MDCT[{}][{}][{}][{}] = {}", 
-                                 frame_num, ch, gr, band, k, vm);
+                    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+                    {
+                        use log::debug;
+                        let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
+                            .unwrap_or_else(|_| "6".to_string())
+                            .parse::<i32>()
+                            .unwrap_or(6);
+                        if frame_num <= debug_frames && ch == 0 && gr == 0 && band == 0 && k >= 15 {
+                            debug!("[Frame {}] MDCT[{}][{}][{}][{}] = {}", 
+                                     frame_num, ch, gr, band, k, vm);
+                        }
                         // Record MDCT coefficient for test collection
+                        #[cfg(feature = "diagnostics")]
                         crate::test_data::record_mdct_coeff(k, vm);
                     }
                 }
@@ -292,11 +298,19 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
         }
         
         // Debug: Print saved data for verification (debug mode only)
-        #[cfg(debug_assertions)]
-        if frame_num <= 6 && ch == 0 {
-            log::debug!("[Frame {}] Saved l3_sb_sample[{}][0][0][0] = {}", 
-                     frame_num, ch, config.l3_sb_sample[ch_idx][0][0][0]);
+        #[cfg(any(debug_assertions, feature = "diagnostics"))]
+        {
+            use log::debug;
+            let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
+                .unwrap_or_else(|_| "6".to_string())
+                .parse::<i32>()
+                .unwrap_or(6);
+            if frame_num <= debug_frames && ch == 0 {
+                debug!("[Frame {}] Saved l3_sb_sample[{}][0][0][0] = {}", 
+                         frame_num, ch, config.l3_sb_sample[ch_idx][0][0][0]);
+            }
             // Record l3_sb_sample for test collection
+            #[cfg(feature = "diagnostics")]
             crate::test_data::record_sb_sample(ch as usize, config.l3_sb_sample[ch_idx][0][0][0]);
         }
     }

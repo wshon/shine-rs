@@ -2,10 +2,10 @@
 name = "collect_test_data"
 version = "0.1.0"
 edition = "2021"
-description = "Test data collection tool for rust-mp3-encoder"
+description = "Test data collection tool for shine-rs"
 
 [dependencies]
-rust-mp3-encoder = { path = "../.." }
+shine-rs = { path = "../.." }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }

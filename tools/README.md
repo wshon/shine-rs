@@ -1,11 +1,11 @@
 # MP3 Encoder Tools
 
-This directory contains various command-line tools for the rust-mp3-encoder project.
+This directory contains various command-line tools for the shine-rs project.
 
 ## Available Tools
 
 ### wav2mp3
-WAV to MP3 converter using the rust-mp3-encoder library.
+WAV to MP3 converter using the shine-rs library.
 
 ```bash
 cd wav2mp3

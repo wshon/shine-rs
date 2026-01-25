@@ -65,8 +65,8 @@ fn test_scfsi_consistency_with_shine() {
 /// Test SCFSI calculation for different MPEG versions
 #[test]
 fn test_scfsi_version_check() {
-    use rust_mp3_encoder::types::ShineGlobalConfig;
-    use rust_mp3_encoder::quantization::shine_iteration_loop;
+    use shine_rs::types::ShineGlobalConfig;
+    use shine_rs::quantization::shine_iteration_loop;
     
     // This test ensures that SCFSI calculation is only performed for MPEG-I (version 3)
     let mut config = ShineGlobalConfig::default();

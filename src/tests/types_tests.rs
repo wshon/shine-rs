@@ -41,10 +41,10 @@ mod tests {
         // Verify that structures have reasonable sizes
         // These tests ensure we don't accidentally create oversized structures
         
-        println!("GrInfo size: {}", mem::size_of::<GrInfo>());
-        println!("ShineSideInfo size: {}", mem::size_of::<ShineSideInfo>());
-        println!("L3Loop size: {}", mem::size_of::<L3Loop>());
-        println!("ShineGlobalConfig size: {}", mem::size_of::<ShineGlobalConfig>());
+        log::debug!("GrInfo size: {}", mem::size_of::<GrInfo>());
+        log::debug!("ShineSideInfo size: {}", mem::size_of::<ShineSideInfo>());
+        log::debug!("L3Loop size: {}", mem::size_of::<L3Loop>());
+        log::debug!("ShineGlobalConfig size: {}", mem::size_of::<ShineGlobalConfig>());
         
         // Basic sanity checks - structures shouldn't be empty
         assert!(mem::size_of::<GrInfo>() > 0, "GrInfo should have non-zero size");

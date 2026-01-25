@@ -39,7 +39,7 @@ rust-mp3-encoder = "0.1.0"
 ### 基本使用
 
 ```rust
-use rust_mp3_encoder::{Mp3Encoder, Config, WaveConfig, MpegConfig, Channels, StereoMode};
+use shine_rs::{Mp3Encoder, Config, WaveConfig, MpegConfig, Channels, StereoMode};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 创建编码器配置

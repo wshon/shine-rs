@@ -3,8 +3,8 @@
 //! This tool loads test data from JSON files and validates the encoding
 //! implementation against the expected values.
 
-use rust_mp3_encoder::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
-use rust_mp3_encoder::test_data::{TestDataCollector, TestCaseData};
+use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
+use shine_rs::test_data::{TestDataCollector, TestCaseData};
 use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -335,7 +335,7 @@ fn validate_test_data(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 },
                 #[cfg(debug_assertions)]
-                Err(rust_mp3_encoder::error::EncodingError::StopAfterFrames) => {
+                Err(shine_rs::error::EncodingError::StopAfterFrames) => {
                     println!("Stopped encoding after {} frames", frame_count);
                     break;
                 },

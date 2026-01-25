@@ -3,8 +3,8 @@
 //! This tool encodes an audio file and collects key encoding parameters
 //! for the first 6 frames, saving them to a JSON file for later validation.
 
-use rust_mp3_encoder::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
-use rust_mp3_encoder::test_data::{TestDataCollector, TestMetadata, EncodingConfig};
+use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
+use shine_rs::test_data::{TestDataCollector, TestMetadata, EncodingConfig};
 use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -240,7 +240,7 @@ fn collect_test_data(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 },
                 #[cfg(debug_assertions)]
-                Err(rust_mp3_encoder::error::EncodingError::StopAfterFrames) => {
+                Err(shine_rs::error::EncodingError::StopAfterFrames) => {
                     // This is expected when we stop after 6 frames in debug mode
                     println!("Stopped encoding after {} frames for test data collection", frame_count);
                     break;

@@ -1,8 +1,0 @@
-# Seeds for failure cases proptest has generated in the past. It is
-# automatically read and these particular cases re-run before any
-# novel cases are generated.
-#
-# It is recommended to check this file in to source control so that
-# everyone who runs the test benefits from these saved cases.
-cc e83d265cd8cbedd28e8cffc229b6e233d688b460cbcef37fb5333472d0a4049e # shrinks to initial_bits = 1, align_count = 0
-cc 9961329abd961ab591e797561c22f51cd4bf1d9c40325292fee73ea2b9c70118 # shrinks to config = Config { wave: WaveConfig { channels: Mono, sample_rate: 22050 }, mpeg: MpegConfig { mode: Mono, bitrate: 32, emphasis: None, copyright: false, original: false } }

@@ -171,10 +171,8 @@ pub fn shine_outer_loop(
 /// Main iteration loop for encoding
 /// Corresponds to shine_iteration_loop() in l3loop.c
 pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
     let frame_num = crate::get_current_frame_number();
-    #[cfg(not(debug_assertions))]
-    let _frame_num = crate::get_current_frame_number();
     
     let mut l3_xmin = ShinePsyXmin::default();
     let mut max_bits: i32;
@@ -215,9 +213,17 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             max_bits = crate::reservoir::shine_max_reservoir_bits(&pe_value, &config);
 
             // Print key quantization parameters for verification (debug mode only)
-            #[cfg(debug_assertions)]
-            if frame_num <= 6 && ch == 0 && gr == 0 {
-                log::debug!("[Frame {}] xrmax={}, max_bits={}", frame_num, config.l3loop.xrmax, max_bits);
+            // Debug logging for algorithm verification
+            #[cfg(any(debug_assertions, feature = "diagnostics"))]
+            {
+                use log::debug;
+                let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
+                    .unwrap_or_else(|_| "6".to_string())
+                    .parse::<i32>()
+                    .unwrap_or(6);
+                if frame_num <= debug_frames && ch == 0 && gr == 0 {
+                    debug!("[Frame {}] xrmax={}, max_bits={}", frame_num, config.l3loop.xrmax, max_bits);
+                }
             }
 
             // reset of iteration variables
@@ -280,11 +286,19 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 cod_info.global_gain = (quantizer_step_size + 210) as u32;
                 
                 // Print key quantization results for verification (debug mode only)
-                #[cfg(debug_assertions)]
-                if frame_num <= 6 && ch == 0 && gr == 0 {
-                    log::debug!("[Frame {}] part2_3_length={}, quantizer_step_size={}, global_gain={}", 
-                             frame_num, part2_3_length, quantizer_step_size, cod_info.global_gain);
+                #[cfg(any(debug_assertions, feature = "diagnostics"))]
+                {
+                    use log::debug;
+                    let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
+                        .unwrap_or_else(|_| "6".to_string())
+                        .parse::<i32>()
+                        .unwrap_or(6);
+                    if frame_num <= debug_frames && ch == 0 && gr == 0 {
+                        debug!("[Frame {}] part2_3_length={}, quantizer_step_size={}, global_gain={}", 
+                                 frame_num, part2_3_length, quantizer_step_size, cod_info.global_gain);
+                    }
                     // Record quantization data for test collection
+                    #[cfg(feature = "diagnostics")]
                     crate::test_data::record_quant_data(
                         config.l3loop.xrmax,
                         max_bits,
@@ -295,7 +309,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 }
                 
                 // Suppress unused variable warning in release mode
-                #[cfg(not(debug_assertions))]
+                #[cfg(not(any(debug_assertions, feature = "diagnostics")))]
                 let _ = part2_3_length;
                 
                 // Call reservoir adjust with the copied data
@@ -604,7 +618,7 @@ pub fn count1_bitcount(ix: &[i32], cod_info: &mut GrInfo) -> i32 {
             }
         } else {
             // WARNING: This branch doesn't exist in shine - added for safety
-            eprintln!("Warning: Missing hlen table for Huffman table 32");
+            log::warn!("Missing hlen table for Huffman table 32");
         }
         
         if let Some(hlen) = SHINE_HUFFMAN_TABLE[33].hlen {
@@ -613,7 +627,7 @@ pub fn count1_bitcount(ix: &[i32], cod_info: &mut GrInfo) -> i32 {
             }
         } else {
             // WARNING: This branch doesn't exist in shine - added for safety
-            eprintln!("Warning: Missing hlen table for Huffman table 33");
+            log::warn!("Missing hlen table for Huffman table 33");
         }
 
         i += 4;
@@ -889,7 +903,7 @@ pub fn count_bit(ix: &[i32], start: u32, end: u32, table: u32) -> i32 {
                 }
             } else {
                 // WARNING: This branch doesn't exist in shine - added for safety
-                eprintln!("Warning: Missing hlen table for Huffman table {}", table_idx);
+                log::warn!("Missing hlen table for Huffman table {}", table_idx);
             }
 
             if x != 0 {
@@ -916,7 +930,7 @@ pub fn count_bit(ix: &[i32], start: u32, end: u32, table: u32) -> i32 {
                 }
             } else {
                 // WARNING: This branch doesn't exist in shine - added for safety
-                eprintln!("Warning: Missing hlen table for Huffman table {}", table_idx);
+                log::warn!("Missing hlen table for Huffman table {}", table_idx);
             }
 
             if x != 0 {
