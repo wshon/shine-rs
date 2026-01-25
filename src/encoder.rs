@@ -244,9 +244,6 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     // Write the frame to the bitstream
     crate::bitstream::format_bitstream(config)?;
 
-    // Ensure byte alignment at frame end (matches shine behavior)
-    config.bs.byte_align()?;
-
     // Return data exactly as shine does: return current data_position and reset it
     let written = config.bs.data_position as usize;
     config.bs.data_position = 0;
@@ -283,13 +280,9 @@ pub fn shine_encode_buffer_interleaved<'a>(config: &'a mut ShineGlobalConfig, da
 /// Flush remaining data (matches shine_flush)
 /// (ref/shine/src/lib/layer3.c:178-183)
 pub fn shine_flush(config: &mut ShineGlobalConfig) -> (&[u8], usize) {
-    // First flush any remaining bits in the cache to ensure all data is written
-    // This is critical - shine's bitstream may have cached bits that need to be flushed
-    config.bs.flush().unwrap_or_else(|_| {
-        // If flush fails, we still need to return the data we have
-        eprintln!("Warning: bitstream flush failed");
-    });
-    
+    // Shine's flush function simply returns current data_position without any bitstream flush
+    // *written = config->bs.data_position;
+    // config->bs.data_position = 0;
     let written = config.bs.data_position as usize;
     config.bs.data_position = 0;
 
