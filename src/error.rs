@@ -45,8 +45,12 @@ pub enum ConfigError {
     InvalidChannels,
     
     /// Incompatible sample rate and bitrate combination
-    #[error("Incompatible sample rate ({sample_rate} Hz) and bitrate ({bitrate} kbps) combination")]
-    IncompatibleRateCombination { sample_rate: u32, bitrate: u32 },
+    #[error("Incompatible sample rate ({sample_rate} Hz) and bitrate ({bitrate} kbps) combination: {reason}")]
+    IncompatibleRateCombination { 
+        sample_rate: u32, 
+        bitrate: u32,
+        reason: String,
+    },
     
     /// Invalid stereo mode for channel count
     #[error("Invalid stereo mode {mode:?} for {channels} channels")]
