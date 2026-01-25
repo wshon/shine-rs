@@ -2,7 +2,9 @@
 
 一个基于 Shine 库的纯 Rust MP3 编码器实现。该项目严格遵循 Shine C 语言参考实现，提供完整的 MP3 Layer III 编码功能，支持各种采样率、比特率和声道配置。
 
-[![License: LGPL-2.1-or-later](https://img.shields.io/badge/License-LGPL%202.1--or--later-blue.svg)](LICENSE)
+**项目地址**: https://github.com/wshon/shine-rs
+
+[![License: LGPL-2.0](https://img.shields.io/badge/License-LGPL%202.0-blue.svg)](LICENSE)
 [![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
 
 ## 特性
@@ -41,13 +43,13 @@
 
 ```bash
 # 基本用法：WAV 转 MP3
-cargo run --bin wav2mp3 input.wav output.mp3
+cd tools && cargo run --bin wav2mp3 input.wav output.mp3
 
 # 指定比特率和立体声模式
-cargo run --bin wav2mp3 input.wav output.mp3 128 stereo
+cd tools && cargo run --bin wav2mp3 input.wav output.mp3 128 stereo
 
 # 调试模式：限制编码帧数
-cargo run --bin wav2mp3 input.wav output.mp3 --max-frames 10
+cd tools && cargo run --bin wav2mp3 input.wav output.mp3 --max-frames 10
 ```
 
 ### 作为库使用
@@ -58,54 +60,49 @@ shine-rs = { path = "." }
 ```
 
 ```rust
-use shine_rs::{ShineConfig, shine_encode_buffer_interleaved, shine_initialise};
+use shine_rs::{Mp3Encoder, Mp3EncoderConfig, StereoMode};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 创建编码器配置
-    let config = ShineConfig {
-        wave: WaveConfig {
-            channels: 2,
-            samplerate: 44100,
-        },
-        mpeg: MpegConfig {
-            mode: 0, // 立体声
-            bitr: 128,
-            ..Default::default()
-        },
-    };
+    let config = Mp3EncoderConfig::new()
+        .sample_rate(44100)
+        .bitrate(128)
+        .channels(2)
+        .stereo_mode(StereoMode::Stereo);
     
-    // 初始化编码器
-    let mut global_config = shine_initialise(&config)?;
+    // 创建编码器
+    let mut encoder = Mp3Encoder::new(config)?;
     
     // 编码 PCM 数据
-    let pcm_data = vec![0i16; 2304]; // 1152 * 2 (立体声)
-    let (mp3_data, written) = shine_encode_buffer_interleaved(
-        &mut global_config, 
-        pcm_data.as_ptr()
-    )?;
+    let pcm_data = vec![0i16; encoder.samples_per_frame()];
+    let mp3_frames = encoder.encode_interleaved(&pcm_data)?;
     
-    println!("编码完成，生成 {} 字节 MP3 数据", written);
+    // 完成编码
+    let final_data = encoder.finish()?;
+    
+    println!("编码完成，生成 {} 字节 MP3 数据", final_data.len());
     Ok(())
 }
 ```
+
+> 💡 **提示**: 项目还提供了底层接口，直接对应 Shine C 实现。详见 [高级 API 使用指南](docs/HIGH_LEVEL_API.md)。
 
 ## 项目结构
 
 ```
 shine-rs/
 ├── src/                        # Rust 源代码
-│   ├── bin/                    # 命令行工具
-│   │   ├── wav2mp3.rs         # WAV 转 MP3 工具
-│   │   ├── collect_test_data.rs # 测试数据收集工具
-│   │   └── validate_test_data.rs # 测试数据验证工具
 │   ├── bitstream.rs           # 比特流处理
-│   ├── encoder.rs             # 主编码器
+│   ├── encoder.rs             # 主编码器（底层接口）
+│   ├── mp3_encoder.rs         # 高级编码器接口
 │   ├── huffman.rs             # Huffman 编码
 │   ├── mdct.rs                # MDCT 变换
 │   ├── quantization.rs        # 量化算法
 │   ├── subband.rs             # 子带分析
 │   ├── tables.rs              # 查找表
 │   └── ...                    # 其他模块
+├── tools/                     # 命令行工具
+│   └── wav2mp3/               # WAV 转 MP3 工具
 ├── ref/shine/                 # Shine C 参考实现
 ├── testing/                   # 测试相关文件
 │   ├── fixtures/              # 测试数据和音频文件
@@ -161,19 +158,19 @@ cargo test --test integration_full_pipeline_validation
 cargo run --bin validate_test_data testing/fixtures/data/sample-3s_128k_6f.json
 
 # 运行命令行工具
-cargo run --bin wav2mp3 testing/fixtures/audio/sample-3s.wav output.mp3
+cd tools && cargo run --bin wav2mp3 testing/fixtures/audio/sample-3s.wav output.mp3
 ```
 
 ### 调试和开发
 
 ```bash
 # 启用调试日志
-RUST_LOG=debug cargo run --bin wav2mp3 input.wav output.mp3
+cd tools && RUST_LOG=debug cargo run --bin wav2mp3 input.wav output.mp3
 
 # 限制编码帧数（调试用）
-cargo run --bin wav2mp3 input.wav output.mp3 --max-frames 5
+cd tools && cargo run --bin wav2mp3 input.wav output.mp3 --max-frames 5
 
-# 收集测试数据
+# 收集测试数据（需要相应的工具）
 cargo run --bin collect_test_data input.wav test_data.json 128
 ```
 
@@ -216,7 +213,7 @@ cargo run --bin collect_test_data input.wav test_data.json 128
 
 ## 许可证
 
-本项目采用 GNU Lesser General Public License v2.1 (LGPL-2.1) 或更高版本发布。详见 [LICENSE](LICENSE) 文件。
+本项目采用 GNU Library General Public License v2.0 (LGPL-2.0) 发布。详见 [LICENSE](LICENSE) 文件。
 
 ## 贡献
 
