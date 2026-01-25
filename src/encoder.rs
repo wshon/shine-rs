@@ -236,7 +236,7 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
              frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, written, config.mpeg.slot_lag);
 
     // Stop after 6 frames for debugging (after encoding is complete)
-    if frame_num >= 6 {
+    if frame_num > 6 {
         println!("[RUST] Stopping after 6 frames for comparison");
         // Return a special error to indicate we should stop encoding but still write the file
         return Err(EncodingError::StopAfterFrames);
