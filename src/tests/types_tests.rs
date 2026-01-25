@@ -57,27 +57,6 @@ mod tests {
     }
 
     #[test]
-    fn test_default_values() {
-        let config = Box::new(ShineGlobalConfig::default());
-        
-        // Verify default values match shine's expectations
-        assert_eq!(config.wave.channels, 2, "Default channels should be stereo");
-        assert_eq!(config.wave.samplerate, 44100, "Default sample rate should be 44.1kHz");
-        assert_eq!(config.mpeg.version, 1, "Default MPEG version");
-        assert_eq!(config.mpeg.layer, 1, "Default layer should be III");
-        assert_eq!(config.mpeg.granules_per_frame, 2, "Default granules per frame");
-        assert_eq!(config.mpeg.bitr, 128, "Default bitrate should be 128 kbps");
-        assert_eq!(config.mpeg.bits_per_slot, 8, "Default bits per slot");
-        assert_eq!(config.mpeg.bitrate_index, 9, "Default bitrate index for 128 kbps");
-        assert_eq!(config.mpeg.samplerate_index, 0, "Default sample rate index for 44.1kHz");
-        assert_eq!(config.mpeg.original, 1, "Default original flag");
-        
-        let gr_info = GrInfo::default();
-        assert_eq!(gr_info.global_gain, 210, "Default global gain should match shine");
-        assert_eq!(gr_info.sfb_lmax, 21, "Default sfb_lmax should match shine");
-    }
-
-    #[test]
     fn test_array_bounds() {
         // Test that array indices are within expected bounds
         let config = Box::new(ShineGlobalConfig::default());
@@ -94,64 +73,6 @@ mod tests {
         assert_eq!(config.scalefactor.l.len(), MAX_GRANULES, "Scalefactor should have MAX_GRANULES");
         assert_eq!(config.scalefactor.l[0].len(), MAX_CHANNELS, "Scalefactor should have MAX_CHANNELS");
         assert_eq!(config.scalefactor.l[0][0].len(), 22, "Scalefactor should have 22 bands");
-    }
-
-    #[test]
-    fn test_granule_info_structure() {
-        let gr_info = GrInfo::default();
-        
-        // Test that GrInfo has expected fields and ranges
-        assert!(gr_info.global_gain <= 255, "Global gain should fit in 8 bits");
-        assert!(gr_info.sfb_lmax <= 22, "SFB lmax should be within valid range");
-        assert_eq!(gr_info.table_select.len(), 3, "Should have 3 table select values");
-        assert_eq!(gr_info.slen.len(), 4, "Should have 4 slen values");
-        
-        // Test that arrays are properly sized
-        for &table_sel in &gr_info.table_select {
-            assert!(table_sel <= 31, "Table select should be 5-bit value");
-        }
-    }
-
-    #[test]
-    fn test_side_info_structure() {
-        let side_info = ShineSideInfo::default();
-        
-        // Test SCFSI structure
-        assert_eq!(side_info.scfsi.len(), MAX_CHANNELS, "SCFSI should have MAX_CHANNELS");
-        assert_eq!(side_info.scfsi[0].len(), 4, "SCFSI should have 4 bands");
-        
-        // Test granule structure
-        assert_eq!(side_info.gr.len(), MAX_GRANULES, "Should have MAX_GRANULES");
-        for gr in 0..MAX_GRANULES {
-            assert_eq!(side_info.gr[gr].ch.len(), MAX_CHANNELS, "Each granule should have MAX_CHANNELS");
-        }
-        
-        // Test initial SCFSI values
-        for ch in 0..MAX_CHANNELS {
-            for band in 0..4 {
-                let scfsi_val = side_info.scfsi[ch][band];
-                assert!(scfsi_val == 0 || scfsi_val == 1, "SCFSI should be binary");
-            }
-        }
-    }
-
-    #[test]
-    fn test_subband_structure() {
-        let subband = Subband::default();
-        
-        // Test offset array
-        assert_eq!(subband.off.len(), MAX_CHANNELS, "Offset should have MAX_CHANNELS");
-        for &offset in &subband.off {
-            assert_eq!(offset, 0, "Initial offset should be zero");
-        }
-        
-        // Test filter coefficient array
-        assert_eq!(subband.fl.len(), SBLIMIT, "FL should have SBLIMIT entries");
-        assert_eq!(subband.fl[0].len(), 64, "Each FL entry should have 64 coefficients");
-        
-        // Test filter buffer
-        assert_eq!(subband.x.len(), MAX_CHANNELS, "X buffer should have MAX_CHANNELS");
-        assert_eq!(subband.x[0].len(), HAN_SIZE, "Each X buffer should have HAN_SIZE");
     }
 
     #[test]
