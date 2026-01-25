@@ -249,7 +249,7 @@ impl TestDataCollector {
             let json = serde_json::to_string_pretty(&collector.test_case)?;
             let mut file = File::create(filename)?;
             file.write_all(json.as_bytes())?;
-            println!("Test data saved to: {}", filename);
+            log::info!("Test data saved to: {}", filename);
             Ok(())
         } else {
             Err("No test data collector initialized".into())

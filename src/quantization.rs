@@ -617,7 +617,7 @@ pub fn count1_bitcount(ix: &[i32], cod_info: &mut GrInfo) -> i32 {
             }
         } else {
             // WARNING: This branch doesn't exist in shine - added for safety
-            eprintln!("Warning: Missing hlen table for Huffman table 32");
+            log::warn!("Missing hlen table for Huffman table 32");
         }
         
         if let Some(hlen) = SHINE_HUFFMAN_TABLE[33].hlen {
@@ -626,7 +626,7 @@ pub fn count1_bitcount(ix: &[i32], cod_info: &mut GrInfo) -> i32 {
             }
         } else {
             // WARNING: This branch doesn't exist in shine - added for safety
-            eprintln!("Warning: Missing hlen table for Huffman table 33");
+            log::warn!("Missing hlen table for Huffman table 33");
         }
 
         i += 4;
@@ -902,7 +902,7 @@ pub fn count_bit(ix: &[i32], start: u32, end: u32, table: u32) -> i32 {
                 }
             } else {
                 // WARNING: This branch doesn't exist in shine - added for safety
-                eprintln!("Warning: Missing hlen table for Huffman table {}", table_idx);
+                log::warn!("Missing hlen table for Huffman table {}", table_idx);
             }
 
             if x != 0 {
@@ -929,7 +929,7 @@ pub fn count_bit(ix: &[i32], start: u32, end: u32, table: u32) -> i32 {
                 }
             } else {
                 // WARNING: This branch doesn't exist in shine - added for safety
-                eprintln!("Warning: Missing hlen table for Huffman table {}", table_idx);
+                log::warn!("Missing hlen table for Huffman table {}", table_idx);
             }
 
             if x != 0 {
