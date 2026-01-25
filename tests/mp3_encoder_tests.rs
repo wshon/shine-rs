@@ -8,6 +8,7 @@ use shine_rs::mp3_encoder::{
     SUPPORTED_SAMPLE_RATES, SUPPORTED_BITRATES
 };
 use shine_rs::error::{EncoderError, ConfigError, InputDataError};
+use shine_rs::encoder;
 
 #[cfg(test)]
 mod unit_tests {
@@ -133,16 +134,30 @@ mod unit_tests {
     #[test]
     fn test_supported_sample_rates() {
         for &sample_rate in SUPPORTED_SAMPLE_RATES {
-            let config = Mp3EncoderConfig::new().sample_rate(sample_rate);
-            assert!(config.validate().is_ok(), "Sample rate {} should be supported", sample_rate);
+                let config = Mp3EncoderConfig::new()
+                .sample_rate(sample_rate)
+                .bitrate(128)  // Use a commonly supported bitrate
+                .channels(2);
+            
+            // Only validate if the combination is actually supported by shine
+            if encoder::shine_check_config(sample_rate as i32, 128) >= 0 {
+                assert!(config.validate().is_ok(), "Sample rate {} should be supported", sample_rate);
+            }
         }
     }
 
     #[test]
     fn test_supported_bitrates() {
         for &bitrate in SUPPORTED_BITRATES {
-            let config = Mp3EncoderConfig::new().bitrate(bitrate);
-            assert!(config.validate().is_ok(), "Bitrate {} should be supported", bitrate);
+            let config = Mp3EncoderConfig::new()
+                .sample_rate(44100)  // Use MPEG-1 which supports most bitrates
+                .bitrate(bitrate)
+                .channels(2);
+            
+            // Only validate if the combination is actually supported by shine
+            if encoder::shine_check_config(44100, bitrate as i32) >= 0 {
+                assert!(config.validate().is_ok(), "Bitrate {} should be supported", bitrate);
+            }
         }
     }
 
@@ -500,7 +515,14 @@ mod property_tests {
                 .channels(channels)
                 .stereo_mode(stereo_mode);
             
-            prop_assert!(config.validate().is_ok(), "Valid config should pass validation");
+            // Only test combinations that shine actually supports
+            if encoder::shine_check_config(sample_rate as i32, bitrate as i32) >= 0 {
+                prop_assert!(config.validate().is_ok(), "Valid config should pass validation");
+            } else {
+                // Invalid combinations should fail with IncompatibleRateCombination
+                prop_assert!(matches!(config.validate(), Err(ConfigError::IncompatibleRateCombination { .. })), 
+                           "Invalid combination should fail with IncompatibleRateCombination");
+            }
         }
 
         #[test]
@@ -508,33 +530,20 @@ mod property_tests {
             sample_rate in prop::sample::select(SUPPORTED_SAMPLE_RATES),
             bitrate in prop::sample::select(SUPPORTED_BITRATES),
         ) {
-            // Skip invalid combinations based on MPEG version and bitrate support
-            let is_mpeg25 = sample_rate <= 12000;  // 8000, 11025, 12000
-            let is_mpeg2 = sample_rate >= 16000 && sample_rate <= 24000;  // 16000, 22050, 24000
-            let is_mpeg1 = sample_rate >= 32000;  // 32000, 44100, 48000
-            
-            // Check bitrate compatibility with MPEG version
-            let is_valid_combination = if is_mpeg25 {
-                bitrate <= 64  // MPEG-2.5 supports up to 64 kbps
-            } else if is_mpeg2 {
-                bitrate <= 160  // MPEG-2 supports up to 160 kbps
-            } else if is_mpeg1 {
-                bitrate >= 32  // MPEG-1 supports 32-320 kbps
-            } else {
-                false
-            };
-            
-            if !is_valid_combination {
-                return Ok(()); // Skip this combination
-            }
-            
             let config = Mp3EncoderConfig::new()
                 .sample_rate(sample_rate)
                 .bitrate(bitrate)
                 .channels(2);
             
-            let encoder = Mp3Encoder::new(config);
-            prop_assert!(encoder.is_ok(), "Encoder creation should succeed with valid config");
+            // Only test combinations that shine actually supports
+            if encoder::shine_check_config(sample_rate as i32, bitrate as i32) >= 0 {
+                let encoder = Mp3Encoder::new(config);
+                prop_assert!(encoder.is_ok(), "Encoder creation should succeed with valid config");
+            } else {
+                // Invalid combinations should fail
+                let encoder = Mp3Encoder::new(config);
+                prop_assert!(encoder.is_err(), "Encoder creation should fail with invalid config");
+            }
         }
 
         #[test]

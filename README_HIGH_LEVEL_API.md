@@ -54,9 +54,9 @@ let mp3_data = encode_pcm_to_mp3(config, &pcm_data)?;
 - **MPEG-2.5**: 8000, 11025, 12000
 
 ### 比特率 (kbps)
-- **MPEG-1**: 32-320 kbps
-- **MPEG-2**: 8-160 kbps
-- **MPEG-2.5**: 8-64 kbps
+- **MPEG-1**: 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320
+- **MPEG-2**: 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160
+- **MPEG-2.5**: 8, 16, 24, 32, 40, 48, 56, 64
 
 ### 立体声模式
 - `StereoMode::Stereo` - 标准立体声
@@ -111,13 +111,24 @@ let mp3_frames = encoder.encode_separate_channels(&mono_data, None)?;
 
 ## 错误处理
 
+高级接口提供了详细的错误信息，帮助用户快速定位问题：
+
 ```rust
 use shine_rs::{EncoderError, ConfigError, InputDataError};
 
 match encoder.encode_interleaved(&pcm_data) {
     Ok(frames) => { /* 处理成功 */ },
     Err(EncoderError::Config(ConfigError::UnsupportedSampleRate(rate))) => {
-        eprintln!("不支持的采样率: {}", rate);
+        eprintln!("不支持的采样率: {} Hz", rate);
+    },
+    Err(EncoderError::Config(ConfigError::UnsupportedBitrate(bitrate))) => {
+        eprintln!("不支持的比特率: {} kbps", bitrate);
+    },
+    Err(EncoderError::Config(ConfigError::IncompatibleRateCombination { 
+        sample_rate, bitrate, reason 
+    })) => {
+        eprintln!("不兼容的采样率和比特率组合: {} Hz @ {} kbps - {}", 
+                 sample_rate, bitrate, reason);
     },
     Err(EncoderError::InputData(InputDataError::EmptyInput)) => {
         eprintln!("输入数据为空");
@@ -127,6 +138,18 @@ match encoder.encode_interleaved(&pcm_data) {
     }
 }
 ```
+
+### 配置验证错误
+
+接口会自动验证配置参数的有效性，并提供具体的错误信息：
+
+- **不支持的采样率**: 当采样率不在支持列表中时
+- **不支持的比特率**: 当比特率不在支持列表中时  
+- **不兼容的组合**: 当采样率和比特率组合不被MPEG标准支持时，会提供详细说明：
+  - MPEG-2.5 (8-12 kHz): 仅支持 8-64 kbps
+  - MPEG-2 (16-24 kHz): 仅支持 8-160 kbps
+  - MPEG-1 (32-48 kHz): 仅支持 32-320 kbps
+- **无效声道配置**: 当声道数与立体声模式不匹配时
 
 ## 高级功能
 

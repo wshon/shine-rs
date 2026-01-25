@@ -172,6 +172,7 @@ impl Mp3EncoderConfig {
 }
 
 /// 高级MP3编码器
+#[derive(Debug)]
 pub struct Mp3Encoder {
     /// 底层shine配置
     config: Box<ShineGlobalConfig>,
