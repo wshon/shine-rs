@@ -298,6 +298,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                                  frame_num, part2_3_length, quantizer_step_size, cod_info.global_gain);
                     }
                     // Record quantization data for test collection
+                    #[cfg(feature = "diagnostics")]
                     crate::test_data::record_quant_data(
                         config.l3loop.xrmax,
                         max_bits,

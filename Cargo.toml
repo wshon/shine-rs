@@ -11,14 +11,14 @@ categories = ["multimedia::audio", "encoding"]
 
 [features]
 default = []
-diagnostics = []  # Enable diagnostic logging and data collection
+diagnostics = ["serde", "serde_json", "chrono"]  # Enable diagnostic logging and data collection
 
 [dependencies]
 thiserror = "1.0"
 lazy_static = "1.4"
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
+chrono = { version = "0.4", features = ["serde"], optional = true }
 sha2 = "0.10"
 log = "0.4"
 
@@ -38,6 +38,7 @@ path = "testing/integration/integration_scfsi_consistency.rs"
 [[test]]
 name = "integration_data_driven_validation"
 path = "testing/integration/integration_data_driven_validation.rs"
+required-features = ["diagnostics"]
 
 [profile.dev]
 debug = true

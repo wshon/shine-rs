@@ -226,6 +226,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                                      frame_num, ch, gr, band, k, vm);
                         }
                         // Record MDCT coefficient for test collection
+                        #[cfg(feature = "diagnostics")]
                         crate::test_data::record_mdct_coeff(k, vm);
                     }
                 }
@@ -309,6 +310,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                          frame_num, ch, config.l3_sb_sample[ch_idx][0][0][0]);
             }
             // Record l3_sb_sample for test collection
+            #[cfg(feature = "diagnostics")]
             crate::test_data::record_sb_sample(ch as usize, config.l3_sb_sample[ch_idx][0][0][0]);
         }
     }

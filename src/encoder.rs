@@ -211,7 +211,7 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     let frame_num = crate::get_next_frame_number();
     
     // Start frame data collection
-    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    #[cfg(feature = "diagnostics")]
     crate::test_data::start_frame_collection(frame_num);
     
     // Dynamic padding calculation (matches shine exactly)
@@ -245,7 +245,7 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     }
 
     // Record bitstream data for test collection
-    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    #[cfg(feature = "diagnostics")]
     crate::test_data::record_bitstream_data(
         config.mpeg.padding,
         config.mpeg.bits_per_frame,

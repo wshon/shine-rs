@@ -432,7 +432,6 @@ fn main() {
     // Initialize logger with configurable level
     // Set RUST_LOG=debug to see debug messages, RUST_LOG=info for info level (default)
     env_logger::Builder::from_default_env()
-        .filter_level(log::LevelFilter::Info)
         .format_timestamp(None)
         .format_module_path(false)
         .format_target(false)

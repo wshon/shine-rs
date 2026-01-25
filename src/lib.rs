@@ -31,6 +31,8 @@ pub mod reservoir;
 pub mod subband;
 pub mod tables;
 pub mod types;
+
+#[cfg(feature = "diagnostics")]
 pub mod test_data;
 
 #[cfg(test)]

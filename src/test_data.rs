@@ -2,13 +2,20 @@
 //!
 //! This module provides functionality to collect key encoding parameters
 //! during the encoding process and save them to JSON for later validation.
+//! 
+//! This module is only available when the "diagnostics" feature is enabled.
 
+#[cfg(feature = "diagnostics")]
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "diagnostics")]
 use std::fs::File;
+#[cfg(feature = "diagnostics")]
 use std::io::Write;
+#[cfg(feature = "diagnostics")]
 use std::sync::Mutex;
 
 /// Frame-specific encoding data
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrameData {
     /// Frame number (1-based)
@@ -25,6 +32,7 @@ pub struct FrameData {
 }
 
 /// MDCT coefficient data
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MdctData {
     /// Key MDCT coefficients [ch][gr][band][k] for verification
@@ -36,6 +44,7 @@ pub struct MdctData {
 }
 
 /// Quantization data
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuantizationData {
     /// Maximum spectral value (xrmax)
@@ -55,6 +64,7 @@ pub struct QuantizationData {
 }
 
 /// Bitstream data
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitstreamData {
     /// Padding bit
@@ -71,6 +81,7 @@ pub struct BitstreamData {
 }
 
 /// Complete test case data
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestCaseData {
     /// Test case metadata
@@ -83,7 +94,12 @@ pub struct TestCaseData {
     pub frames: Vec<FrameData>,
 }
 
+/// Type alias for backward compatibility with integration tests
+#[cfg(feature = "diagnostics")]
+pub type TestDataSet = TestCaseData;
+
 /// Test metadata
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestMetadata {
     /// Test case name
@@ -106,6 +122,7 @@ pub struct TestMetadata {
 }
 
 /// Encoding configuration
+#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncodingConfig {
     /// Sample rate in Hz
@@ -125,15 +142,18 @@ pub struct EncodingConfig {
 }
 
 /// Global test data collector
+#[cfg(feature = "diagnostics")]
 static TEST_DATA_COLLECTOR: Mutex<Option<TestDataCollector>> = Mutex::new(None);
 
 /// Test data collector implementation
+#[cfg(feature = "diagnostics")]
 #[derive(Debug)]
 pub struct TestDataCollector {
     pub test_case: TestCaseData,
     pub current_frame: i32,
 }
 
+#[cfg(feature = "diagnostics")]
 impl TestDataCollector {
     /// Initialize the test data collector
     pub fn initialize(metadata: TestMetadata, config: EncodingConfig) {
@@ -271,30 +291,35 @@ impl TestDataCollector {
 }
 
 /// Convenience functions for recording data
+#[cfg(feature = "diagnostics")]
 pub fn start_frame_collection(frame_number: i32) {
     if TestDataCollector::is_collecting() {
         TestDataCollector::start_frame(frame_number);
     }
 }
 
+#[cfg(feature = "diagnostics")]
 pub fn record_mdct_coeff(k: usize, value: i32) {
     if TestDataCollector::is_collecting() {
         TestDataCollector::record_mdct_coefficient(k, value);
     }
 }
 
+#[cfg(feature = "diagnostics")]
 pub fn record_sb_sample(ch: usize, value: i32) {
     if TestDataCollector::is_collecting() {
         TestDataCollector::record_l3_sb_sample(ch, value);
     }
 }
 
+#[cfg(feature = "diagnostics")]
 pub fn record_quant_data(xrmax: i32, max_bits: i32, part2_3_length: u32, quantizer_step_size: i32, global_gain: u32) {
     if TestDataCollector::is_collecting() {
         TestDataCollector::record_quantization(xrmax, max_bits, part2_3_length, quantizer_step_size, global_gain);
     }
 }
 
+#[cfg(feature = "diagnostics")]
 pub fn record_bitstream_data(padding: i32, bits_per_frame: i32, written: usize, slot_lag: f64) {
     if TestDataCollector::is_collecting() {
         TestDataCollector::record_bitstream(padding, bits_per_frame, written, slot_lag);
