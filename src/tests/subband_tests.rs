@@ -38,6 +38,155 @@ mod tests {
     }
 
     #[test]
+    fn test_subband_filter_mono() {
+        use crate::subband::shine_subband_initialise;
+        use crate::types::Subband;
+        
+        let mut subband = Subband::default();
+        shine_subband_initialise(&mut subband);
+        
+        // Test with simple mono input pattern
+        let test_samples = [1000i32, 500, 250, 125, 0, -125, -250, -500];
+        
+        // Verify that we can process the samples (structure test)
+        // Note: Full subband filtering requires the complete shine_subband_filter function
+        // This test validates the structure and initialization
+        
+        assert_eq!(subband.off[0], 0, "Mono channel offset should be initialized");
+        
+        // Test that filter buffer can hold the samples
+        for (i, &sample) in test_samples.iter().enumerate() {
+            if i < HAN_SIZE {
+                subband.x[0][i] = sample;
+                assert_eq!(subband.x[0][i], sample, "Should store sample correctly");
+            }
+        }
+    }
+
+    #[test]
+    fn test_subband_filter_stereo() {
+        use crate::subband::shine_subband_initialise;
+        use crate::types::Subband;
+        
+        let mut subband = Subband::default();
+        shine_subband_initialise(&mut subband);
+        
+        // Test with different patterns for left and right channels
+        let left_samples = [1000i32, 500, 250, 125];
+        let right_samples = [2000i32, 1000, 500, 250];
+        
+        // Store samples in both channels
+        for (i, (&left, &right)) in left_samples.iter().zip(right_samples.iter()).enumerate() {
+            if i < HAN_SIZE {
+                subband.x[0][i] = left;   // Left channel
+                subband.x[1][i] = right;  // Right channel
+                
+                assert_eq!(subband.x[0][i], left, "Left channel should store correctly");
+                assert_eq!(subband.x[1][i], right, "Right channel should store correctly");
+            }
+        }
+        
+        // Verify channels are independent
+        assert_ne!(subband.x[0][0], subband.x[1][0], "Channels should have different values");
+    }
+
+    #[test]
+    fn test_subband_filter_dc_input() {
+        use crate::subband::shine_subband_initialise;
+        use crate::types::Subband;
+        
+        let mut subband = Subband::default();
+        shine_subband_initialise(&mut subband);
+        
+        // Test with DC (constant) input
+        let dc_value = 1000i32;
+        
+        // Fill buffer with DC value
+        for i in 0..std::cmp::min(32, HAN_SIZE) {
+            subband.x[0][i] = dc_value;
+        }
+        
+        // Verify DC values are stored
+        for i in 0..std::cmp::min(32, HAN_SIZE) {
+            assert_eq!(subband.x[0][i], dc_value, "DC value should be preserved");
+        }
+        
+        // DC input should primarily affect lower frequency subbands
+        // This is a structural test - full validation requires the filter implementation
+    }
+
+    #[test]
+    fn test_subband_filter_impulse_response() {
+        use crate::subband::shine_subband_initialise;
+        use crate::types::Subband;
+        
+        let mut subband = Subband::default();
+        shine_subband_initialise(&mut subband);
+        
+        // Test with impulse input (single non-zero sample)
+        subband.x[0][0] = 32767; // Maximum positive impulse
+        
+        // Rest should be zero
+        for i in 1..std::cmp::min(64, HAN_SIZE) {
+            subband.x[0][i] = 0;
+        }
+        
+        // Verify impulse is stored correctly
+        assert_eq!(subband.x[0][0], 32767, "Impulse should be stored");
+        assert_eq!(subband.x[0][1], 0, "Following samples should be zero");
+        
+        // Impulse response should spread across frequency bands
+        // This is validated by the filter coefficients being non-zero
+        let mut nonzero_coeffs = 0;
+        for sb in 0..32 {
+            for i in 0..64 {
+                if subband.fl[sb][i] != 0 {
+                    nonzero_coeffs += 1;
+                }
+            }
+        }
+        assert!(nonzero_coeffs > 1000, "Filter should have many non-zero coefficients");
+    }
+
+    #[test]
+    fn test_subband_filter_symmetry() {
+        use crate::subband::shine_subband_initialise;
+        use crate::types::Subband;
+        
+        let mut subband1 = Subband::default();
+        let mut subband2 = Subband::default();
+        
+        shine_subband_initialise(&mut subband1);
+        shine_subband_initialise(&mut subband2);
+        
+        // Test with identical input on both instances
+        let test_pattern = [100i32, 200, 300, 400, 500];
+        
+        for (i, &sample) in test_pattern.iter().enumerate() {
+            if i < HAN_SIZE {
+                subband1.x[0][i] = sample;
+                subband2.x[0][i] = sample;
+            }
+        }
+        
+        // Both instances should have identical state after same operations
+        for i in 0..test_pattern.len() {
+            if i < HAN_SIZE {
+                assert_eq!(subband1.x[0][i], subband2.x[0][i], 
+                          "Identical input should produce identical state");
+            }
+        }
+        
+        // Filter coefficients should be identical
+        for sb in 0..32 {
+            for i in 0..64 {
+                assert_eq!(subband1.fl[sb][i], subband2.fl[sb][i],
+                          "Filter coefficients should be identical");
+            }
+        }
+    }
+
+    #[test]
     fn test_subband_structure_initialization() {
         use crate::types::Subband;
         

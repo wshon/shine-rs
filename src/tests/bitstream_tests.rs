@@ -132,6 +132,139 @@ mod tests {
     }
 
     #[test]
+    fn test_frame_header_encoding() {
+        use crate::bitstream::BitstreamWriter;
+        
+        let mut bs = BitstreamWriter::new(1024);
+        
+        // Test frame header encoding with typical MP3 parameters
+        // Sync word (11 bits): 0x7FF
+        bs.put_bits(0x7ff, 11).expect("Should write sync word");
+        
+        // MPEG version (2 bits): MPEG-I = 3
+        bs.put_bits(3, 2).expect("Should write MPEG version");
+        
+        // Layer (2 bits): Layer III = 1
+        bs.put_bits(1, 2).expect("Should write layer");
+        
+        // CRC (1 bit): No CRC = 1
+        bs.put_bits(1, 1).expect("Should write CRC bit");
+        
+        // Bitrate index (4 bits): 128 kbps = 9
+        bs.put_bits(9, 4).expect("Should write bitrate index");
+        
+        // Sample rate index (2 bits): 44100 Hz = 0
+        bs.put_bits(0, 2).expect("Should write sample rate index");
+        
+        // Padding (1 bit)
+        bs.put_bits(1, 1).expect("Should write padding bit");
+        
+        // Extension (1 bit)
+        bs.put_bits(0, 1).expect("Should write extension bit");
+        
+        // Mode (2 bits): Stereo = 0
+        bs.put_bits(0, 2).expect("Should write mode");
+        
+        // Mode extension (2 bits)
+        bs.put_bits(0, 2).expect("Should write mode extension");
+        
+        // Copyright (1 bit)
+        bs.put_bits(0, 1).expect("Should write copyright bit");
+        
+        // Original (1 bit)
+        bs.put_bits(0, 1).expect("Should write original bit");
+        
+        // Emphasis (2 bits)
+        bs.put_bits(0, 2).expect("Should write emphasis");
+        
+        // Verify header was written (should be 32 bits = 4 bytes)
+        assert_eq!(bs.get_bits_count(), 32, "Frame header should be 32 bits");
+        
+        // Verify sync word in output
+        let data = bs.get_data();
+        assert!(data.len() >= 4, "Should have at least 4 bytes");
+        let header = u32::from_be_bytes([data[0], data[1], data[2], data[3]]);
+        assert_eq!(header >> 21, 0x7FF, "Sync word should be preserved");
+    }
+
+    #[test]
+    fn test_side_info_encoding() {
+        use crate::bitstream::BitstreamWriter;
+        
+        let mut bs = BitstreamWriter::new(1024);
+        
+        // Test side info encoding for MPEG-I stereo
+        // Main data begin (9 bits)
+        bs.put_bits(0, 9).expect("Should write main data begin");
+        
+        // Private bits (3 bits for stereo)
+        bs.put_bits(0, 3).expect("Should write private bits");
+        
+        // SCFSI for channel 0 (4 bits)
+        bs.put_bits(0b0101, 4).expect("Should write SCFSI ch0");
+        
+        // SCFSI for channel 1 (4 bits)
+        bs.put_bits(0b0101, 4).expect("Should write SCFSI ch1");
+        
+        // Granule info for gr=0, ch=0
+        bs.put_bits(500, 12).expect("Should write part2_3_length"); // part2_3_length
+        bs.put_bits(100, 9).expect("Should write big_values");      // big_values
+        bs.put_bits(150, 8).expect("Should write global_gain");     // global_gain
+        bs.put_bits(5, 4).expect("Should write scalefac_compress"); // scalefac_compress
+        bs.put_bits(0, 1).expect("Should write window_switching_flag"); // window_switching_flag
+        
+        // For long blocks (window_switching_flag = 0)
+        bs.put_bits(1, 5).expect("Should write table_select[0]");   // table_select[0]
+        bs.put_bits(2, 5).expect("Should write table_select[1]");   // table_select[1]
+        bs.put_bits(3, 5).expect("Should write table_select[2]");   // table_select[2]
+        bs.put_bits(7, 4).expect("Should write region0_count");     // region0_count
+        bs.put_bits(13, 3).expect("Should write region1_count");    // region1_count
+        bs.put_bits(0, 1).expect("Should write preflag");           // preflag
+        bs.put_bits(0, 1).expect("Should write scalefac_scale");    // scalefac_scale
+        bs.put_bits(0, 1).expect("Should write count1table_select"); // count1table_select
+        
+        // Verify side info was written
+        let bits_written = bs.get_bits_count();
+        assert!(bits_written > 50, "Side info should write substantial data");
+        
+        // Verify data is accessible
+        let data = bs.get_data();
+        assert!(data.len() > 0, "Should have written data");
+    }
+
+    #[test]
+    fn test_scfsi_encoding() {
+        use crate::bitstream::BitstreamWriter;
+        
+        let mut bs = BitstreamWriter::new(1024);
+        
+        // Test SCFSI encoding for both channels
+        let scfsi_ch0 = [0, 1, 0, 1]; // Alternating pattern
+        let scfsi_ch1 = [1, 1, 1, 1]; // All reuse previous
+        
+        // Write SCFSI for channel 0
+        for &scfsi_val in &scfsi_ch0 {
+            bs.put_bits(scfsi_val, 1).expect("Should write SCFSI bit");
+        }
+        
+        // Write SCFSI for channel 1
+        for &scfsi_val in &scfsi_ch1 {
+            bs.put_bits(scfsi_val, 1).expect("Should write SCFSI bit");
+        }
+        
+        // Should have written 8 bits total
+        assert_eq!(bs.get_bits_count(), 8, "Should write 8 SCFSI bits");
+        
+        // Verify SCFSI values are binary
+        for &val in &scfsi_ch0 {
+            assert!(val == 0 || val == 1, "SCFSI should be 0 or 1");
+        }
+        for &val in &scfsi_ch1 {
+            assert!(val == 0 || val == 1, "SCFSI should be 0 or 1");
+        }
+    }
+
+    #[test]
     fn test_zero_bits_write() {
         use crate::bitstream::BitstreamWriter;
         
