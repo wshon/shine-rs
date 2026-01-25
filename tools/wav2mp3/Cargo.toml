@@ -1,0 +1,15 @@
+[package]
+name = "wav2mp3"
+version = "0.1.0"
+edition = "2021"
+description = "WAV to MP3 converter using shine-rs"
+
+[dependencies]
+shine-rs = { path = "../..", features = ["diagnostics"] }
+env_logger = "0.10"
+log = "0.4"
+
+# Force debug mode for shine-rs dependency to enable debug_assertions
+[profile.dev.package.shine-rs]
+debug-assertions = true
+opt-level = 0
