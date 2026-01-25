@@ -1,40 +1,48 @@
 # 高级API使用指南
 
-这个文档介绍如何使用Rust MP3编码器的高级接口。高级接口提供了简单易用的Rust风格API，同时保留了对底层shine实现的完全访问。
+这个文档介绍如何使用Rust MP3编码器的底层接口。项目提供了直接基于 Shine C 实现的 Rust 接口，确保算法的完全一致性。
 
 ## 快速开始
 
 ### 基本用法
 
 ```rust
-use rust_mp3_encoder::{Mp3Encoder, Mp3EncoderConfig, StereoMode};
+use shine_rs::{ShineConfig, WaveConfig, MpegConfig, shine_initialise, shine_encode_buffer_interleaved};
 
 // 创建配置
-let config = Mp3EncoderConfig::new()
-    .sample_rate(44100)
-    .bitrate(128)
-    .channels(2)
-    .stereo_mode(StereoMode::Stereo);
+let config = ShineConfig {
+    wave: WaveConfig {
+        channels: 2,
+        samplerate: 44100,
+    },
+    mpeg: MpegConfig {
+        mode: 0,  // 立体声
+        bitr: 128,
+        emph: 0,
+        copyright: 0,
+        original: 1,
+    },
+};
 
-// 创建编码器
-let mut encoder = Mp3Encoder::new(config)?;
+// 初始化编码器
+let mut global_config = shine_initialise(&config)?;
 
 // 编码PCM数据
 let pcm_data: Vec<i16> = vec![/* 你的PCM数据 */];
-let mp3_frames = encoder.encode_interleaved(&pcm_data)?;
-
-// 完成编码
-let final_data = encoder.finish()?;
+let (mp3_data, written) = shine_encode_buffer_interleaved(&mut global_config, pcm_data.as_ptr())?;
 ```
 
-### 一次性编码
+### 使用命令行工具
 
-```rust
-use rust_mp3_encoder::{encode_pcm_to_mp3, Mp3EncoderConfig};
+```bash
+# 基本转换
+cargo run --bin wav2mp3 input.wav output.mp3
 
-let config = Mp3EncoderConfig::new();
-let pcm_data: Vec<i16> = vec![/* 你的PCM数据 */];
-let mp3_data = encode_pcm_to_mp3(config, &pcm_data)?;
+# 指定比特率和模式
+cargo run --bin wav2mp3 input.wav output.mp3 128 stereo
+
+# 调试模式（限制帧数）
+cargo run --bin wav2mp3 input.wav output.mp3 --max-frames 10
 ```
 
 ## 配置选项
