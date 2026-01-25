@@ -134,10 +134,14 @@ Cargo自动生成的构建输出目录，包含编译后的二进制文件和中
 #### `docs/` - 项目文档
 ```
 docs/
-├── debug_analysis.md         # 调试分析文档
-├── PROJECT_STRUCTURE.md      # 项目结构说明（本文档）
-├── TEST_DATA_FRAMEWORK.md    # 测试数据框架文档
-└── VERIFICATION_RECORD.md    # 验证记录文档
+├── AUDIO_FILES_STANDARDIZATION.md  # 音频文件标准化文档
+├── debug_analysis.md               # 调试分析文档
+├── FOLDER_REORGANIZATION_SUMMARY.md # 文件夹重组总结
+├── FRAME_LIMIT_FEATURE.md          # 帧数限制功能文档
+├── FRAME_LIMIT_QUICK_REFERENCE.md  # 帧数限制快速参考
+├── PROJECT_STRUCTURE.md            # 项目结构说明（本文档）
+├── TEST_DATA_FRAMEWORK.md          # 测试数据框架文档
+└── VERIFICATION_RECORD.md          # 验证记录文档
 ```
 
 ### 配置文件

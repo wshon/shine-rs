@@ -167,12 +167,72 @@ impl ValidationResults {
     }
 }
 
+/// Command line arguments structure
+struct Args {
+    json_file: String,
+    max_frames: Option<usize>,
+}
+
+impl Args {
+    /// Parse command line arguments
+    fn parse() -> Result<Self, String> {
+        let args: Vec<String> = env::args().collect();
+        
+        if args.len() < 2 {
+            return Err(format!(
+                "Usage: {} <test_data.json> [--max-frames N]\n\
+                 \n\
+                 Arguments:\n\
+                   test_data.json - JSON file containing test data to validate against\n\
+                   --max-frames N - Limit encoding to N frames (debug mode only)\n\
+                 \n\
+                 Examples:\n\
+                   {} test_data.json\n\
+                   {} test_data.json --max-frames 10",
+                args[0], args[0], args[0]
+            ));
+        }
+        
+        let json_file = args[1].clone();
+        
+        // Check for max-frames flag
+        let mut max_frames = None;
+        for i in 0..args.len() {
+            if args[i] == "--max-frames" && i + 1 < args.len() {
+                if let Ok(frames) = args[i + 1].parse::<usize>() {
+                    max_frames = Some(frames);
+                }
+            }
+        }
+        
+        // Also check environment variable
+        if max_frames.is_none() {
+            if let Ok(env_frames) = std::env::var("RUST_MP3_MAX_FRAMES") {
+                if let Ok(frames) = env_frames.parse::<usize>() {
+                    max_frames = Some(frames);
+                }
+            }
+        }
+        
+        Ok(Args {
+            json_file,
+            max_frames,
+        })
+    }
+}
+
 /// Validate encoding against test data
-fn validate_test_data(json_file: &str) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Loading test data from: {}", json_file);
+fn validate_test_data(args: Args) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Loading test data from: {}", args.json_file);
+    
+    // Set max frames environment variable if specified
+    if let Some(max_frames) = args.max_frames {
+        std::env::set_var("RUST_MP3_MAX_FRAMES", max_frames.to_string());
+        println!("Frame limit set to: {} frames", max_frames);
+    }
     
     // Load test case data
-    let test_case = TestDataCollector::load_from_file(json_file)?;
+    let test_case = TestDataCollector::load_from_file(&args.json_file)?;
     
     println!("Test case: {}", test_case.metadata.name);
     println!("Description: {}", test_case.metadata.description);
@@ -341,29 +401,23 @@ fn validate_test_data(json_file: &str) -> Result<(), Box<dyn std::error::Error>>
 }
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    
-    if args.len() < 2 {
-        eprintln!("Usage: {} <test_data.json>", args[0]);
-        eprintln!("");
-        eprintln!("Arguments:");
-        eprintln!("  test_data.json - JSON file containing test data to validate against");
-        eprintln!("");
-        eprintln!("Examples:");
-        eprintln!("  {} test_data.json", args[0]);
-        process::exit(1);
-    }
-    
-    let json_file = &args[1];
+    // Parse command line arguments
+    let args = match Args::parse() {
+        Ok(args) => args,
+        Err(err) => {
+            eprintln!("Error: {}", err);
+            process::exit(1);
+        }
+    };
     
     // Check if JSON file exists
-    if !Path::new(json_file).exists() {
-        eprintln!("Error: JSON file '{}' does not exist", json_file);
+    if !Path::new(&args.json_file).exists() {
+        eprintln!("Error: JSON file '{}' does not exist", args.json_file);
         process::exit(1);
     }
     
     // Perform validation
-    match validate_test_data(json_file) {
+    match validate_test_data(args) {
         Ok(()) => {
             println!("\n🎉 Validation completed successfully!");
         },

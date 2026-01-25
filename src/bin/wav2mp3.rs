@@ -140,6 +140,7 @@ struct Args {
     bitrate: i32,
     stereo_mode: i32,
     verbose: bool,
+    max_frames: Option<usize>,
 }
 
 impl Args {
@@ -149,7 +150,7 @@ impl Args {
         
         if args.len() < 3 {
             return Err(format!(
-                "Usage: {} <input.wav> <output.mp3> [bitrate] [stereo_mode] [--verbose]\n\
+                "Usage: {} <input.wav> <output.mp3> [bitrate] [stereo_mode] [--verbose] [--max-frames N]\n\
                  \n\
                  Arguments:\n\
                    input.wav    - Input WAV file path\n\
@@ -157,13 +158,15 @@ impl Args {
                    bitrate      - MP3 bitrate in kbps (default: 128)\n\
                    stereo_mode  - Stereo mode: mono, stereo, joint_stereo, dual_channel (default: auto)\n\
                    --verbose    - Enable verbose output with frame details\n\
+                   --max-frames N - Limit encoding to N frames (debug mode only)\n\
                  \n\
                  Examples:\n\
                    {} input.wav output.mp3\n\
                    {} input.wav output.mp3 192\n\
                    {} input.wav output.mp3 128 joint_stereo\n\
-                   {} input.wav output.mp3 128 joint_stereo --verbose",
-                args[0], args[0], args[0], args[0], args[0]
+                   {} input.wav output.mp3 128 joint_stereo --verbose\n\
+                   {} input.wav output.mp3 128 stereo --max-frames 10",
+                args[0], args[0], args[0], args[0], args[0], args[0]
             ));
         }
         
@@ -173,10 +176,33 @@ impl Args {
         // Check for verbose flag
         let verbose = args.iter().any(|arg| arg == "--verbose" || arg == "-v");
         
-        // Filter out verbose flags for other parsing
+        // Check for max-frames flag
+        let mut max_frames = None;
+        for i in 0..args.len() {
+            if args[i] == "--max-frames" && i + 1 < args.len() {
+                if let Ok(frames) = args[i + 1].parse::<usize>() {
+                    max_frames = Some(frames);
+                }
+            }
+        }
+        
+        // Also check environment variable
+        if max_frames.is_none() {
+            if let Ok(env_frames) = std::env::var("RUST_MP3_MAX_FRAMES") {
+                if let Ok(frames) = env_frames.parse::<usize>() {
+                    max_frames = Some(frames);
+                }
+            }
+        }
+        
+        // Filter out verbose and max-frames flags for other parsing
         let filtered_args: Vec<String> = args.iter()
-            .filter(|arg| *arg != "--verbose" && *arg != "-v")
-            .cloned()
+            .enumerate()
+            .filter(|(i, arg)| {
+                *arg != "--verbose" && *arg != "-v" && *arg != "--max-frames" &&
+                (*i == 0 || args[*i - 1] != "--max-frames")
+            })
+            .map(|(_, arg)| arg.clone())
             .collect();
         
         // Parse bitrate (default: 128)
@@ -211,6 +237,7 @@ impl Args {
             bitrate,
             stereo_mode,
             verbose,
+            max_frames,
         })
     }
 }
@@ -218,6 +245,12 @@ impl Args {
 /// Convert WAV file to MP3
 fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     println!("Reading WAV file: {}", args.input_file);
+    
+    // Set max frames environment variable if specified
+    if let Some(max_frames) = args.max_frames {
+        std::env::set_var("RUST_MP3_MAX_FRAMES", max_frames.to_string());
+        println!("Frame limit set to: {} frames", max_frames);
+    }
     
     // Read WAV file
     let (pcm_data, sample_rate, channels) = WavReader::read_wav_file(&args.input_file)?;

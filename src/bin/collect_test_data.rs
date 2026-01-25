@@ -143,11 +143,17 @@ fn calculate_sha256(data: &[u8]) -> String {
 }
 
 /// Collect test data from encoding process
-fn collect_test_data(input_file: &str, output_json: &str, bitrate: i32) -> Result<(), Box<dyn std::error::Error>> {
-    println!("Collecting test data from: {}", input_file);
+fn collect_test_data(args: Args) -> Result<(), Box<dyn std::error::Error>> {
+    println!("Collecting test data from: {}", args.input_file);
+    
+    // Set max frames environment variable if specified
+    if let Some(max_frames) = args.max_frames {
+        std::env::set_var("RUST_MP3_MAX_FRAMES", max_frames.to_string());
+        println!("Frame limit set to: {} frames", max_frames);
+    }
     
     // Read WAV file
-    let (pcm_data, sample_rate, channels) = WavReader::read_wav_file(input_file)?;
+    let (pcm_data, sample_rate, channels) = WavReader::read_wav_file(&args.input_file)?;
     
     println!("WAV info: {} Hz, {} channels, {} samples", 
              sample_rate, channels, pcm_data.len());
@@ -167,7 +173,7 @@ fn collect_test_data(input_file: &str, output_json: &str, bitrate: i32) -> Resul
         },
         mpeg: ShineMpeg {
             mode: stereo_mode,
-            bitr: bitrate,
+            bitr: args.bitrate,
             emph: 0,
             copyright: 0,
             original: 1,
@@ -176,32 +182,32 @@ fn collect_test_data(input_file: &str, output_json: &str, bitrate: i32) -> Resul
     
     // Set default MPEG values
     shine_set_config_mpeg_defaults(&mut config.mpeg);
-    config.mpeg.bitr = bitrate; // Override default bitrate
+    config.mpeg.bitr = args.bitrate; // Override default bitrate
     config.mpeg.mode = stereo_mode;  // Override default mode
     
     // Initialize test data collector
     let metadata = TestMetadata {
         name: format!("test_case_{}_{}hz_{}ch_{}kbps", 
-                     Path::new(input_file).file_stem().unwrap().to_str().unwrap(),
-                     sample_rate, channels, bitrate),
-        input_file: input_file.to_string(),
+                     Path::new(&args.input_file).file_stem().unwrap().to_str().unwrap(),
+                     sample_rate, channels, args.bitrate),
+        input_file: args.input_file.clone(),
         expected_output_size: 0, // Will be filled later
         expected_hash: String::new(), // Will be filled later
         created_at: chrono::Utc::now().to_rfc3339(),
-        description: format!("Test case for {} at {} kbps", input_file, bitrate),
+        description: format!("Test case for {} at {} kbps", args.input_file, args.bitrate),
     };
     
     let encoding_config = EncodingConfig {
         sample_rate: sample_rate as i32,
         channels: channels as i32,
-        bitrate,
+        bitrate: args.bitrate,
         stereo_mode,
         mpeg_version: 3, // Will be determined by encoder
     };
     
     TestDataCollector::initialize(metadata, encoding_config);
     
-    println!("Encoding with: {} kbps, mode {}", bitrate, stereo_mode);
+    println!("Encoding with: {} kbps, mode {}", args.bitrate, stereo_mode);
     
     let mut encoder = shine_initialise(&config)?;
     
@@ -264,53 +270,124 @@ fn collect_test_data(input_file: &str, output_json: &str, bitrate: i32) -> Resul
     // For now, we'll save with the current values and manually update if needed
     
     // Save collected data to JSON file
-    TestDataCollector::save_to_file(output_json)?;
+    TestDataCollector::save_to_file(&args.output_json)?;
     
     println!("✅ Test data collection completed!");
     println!("   Frames collected: 6");
     println!("   Output size: {} bytes", mp3_data.len());
     println!("   SHA256: {}", hash);
-    println!("   JSON saved to: {}", output_json);
+    println!("   JSON saved to: {}", args.output_json);
     
     Ok(())
 }
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
-    
-    if args.len() < 3 {
-        eprintln!("Usage: {} <input.wav> <output.json> [bitrate]", args[0]);
-        eprintln!("");
-        eprintln!("Arguments:");
-        eprintln!("  input.wav    - Input WAV file path");
-        eprintln!("  output.json  - Output JSON file path for test data");
-        eprintln!("  bitrate      - MP3 bitrate in kbps (default: 128)");
-        eprintln!("");
-        eprintln!("Examples:");
-        eprintln!("  {} sample-3s.wav test_data.json", args[0]);
-        eprintln!("  {} sample-3s.wav test_data.json 192", args[0]);
-        process::exit(1);
-    }
-    
-    let input_file = &args[1];
-    let output_json = &args[2];
-    let bitrate = if args.len() > 3 {
-        args[3].parse::<i32>().unwrap_or_else(|_| {
-            eprintln!("Invalid bitrate: {}", args[3]);
-            process::exit(1);
+/// Command line arguments structure
+struct Args {
+    input_file: String,
+    output_json: String,
+    bitrate: i32,
+    max_frames: Option<usize>,
+}
+
+impl Args {
+    /// Parse command line arguments
+    fn parse() -> Result<Self, String> {
+        let args: Vec<String> = env::args().collect();
+        
+        if args.len() < 3 {
+            return Err(format!(
+                "Usage: {} <input.wav> <output.json> [bitrate] [--max-frames N]\n\
+                 \n\
+                 Arguments:\n\
+                   input.wav    - Input WAV file path\n\
+                   output.json  - Output JSON file path for test data\n\
+                   bitrate      - MP3 bitrate in kbps (default: 128)\n\
+                   --max-frames N - Limit encoding to N frames (debug mode only, default: 6)\n\
+                 \n\
+                 Examples:\n\
+                   {} sample-3s.wav test_data.json\n\
+                   {} sample-3s.wav test_data.json 192\n\
+                   {} sample-3s.wav test_data.json 128 --max-frames 10",
+                args[0], args[0], args[0], args[0]
+            ));
+        }
+        
+        let input_file = args[1].clone();
+        let output_json = args[2].clone();
+        
+        // Check for max-frames flag
+        let mut max_frames = None;
+        for i in 0..args.len() {
+            if args[i] == "--max-frames" && i + 1 < args.len() {
+                if let Ok(frames) = args[i + 1].parse::<usize>() {
+                    max_frames = Some(frames);
+                }
+            }
+        }
+        
+        // Also check environment variable
+        if max_frames.is_none() {
+            if let Ok(env_frames) = std::env::var("RUST_MP3_MAX_FRAMES") {
+                if let Ok(frames) = env_frames.parse::<usize>() {
+                    max_frames = Some(frames);
+                }
+            }
+        }
+        
+        // Default to 6 frames if not specified
+        if max_frames.is_none() {
+            max_frames = Some(6);
+        }
+        
+        // Filter out max-frames flags for other parsing
+        let filtered_args: Vec<String> = args.iter()
+            .enumerate()
+            .filter(|(i, arg)| {
+                *arg != "--max-frames" && (*i == 0 || args[*i - 1] != "--max-frames")
+            })
+            .map(|(_, arg)| arg.clone())
+            .collect();
+        
+        // Parse bitrate (default: 128)
+        let bitrate = if filtered_args.len() > 3 {
+            filtered_args[3].parse::<i32>()
+                .map_err(|_| format!("Invalid bitrate: {}", filtered_args[3]))?
+        } else {
+            128
+        };
+        
+        // Validate bitrate
+        if ![32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320].contains(&bitrate) {
+            return Err(format!("Unsupported bitrate: {}. Supported: 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320", bitrate));
+        }
+        
+        Ok(Args {
+            input_file,
+            output_json,
+            bitrate,
+            max_frames,
         })
-    } else {
-        128
+    }
+}
+
+fn main() {
+    // Parse command line arguments
+    let args = match Args::parse() {
+        Ok(args) => args,
+        Err(err) => {
+            eprintln!("Error: {}", err);
+            process::exit(1);
+        }
     };
     
     // Check if input file exists
-    if !Path::new(input_file).exists() {
-        eprintln!("Error: Input file '{}' does not exist", input_file);
+    if !Path::new(&args.input_file).exists() {
+        eprintln!("Error: Input file '{}' does not exist", args.input_file);
         process::exit(1);
     }
     
     // Perform test data collection
-    if let Err(err) = collect_test_data(input_file, output_json, bitrate) {
+    if let Err(err) = collect_test_data(args) {
         eprintln!("Test data collection failed: {}", err);
         process::exit(1);
     }
