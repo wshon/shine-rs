@@ -207,7 +207,14 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 /// Internal encoding function (matches shine_encode_buffer_internal)
 /// (ref/shine/src/lib/layer3.c:136-158)
 fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
+    #[cfg(debug_assertions)]
     let frame_num = crate::get_next_frame_number();
+    #[cfg(not(debug_assertions))]
+    let _frame_num = crate::get_next_frame_number();
+    
+    // Start frame data collection
+    #[cfg(debug_assertions)]
+    crate::test_data::start_frame_collection(frame_num);
     
     // Dynamic padding calculation (matches shine exactly)
     if config.mpeg.frac_slots_per_frame != 0.0 {
@@ -231,11 +238,22 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     let written = config.bs.data_position as usize;
     config.bs.data_position = 0;
 
-    // Print key parameters for verification
+    // Print key parameters for verification (debug mode only)
+    #[cfg(debug_assertions)]
     println!("[RUST F{}] pad={}, bits={}, written={}, slot_lag={:.6}", 
              frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, written, config.mpeg.slot_lag);
 
-    // Stop after 6 frames for debugging (after encoding is complete)
+    // Record bitstream data for test collection
+    #[cfg(debug_assertions)]
+    crate::test_data::record_bitstream_data(
+        config.mpeg.padding,
+        config.mpeg.bits_per_frame,
+        written,
+        config.mpeg.slot_lag
+    );
+
+    // Stop after 6 frames for debugging (debug mode only)
+    #[cfg(debug_assertions)]
     if frame_num > 6 {
         println!("[RUST] Stopping after 6 frames for comparison");
         // Return a special error to indicate we should stop encoding but still write the file

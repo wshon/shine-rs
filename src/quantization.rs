@@ -171,7 +171,10 @@ pub fn shine_outer_loop(
 /// Main iteration loop for encoding
 /// Corresponds to shine_iteration_loop() in l3loop.c
 pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
+    #[cfg(debug_assertions)]
     let frame_num = crate::get_current_frame_number();
+    #[cfg(not(debug_assertions))]
+    let _frame_num = crate::get_current_frame_number();
     
     let mut l3_xmin = ShinePsyXmin::default();
     let mut max_bits: i32;
@@ -211,7 +214,8 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             let pe_value = config.pe[ch as usize][gr as usize].clone();
             max_bits = crate::reservoir::shine_max_reservoir_bits(&pe_value, &config);
 
-            // Print key quantization parameters for verification
+            // Print key quantization parameters for verification (debug mode only)
+            #[cfg(debug_assertions)]
             if frame_num <= 6 && ch == 0 && gr == 0 {
                 println!("[RUST F{}] xrmax={}, max_bits={}", frame_num, config.l3loop.xrmax, max_bits);
             }
@@ -275,11 +279,24 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 let cod_info_copy = cod_info.clone(); // Clone for immutable reference
                 cod_info.global_gain = (quantizer_step_size + 210) as u32;
                 
-                // Print key quantization results for verification
+                // Print key quantization results for verification (debug mode only)
+                #[cfg(debug_assertions)]
                 if frame_num <= 6 && ch == 0 && gr == 0 {
                     println!("[RUST F{}] part2_3_length={}, quantizer_step_size={}, global_gain={}", 
                              frame_num, part2_3_length, quantizer_step_size, cod_info.global_gain);
+                    // Record quantization data for test collection
+                    crate::test_data::record_quant_data(
+                        config.l3loop.xrmax,
+                        max_bits,
+                        part2_3_length,
+                        quantizer_step_size,
+                        cod_info.global_gain
+                    );
                 }
+                
+                // Suppress unused variable warning in release mode
+                #[cfg(not(debug_assertions))]
+                let _ = part2_3_length;
                 
                 // Call reservoir adjust with the copied data
                 crate::reservoir::shine_resv_adjust(&cod_info_copy, config);

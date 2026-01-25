@@ -12,9 +12,6 @@ use lazy_static::lazy_static;
 /// PI/36 constant for MDCT calculations (matches shine PI36)
 const PI36: f64 = PI / 36.0;
 
-/// PI/72 constant for MDCT calculations (matches shine PI/72)
-const PI72: f64 = PI / 72.0;
-
 /// Aliasing reduction coefficients (matches shine's MDCT_CA and MDCT_CS macros)
 /// These are table B.9 coefficients for aliasing reduction from the ISO standard
 
@@ -113,7 +110,10 @@ pub fn shine_mdct_initialise(config: &mut ShineGlobalConfig) {
 /// 2. MDCT transformation of subband samples to frequency domain
 /// 3. Aliasing reduction butterfly operations
 pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
+    #[cfg(debug_assertions)]
     let frame_num = crate::get_current_frame_number();
+    #[cfg(not(debug_assertions))]
+    let _frame_num = crate::get_current_frame_number();
     
     let mut mdct_in = [0i32; 36];
     
@@ -212,10 +212,13 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     // This means mdct_freq[ch][gr][band*18 + k]
                     config.mdct_freq[ch_idx][gr_idx][band * 18 + k] = vm;
                     
-                    // Print key MDCT coefficients for verification
+                    // Print key MDCT coefficients for verification (debug mode only)
+                    #[cfg(debug_assertions)]
                     if frame_num <= 6 && ch == 0 && gr == 0 && band == 0 && k >= 15 {
                         println!("[RUST F{}] MDCT[{}][{}][{}][{}] = {}", 
                                  frame_num, ch, gr, band, k, vm);
+                        // Record MDCT coefficient for test collection
+                        crate::test_data::record_mdct_coeff(k, vm);
                     }
                 }
                 
@@ -285,10 +288,13 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
             }
         }
         
-        // Debug: Print saved data for verification
+        // Debug: Print saved data for verification (debug mode only)
+        #[cfg(debug_assertions)]
         if frame_num <= 6 && ch == 0 {
             println!("[RUST F{}] Saved l3_sb_sample[{}][0][0][0] = {}", 
                      frame_num, ch, config.l3_sb_sample[ch_idx][0][0][0]);
+            // Record l3_sb_sample for test collection
+            crate::test_data::record_sb_sample(ch as usize, config.l3_sb_sample[ch_idx][0][0][0]);
         }
     }
 }

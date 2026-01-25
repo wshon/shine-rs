@@ -1,0 +1,97 @@
+{
+  "metadata": {
+    "name": "test_case_test_input_44100hz_2ch_128kbps",
+    "input_file": "test_input.wav",
+    "expected_output_size": 0,
+    "expected_hash": "",
+    "created_at": "2026-01-25T03:20:58.540642300+00:00",
+    "description": "Test case for test_input.wav at 128 kbps"
+  },
+  "config": {
+    "sample_rate": 44100,
+    "channels": 2,
+    "bitrate": 128,
+    "stereo_mode": 0,
+    "mpeg_version": 3
+  },
+  "frames": [
+    {
+      "frame_number": 1,
+      "mdct_coefficients": {
+        "coefficients": [
+          -14265082,
+          -34259084,
+          -52092837
+        ],
+        "l3_sb_sample": [
+          182957202
+        ]
+      },
+      "quantization": {
+        "xrmax": 250370108,
+        "max_bits": 764,
+        "part2_3_length": 688,
+        "quantizer_step_size": -50,
+        "global_gain": 160
+      },
+      "bitstream": {
+        "padding": 1,
+        "bits_per_frame": 3344,
+        "written": 416,
+        "slot_lag": -0.9183673469387941
+      }
+    },
+    {
+      "frame_number": 2,
+      "mdct_coefficients": {
+        "coefficients": [
+          4623557,
+          -3286367,
+          -17534239
+        ],
+        "l3_sb_sample": [
+          -190041290
+        ]
+      },
+      "quantization": {
+        "xrmax": 1272576143,
+        "max_bits": 764,
+        "part2_3_length": 703,
+        "quantizer_step_size": -72,
+        "global_gain": 138
+      },
+      "bitstream": {
+        "padding": 1,
+        "bits_per_frame": 3344,
+        "written": 420,
+        "slot_lag": -0.8775510204081911
+      }
+    },
+    {
+      "frame_number": 3,
+      "mdct_coefficients": {
+        "coefficients": [
+          -5057335,
+          2697019,
+          18131353
+        ],
+        "l3_sb_sample": [
+          196843120
+        ]
+      },
+      "quantization": {
+        "xrmax": 1302345862,
+        "max_bits": 764,
+        "part2_3_length": 623,
+        "quantizer_step_size": -72,
+        "global_gain": 138
+      },
+      "bitstream": {
+        "padding": 1,
+        "bits_per_frame": 3344,
+        "written": 416,
+        "slot_lag": -0.8367346938775881
+      }
+    }
+  ]
+}

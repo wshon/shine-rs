@@ -310,8 +310,9 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                         println!("Encoded {} / {} frames", frame_count, total_frames);
                     }
                 },
+                #[cfg(debug_assertions)]
                 Err(rust_mp3_encoder::error::EncodingError::StopAfterFrames) => {
-                    // This is expected when we stop after a certain number of frames
+                    // This is expected when we stop after a certain number of frames in debug mode
                     println!("Stopped encoding after {} frames as requested", frame_count);
                     break;
                 },
