@@ -543,7 +543,7 @@ fn huffman_code(bs: &mut BitstreamWriter, table_select: usize, x: i32, y: i32) -
 /// Get absolute value and sign bit (matches shine_abs_and_sign exactly)
 /// (ref/shine/src/lib/l3bitstream.c:167-172)
 #[inline]
-fn abs_and_sign(x: &mut i32) -> u32 {
+pub fn abs_and_sign(x: &mut i32) -> u32 {
     if *x > 0 {
         0
     } else {
@@ -552,93 +552,3 @@ fn abs_and_sign(x: &mut i32) -> u32 {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use proptest::prelude::*;
-
-    proptest! {
-        #![proptest_config(proptest::prelude::ProptestConfig {
-            cases: 100,
-            verbose: 0,
-            max_shrink_iters: 0,
-            failure_persistence: None,
-            ..proptest::prelude::ProptestConfig::default()
-        })]
-
-        #[test]
-        fn test_bitstream_writer_basic_operations(
-            val in 0u32..0x10000,
-            bits in 1u32..17
-        ) {
-            let mut bs = BitstreamWriter::new(1024);
-
-            // Should be able to write bits without error
-            prop_assert!(bs.put_bits(val & ((1 << bits) - 1), bits as i32).is_ok(), "Writing bits should succeed");
-
-            // Bit count should increase
-            let count = bs.get_bits_count();
-            prop_assert!(count >= bits as i32, "Bit count should increase");
-        }
-
-        #[test]
-        fn test_bitstream_writer_buffer_expansion(
-            values in prop::collection::vec(0u32..0x100, 100..200)
-        ) {
-            let mut bs = BitstreamWriter::new(16); // Small initial size
-
-            // Should handle buffer expansion automatically
-            for val in values {
-                prop_assert!(bs.put_bits(val, 8).is_ok(), "Buffer expansion should work");
-            }
-
-            prop_assert!(bs.get_bits_count() > 0, "Should have written data");
-        }
-
-        #[test]
-        fn test_abs_and_sign_function(x in -1000i32..1000) {
-            let mut x_copy = x;
-            let sign = abs_and_sign(&mut x_copy);
-
-            if x > 0 {
-                prop_assert_eq!(sign, 0, "Positive numbers should have sign 0");
-                prop_assert_eq!(x_copy, x, "Positive numbers should be unchanged");
-            } else {
-                prop_assert_eq!(sign, 1, "Zero and negative numbers should have sign 1");
-                prop_assert_eq!(x_copy, -x, "Numbers should be negated");
-            }
-        }
-    }
-
-    #[test]
-    fn test_bitstream_writer_creation() {
-        let bs = BitstreamWriter::new(1024);
-        assert_eq!(bs.data_size, 1024);
-        assert_eq!(bs.data_position, 0);
-        assert_eq!(bs.cache, 0);
-        assert_eq!(bs.cache_bits, 32);
-    }
-
-    #[test]
-    fn test_bitstream_writer_simple_write() {
-        let mut bs = BitstreamWriter::new(1024);
-
-        // Write some bits
-        assert!(bs.put_bits(0b1010, 4).is_ok());
-        assert_eq!(bs.get_bits_count(), 4);
-
-        assert!(bs.put_bits(0b11, 2).is_ok());
-        assert_eq!(bs.get_bits_count(), 6);
-    }
-
-    #[test]
-    fn test_bitstream_writer_flush() {
-        let mut bs = BitstreamWriter::new(1024);
-
-        bs.put_bits(0xff, 8).unwrap();
-        bs.flush().unwrap();
-
-        let data = bs.get_data();
-        assert!(!data.is_empty());
-    }
-}

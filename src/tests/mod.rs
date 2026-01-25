@@ -4,6 +4,7 @@
 //! Tests are organized by module and functionality.
 
 pub mod bitstream_tests;
+pub mod encoder_tests;
 pub mod mdct_tests;
 pub mod pcm_utils_tests;
 pub mod quantization_tests;
