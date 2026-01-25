@@ -187,6 +187,71 @@ mod tests {
     }
 
     #[test]
+    fn test_subband_energy_conservation() {
+        use crate::subband::shine_subband_initialise;
+        use crate::types::Subband;
+        
+        let mut subband = Subband::default();
+        shine_subband_initialise(&mut subband);
+        
+        // Test energy conservation properties
+        // Input energy should be related to output energy through the filter
+        
+        let test_samples = [1000i32, 500, 250, 125, 0, -125, -250, -500];
+        let input_energy: i64 = test_samples.iter().map(|&x| (x as i64) * (x as i64)).sum();
+        
+        // Store samples in filter buffer
+        for (i, &sample) in test_samples.iter().enumerate() {
+            if i < HAN_SIZE {
+                subband.x[0][i] = sample;
+            }
+        }
+        
+        // Energy should be preserved in some form through the filter
+        assert!(input_energy > 0, "Input should have non-zero energy");
+        
+        // Filter coefficients should be normalized appropriately
+        let mut coeff_energy = 0.0f64;
+        for sb in 0..32 {
+            for i in 0..64 {
+                let coeff = subband.fl[sb][i] as f64;
+                coeff_energy += coeff * coeff;
+            }
+        }
+        assert!(coeff_energy > 0.0, "Filter should have non-zero energy");
+    }
+
+    #[test]
+    fn test_subband_constants() {
+        // Test that constants match shine's values
+        assert_eq!(MAX_CHANNELS, 2, "Should support 2 channels");
+        assert_eq!(SBLIMIT, 32, "Should have 32 subbands");
+        assert_eq!(HAN_SIZE, 512, "HAN size should be 512");
+    }
+
+    #[test]
+    fn test_subband_state_default() {
+        use crate::types::Subband;
+        
+        let subband = Subband::default();
+        
+        // Verify default initialization
+        for i in 0..MAX_CHANNELS {
+            assert_eq!(subband.off[i], 0, "Default offset should be zero");
+            for j in 0..HAN_SIZE {
+                assert_eq!(subband.x[i][j], 0, "Default buffer should be zero");
+            }
+        }
+        
+        // Verify filter coefficients are initialized to zero by default
+        for sb in 0..32 {
+            for i in 0..64 {
+                assert_eq!(subband.fl[sb][i], 0, "Default filter coefficients should be zero");
+            }
+        }
+    }
+
+    #[test]
     fn test_subband_structure_initialization() {
         use crate::types::Subband;
         
@@ -388,6 +453,74 @@ mod property_tests {
             failure_persistence: None,
             ..ProptestConfig::default()
         })]
+
+        #[test]
+        fn test_subband_initialise_coefficients(
+            _unit in Just(())
+        ) {
+            use crate::subband::shine_subband_initialise;
+            use crate::types::Subband;
+            
+            let mut subband = Subband::default();
+            shine_subband_initialise(&mut subband);
+            
+            // Verify that coefficients are initialized (non-zero for most entries)
+            let mut non_zero_count = 0;
+            for i in 0..SBLIMIT {
+                for j in 0..64 {
+                    if subband.fl[i][j] != 0 {
+                        non_zero_count += 1;
+                    }
+                }
+            }
+            
+            prop_assert!(non_zero_count > SBLIMIT * 32, "Most coefficients should be non-zero");
+            
+            // Verify channel offsets are initialized to zero
+            for i in 0..MAX_CHANNELS {
+                prop_assert_eq!(subband.off[i], 0, "Channel offset should be zero");
+            }
+        }
+
+        #[test]
+        fn test_multiplication_functions(
+            a in -1000000i32..1000000,
+            b in -1000000i32..1000000,
+        ) {
+            use crate::subband::{mul, mulr, mul0};
+            
+            // Test that multiplication functions don't overflow
+            let result1 = mul(a, b);
+            let result2 = mulr(a, b);
+            let result3 = mul0(a, b);
+            
+            // Results should be finite
+            prop_assert!(result1.abs() <= i32::MAX, "mul result should be valid");
+            prop_assert!(result2.abs() <= i32::MAX, "mulr result should be valid");
+            prop_assert!(result3.abs() <= i32::MAX, "mul0 result should be valid");
+            
+            // mul0 should equal mul
+            prop_assert_eq!(result1, result3, "mul0 should equal mul");
+        }
+
+        #[test]
+        fn test_subband_state_consistency(
+            _unit in Just(())
+        ) {
+            use crate::subband::shine_subband_initialise;
+            use crate::types::Subband;
+            
+            let mut subband = Subband::default();
+            
+            // Test multiple initializations produce same result
+            shine_subband_initialise(&mut subband);
+            let fl_copy1 = subband.fl;
+            
+            shine_subband_initialise(&mut subband);
+            let fl_copy2 = subband.fl;
+            
+            prop_assert_eq!(fl_copy1, fl_copy2, "Multiple initializations should be identical");
+        }
 
         #[test]
         fn test_subband_offset_properties(

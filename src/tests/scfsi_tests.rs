@@ -169,7 +169,7 @@ mod unit_tests {
 
 #[cfg(test)]
 mod property_tests {
-    use super::*;
+    use crate::types::*;
     use proptest::prelude::*;
     
     proptest! {

@@ -81,9 +81,9 @@ mod tests {
         let config = ShineGlobalConfig::default();
         
         // Test that config has required components
-        assert_eq!(config.wave.channels, 0, "Initial channels should be 0");
-        assert_eq!(config.mpeg.version, 0, "Initial version should be 0");
-        assert_eq!(config.mpeg.layer, 0, "Initial layer should be 0");
+        assert_eq!(config.wave.channels, 2, "Default channels should be 2");
+        assert_eq!(config.mpeg.version, 3, "Default version should be 3 (MPEG_I)");
+        assert_eq!(config.mpeg.layer, 1, "Default layer should be 1 (LAYER_III)");
         
         // Test that all granule info arrays are properly sized
         assert_eq!(config.side_info.gr.len(), 2, "Should have 2 granules");
@@ -218,7 +218,7 @@ mod tests {
         bs.put_bits(2, 5).expect("Should write table_select[1]");   // table_select[1]
         bs.put_bits(3, 5).expect("Should write table_select[2]");   // table_select[2]
         bs.put_bits(7, 4).expect("Should write region0_count");     // region0_count
-        bs.put_bits(13, 3).expect("Should write region1_count");    // region1_count
+        bs.put_bits(7, 3).expect("Should write region1_count");    // region1_count
         bs.put_bits(0, 1).expect("Should write preflag");           // preflag
         bs.put_bits(0, 1).expect("Should write scalefac_scale");    // scalefac_scale
         bs.put_bits(0, 1).expect("Should write count1table_select"); // count1table_select

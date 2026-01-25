@@ -16,20 +16,20 @@ use std::f64::consts::PI;
 
 /// Basic multiplication with 32-bit right shift
 #[inline]
-fn mul(a: i32, b: i32) -> i32 {
+pub fn mul(a: i32, b: i32) -> i32 {
     ((a as i64 * b as i64) >> 32) as i32
 }
 
 /// Multiplication with rounding and 32-bit right shift
 #[inline]
 #[allow(dead_code)] // Used in tests
-fn mulr(a: i32, b: i32) -> i32 {
+pub fn mulr(a: i32, b: i32) -> i32 {
     (((a as i64 * b as i64) + 0x80000000i64) >> 32) as i32
 }
 
 /// Initialize multiplication operation (matches shine mul0 macro)
 #[inline]
-fn mul0(a: i32, b: i32) -> i32 {
+pub fn mul0(a: i32, b: i32) -> i32 {
     mul(a, b)
 }
 
@@ -197,133 +197,3 @@ pub fn shine_window_filter_subband(
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use proptest::prelude::*;
-
-    proptest! {
-        #![proptest_config(ProptestConfig {
-            cases: 100,
-            verbose: 0,
-            max_shrink_iters: 0,
-            failure_persistence: None,
-            ..ProptestConfig::default()
-        })]
-
-        #[test]
-        fn test_subband_initialise_coefficients(
-            _unit in Just(())
-        ) {
-            let mut subband = Subband::default();
-            shine_subband_initialise(&mut subband);
-            
-            // Verify that coefficients are initialized (non-zero for most entries)
-            let mut non_zero_count = 0;
-            for i in 0..SBLIMIT {
-                for j in 0..64 {
-                    if subband.fl[i][j] != 0 {
-                        non_zero_count += 1;
-                    }
-                }
-            }
-            
-            prop_assert!(non_zero_count > SBLIMIT * 32, "Most coefficients should be non-zero");
-            
-            // Verify channel offsets are initialized to zero
-            for i in 0..MAX_CHANNELS {
-                prop_assert_eq!(subband.off[i], 0, "Channel offset should be zero");
-            }
-        }
-
-        #[test]
-        fn test_window_filter_subband_basic(
-            samples in prop::collection::vec(-32768i16..32767, 32..64),
-            channel in 0usize..MAX_CHANNELS,
-        ) {
-            let mut subband = Subband::default();
-            shine_subband_initialise(&mut subband);
-            
-            let mut buffer = samples.as_slice();
-            let mut s = [0i32; SBLIMIT];
-            
-            shine_window_filter_subband(&mut buffer, &mut s, channel, &mut subband, 1);
-            
-            // Verify that subband samples are generated
-            let mut has_non_zero = false;
-            for &sample in &s {
-                if sample != 0 {
-                    has_non_zero = true;
-                    break;
-                }
-            }
-            
-            // For non-zero input, we should get some non-zero output
-            let has_non_zero_input = samples.iter().any(|&x| x != 0);
-            if has_non_zero_input {
-                prop_assert!(has_non_zero, "Non-zero input should produce non-zero output");
-            }
-        }
-
-        #[test]
-        fn test_multiplication_functions(
-            a in -1000000i32..1000000,
-            b in -1000000i32..1000000,
-        ) {
-            // Test that multiplication functions don't overflow
-            let result1 = mul(a, b);
-            let result2 = mulr(a, b);
-            let result3 = mul0(a, b);
-            
-            // Results should be finite
-            prop_assert!(result1.abs() <= i32::MAX, "mul result should be valid");
-            prop_assert!(result2.abs() <= i32::MAX, "mulr result should be valid");
-            prop_assert!(result3.abs() <= i32::MAX, "mul0 result should be valid");
-            
-            // mul0 should equal mul
-            prop_assert_eq!(result1, result3, "mul0 should equal mul");
-        }
-
-        #[test]
-        fn test_subband_state_consistency(
-            _unit in Just(())
-        ) {
-            let mut subband = Subband::default();
-            
-            // Test multiple initializations produce same result
-            shine_subband_initialise(&mut subband);
-            let fl_copy1 = subband.fl;
-            
-            shine_subband_initialise(&mut subband);
-            let fl_copy2 = subband.fl;
-            
-            prop_assert_eq!(fl_copy1, fl_copy2, "Multiple initializations should be identical");
-        }
-    }
-
-    #[test]
-    fn test_constants() {
-        assert_eq!(MAX_CHANNELS, 2);
-        assert_eq!(SBLIMIT, 32);
-        assert_eq!(HAN_SIZE, 512);
-    }
-
-    #[test]
-    fn test_subband_state_default() {
-        let subband = Subband::default();
-        
-        // Verify default initialization
-        for i in 0..MAX_CHANNELS {
-            assert_eq!(subband.off[i], 0);
-            for j in 0..HAN_SIZE {
-                assert_eq!(subband.x[i][j], 0);
-            }
-        }
-        
-        for i in 0..SBLIMIT {
-            for j in 0..64 {
-                assert_eq!(subband.fl[i][j], 0);
-            }
-        }
-    }
-}

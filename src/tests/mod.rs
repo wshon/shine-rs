@@ -5,6 +5,8 @@
 
 pub mod bitstream_tests;
 pub mod mdct_tests;
+pub mod pcm_utils_tests;
 pub mod quantization_tests;
 pub mod scfsi_tests;
 pub mod subband_tests;
+pub mod types_tests;

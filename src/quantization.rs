@@ -25,19 +25,19 @@ const XM_SCFSI_BAND_KRIT: i32 = 10;
 
 /// Multiply with rounding and 31-bit right shift (matches shine mulsr)
 #[inline]
-fn mulsr(a: i32, b: i32) -> i32 {
+pub fn mulsr(a: i32, b: i32) -> i32 {
     (((a as i64 * b as i64) + 0x40000000i64) >> 31) as i32
 }
 
 /// Multiply with rounding and 32-bit right shift (matches shine mulr)
 #[inline]
-fn mulr(a: i32, b: i32) -> i32 {
+pub fn mulr(a: i32, b: i32) -> i32 {
     (((a as i64 * b as i64) + 0x80000000i64) >> 32) as i32
 }
 
 /// Absolute value function (matches shine labs)
 #[inline]
-fn labs(x: i32) -> i32 {
+pub fn labs(x: i32) -> i32 {
     x.abs()
 }
 
@@ -416,7 +416,7 @@ fn calc_scfsi(
 
 /// Calculate part2 length (scalefactors)
 /// Corresponds to part2_length() in l3loop.c
-fn part2_length(gr: i32, ch: i32, config: &mut ShineGlobalConfig) -> i32 {
+pub fn part2_length(gr: i32, ch: i32, config: &mut ShineGlobalConfig) -> i32 {
     let mut bits = 0;
     let gi = &config.side_info.gr[gr as usize].ch[ch as usize].tt;
 
@@ -484,7 +484,7 @@ pub fn shine_loop_initialise(config: &mut ShineGlobalConfig) {
 }
 /// Quantize MDCT coefficients
 /// Corresponds to quantize() in l3loop.c
-fn quantize(ix: &mut [i32], stepsize: i32, config: &mut ShineGlobalConfig) -> i32 {
+pub fn quantize(ix: &mut [i32], stepsize: i32, config: &mut ShineGlobalConfig) -> i32 {
     let mut max = 0;
     let scalei: i32;
     let mut scale: f64;
@@ -525,7 +525,7 @@ fn quantize(ix: &mut [i32], stepsize: i32, config: &mut ShineGlobalConfig) -> i3
 }
 
 /// Calculate maximum value in range
-fn ix_max(ix: &[i32], begin: u32, end: u32) -> i32 {
+pub fn ix_max(ix: &[i32], begin: u32, end: u32) -> i32 {
     let mut max = 0;
     let start = begin as usize;
     let end = (end as usize).min(GRANULE_SIZE);
@@ -540,7 +540,7 @@ fn ix_max(ix: &[i32], begin: u32, end: u32) -> i32 {
 
 /// Calculate run length encoding information
 /// Corresponds to calc_runlen() in l3loop.c
-fn calc_runlen(ix: &mut [i32], cod_info: &mut GrInfo) {
+pub fn calc_runlen(ix: &mut [i32], cod_info: &mut GrInfo) {
     let mut i = GRANULE_SIZE;
     let mut _rzero = 0;
 
@@ -571,7 +571,7 @@ fn calc_runlen(ix: &mut [i32], cod_info: &mut GrInfo) {
 
 /// Count bits for count1 region
 /// Corresponds to count1_bitcount() in l3loop.c
-fn count1_bitcount(ix: &[i32], cod_info: &mut GrInfo) -> i32 {
+pub fn count1_bitcount(ix: &[i32], cod_info: &mut GrInfo) -> i32 {
     let mut sum0 = 0;
     let mut sum1 = 0;
 
@@ -630,7 +630,7 @@ fn count1_bitcount(ix: &[i32], cod_info: &mut GrInfo) -> i32 {
 
 /// Subdivide big values region into regions for different Huffman tables
 /// Corresponds to subdivide() in l3loop.c
-fn subdivide(cod_info: &mut GrInfo, config: &mut ShineGlobalConfig) {
+pub fn subdivide(cod_info: &mut GrInfo, config: &mut ShineGlobalConfig) {
     // Subdivision table from shine (matches exactly)
     const SUBDV_TABLE: [(u32, u32); 23] = [
         (0, 0), // 0 bands
@@ -709,7 +709,7 @@ fn subdivide(cod_info: &mut GrInfo, config: &mut ShineGlobalConfig) {
 
 /// Select Huffman code tables for bigvalues regions
 /// Corresponds to bigv_tab_select() in l3loop.c
-fn bigv_tab_select(ix: &[i32], cod_info: &mut GrInfo) {
+pub fn bigv_tab_select(ix: &[i32], cod_info: &mut GrInfo) {
     cod_info.table_select[0] = 0;
     cod_info.table_select[1] = 0;
     cod_info.table_select[2] = 0;
@@ -846,7 +846,7 @@ fn bigv_bitcount(ix: &[i32], gi: &GrInfo) -> i32 {
 
 /// Count the number of bits necessary to code the subregion
 /// Corresponds to count_bit() in l3loop.c
-fn count_bit(ix: &[i32], start: u32, end: u32, table: u32) -> i32 {
+pub fn count_bit(ix: &[i32], start: u32, end: u32, table: u32) -> i32 {
     if table == 0 {
         return 0;
     }
@@ -971,350 +971,4 @@ fn bin_search_step_size(
     }
 
     next
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::types::ShineGlobalConfig;
-    use proptest::prelude::*;
-    use std::sync::Once;
-
-    static INIT: Once = Once::new();
-
-    fn setup_clean_errors() {
-        INIT.call_once(|| {
-            std::panic::set_hook(Box::new(|info| {
-                if let Some(s) = info.payload().downcast_ref::<String>() {
-                    let msg = if s.len() > 200 { &s[..197] } else { s };
-                    eprintln!("Test failed: {}", msg.trim());
-                }
-            }));
-        });
-    }
-
-    fn create_test_config() -> Box<ShineGlobalConfig> {
-        let mut config = Box::new(ShineGlobalConfig::new());
-        config.wave.channels = 2;
-        config.wave.samplerate = 44100;
-        config.mpeg.bitr = 128;
-        config
-    }
-
-    #[cfg(test)]
-    mod unit_tests {
-        use super::*;
-
-        #[test]
-        fn test_granule_info_default() {
-            setup_clean_errors();
-            let gi = GrInfo::default();
-            
-            assert_eq!(gi.part2_3_length, 0);
-            assert_eq!(gi.big_values, 0);
-            assert_eq!(gi.count1, 0);
-            assert_eq!(gi.global_gain, 210);
-            assert_eq!(gi.scalefac_compress, 0);
-            assert_eq!(gi.table_select, [0, 0, 0]);
-            assert_eq!(gi.region0_count, 0);
-            assert_eq!(gi.region1_count, 0);
-            assert_eq!(gi.preflag, 0);
-            assert_eq!(gi.scalefac_scale, 0);
-            assert_eq!(gi.count1table_select, 0);
-            assert_eq!(gi.part2_length, 0);
-            assert_eq!(gi.sfb_lmax, SFB_LMAX as u32 - 1);
-            assert_eq!(gi.quantizer_step_size, 0);
-        }
-
-        #[test]
-        fn test_multiplication_macros() {
-            setup_clean_errors();
-            
-            // Test mulsr (multiply with rounding and 31-bit right shift)
-            assert_eq!(mulsr(0x40000000, 0x40000000), 0x20000000);
-            assert_eq!(mulsr(0x7fffffff, 0x7fffffff), 0x7fffffff);
-            assert_eq!(mulsr(0, 0x7fffffff), 0);
-            
-            // Test mulr (multiply with rounding and 32-bit right shift)
-            assert_eq!(mulr(0x80000000u32 as i32, 0x80000000u32 as i32), 0x40000000);
-            assert_eq!(mulr(0, 0x7fffffff), 0);
-            
-            // Test labs (absolute value)
-            assert_eq!(labs(-100), 100);
-            assert_eq!(labs(100), 100);
-            assert_eq!(labs(0), 0);
-            assert_eq!(labs(i32::MIN + 1), i32::MAX);
-        }
-
-        #[test]
-        fn test_quantize_basic() {
-            setup_clean_errors();
-            let mut config = create_test_config();
-            let mut ix = Box::new([0i32; GRANULE_SIZE]);  // Move to heap
-            
-            // Test with zero input
-            config.l3loop.xrmax = 0;
-            let max_val = quantize(ix.as_mut(), 0, &mut *config);
-            assert_eq!(max_val, 0);
-            
-            // Test with small non-zero input
-            config.l3loop.xrmax = 1000;
-            unsafe {
-                config.l3loop.xr = config.mdct_freq[0][0].as_mut_ptr();
-                for i in 0..GRANULE_SIZE {
-                    *config.l3loop.xr.add(i) = if i < 10 { 1000 } else { 0 };
-                    config.l3loop.xrabs[i] = if i < 10 { 1000 } else { 0 };
-                }
-            }
-            
-            let max_val = quantize(ix.as_mut(), 10, &mut *config);
-            assert!(max_val > 0, "Quantization should produce non-zero values");
-        }
-
-        #[test]
-        fn test_calc_runlen() {
-            setup_clean_errors();
-            let mut ix = Box::new([0i32; GRANULE_SIZE]);  // Move to heap
-            let mut cod_info = GrInfo::default();
-            
-            // Test with all zeros
-            calc_runlen(&mut *ix, &mut cod_info);
-            assert_eq!(cod_info.big_values, 0);
-            assert_eq!(cod_info.count1, 0);
-            
-            // Test with some values
-            ix[0] = 5;
-            ix[1] = 3;
-            ix[2] = 1;
-            ix[3] = 0;
-            calc_runlen(&mut *ix, &mut cod_info);
-            assert!(cod_info.big_values > 0, "Should detect big values");
-        }
-
-        #[test]
-        fn test_count1_bitcount() {
-            setup_clean_errors();
-            let ix = Box::new([0i32; GRANULE_SIZE]);  // Move to heap
-            let mut cod_info = GrInfo::default();
-            cod_info.big_values = 0;
-            cod_info.count1 = 0;
-            
-            let bits = count1_bitcount(&*ix, &mut cod_info);
-            assert_eq!(bits, 0, "Empty count1 region should use 0 bits");
-            assert!(cod_info.count1table_select <= 1, "Table select should be 0 or 1");
-        }
-
-        #[test]
-        fn test_part2_length() {
-            setup_clean_errors();
-            let mut config = create_test_config();
-            
-            // Test for granule 0
-            let length = part2_length(0, 0, &mut *config);
-            assert!(length >= 0, "Part2 length should be non-negative");
-            
-            // Test for granule 1
-            let length = part2_length(1, 0, &mut *config);
-            assert!(length >= 0, "Part2 length should be non-negative");
-        }
-
-        #[test]
-        fn test_ix_max() {
-            setup_clean_errors();
-            let mut ix = Box::new([0i32; GRANULE_SIZE]);  // Move to heap
-            ix[10] = 100;
-            ix[20] = 50;
-            ix[30] = 200;
-            
-            let max_val = ix_max(&*ix, 0, 40);
-            assert_eq!(max_val, 200, "Should find maximum value in range");
-            
-            let max_val = ix_max(&*ix, 0, 15);
-            assert_eq!(max_val, 100, "Should find maximum in limited range");
-            
-            let max_val = ix_max(&*ix, 50, 100);
-            assert_eq!(max_val, 0, "Should return 0 for range with no values");
-        }
-    }
-
-    #[cfg(test)]
-    mod property_tests {
-        use super::*;
-
-        proptest! {
-            #![proptest_config(ProptestConfig {
-                cases: 100,
-                verbose: 0,
-                max_shrink_iters: 0,
-                failure_persistence: None,
-                ..ProptestConfig::default()
-            })]
-
-            #[test]
-            fn test_quantize_bounds(stepsize in -120i32..120i32) {
-                setup_clean_errors();
-                let mut config = create_test_config();
-                let mut ix = Box::new([0i32; GRANULE_SIZE]);  // Move to heap
-                
-                // Set up some test data
-                config.l3loop.xrmax = 1000;
-                unsafe {
-                    config.l3loop.xr = config.mdct_freq[0][0].as_mut_ptr();
-                    for i in 0..GRANULE_SIZE {
-                        *config.l3loop.xr.add(i) = (i as i32 % 1000) - 500;
-                        config.l3loop.xrabs[i] = (*config.l3loop.xr.add(i)).abs();
-                    }
-                }
-                
-                let max_val = quantize(&mut *ix, stepsize, &mut *config);
-                prop_assert!(max_val >= 0, "Quantized max should be non-negative");
-                prop_assert!(max_val <= 16384, "Quantized max should not exceed limit");
-            }
-
-            #[test]
-            fn test_calc_runlen_properties(
-                values in prop::collection::vec(0i32..100, GRANULE_SIZE)
-            ) {
-                setup_clean_errors();
-                let mut ix = Box::new([0i32; GRANULE_SIZE]);  // Move to heap
-                ix.copy_from_slice(&values);
-                let mut cod_info = GrInfo::default();
-                
-                calc_runlen(&mut *ix, &mut cod_info);
-                
-                prop_assert!(cod_info.big_values <= 288, "Big values should not exceed MP3 limit");
-                prop_assert!(cod_info.count1 <= 144, "Count1 should not exceed reasonable limit");
-                prop_assert!(
-                    (cod_info.big_values << 1) + (cod_info.count1 << 2) <= GRANULE_SIZE as u32,
-                    "Total coded samples should not exceed granule size"
-                );
-            }
-
-            #[test]
-            fn test_multiplication_macro_properties(
-                a in i32::MIN/2..i32::MAX/2,
-                b in i32::MIN/2..i32::MAX/2
-            ) {
-                setup_clean_errors();
-                
-                // Test mulsr properties
-                let result = mulsr(a, b);
-                prop_assert!(result.abs() <= i32::MAX, "mulsr result should not overflow");
-                
-                // Test mulr properties  
-                let result = mulr(a, b);
-                prop_assert!(result.abs() <= i32::MAX, "mulr result should not overflow");
-                
-                // Test labs properties
-                let result = labs(a);
-                prop_assert!(result >= 0, "labs should always return non-negative");
-                if a != i32::MIN {
-                    prop_assert_eq!(result, a.abs(), "labs should match abs for non-MIN values");
-                }
-            }
-
-            #[test]
-            fn test_count_bit_properties(
-                table in 1u32..16u32,
-                start in 0u32..100u32,
-                values in prop::collection::vec(0i32..15, 200)
-            ) {
-                setup_clean_errors();
-                let mut ix = Box::new([0i32; GRANULE_SIZE]);  // Move to heap
-                let end = (start + values.len() as u32).min(GRANULE_SIZE as u32);
-                
-                for (i, &val) in values.iter().enumerate() {
-                    if start as usize + i < GRANULE_SIZE {
-                        ix[start as usize + i] = val;
-                    }
-                }
-                
-                let bits = count_bit(&*ix, start, end, table);
-                prop_assert!(bits >= 0, "Bit count should be non-negative");
-                prop_assert!(bits <= 10000, "Bit count should be reasonable");
-            }
-        }
-    }
-
-    #[cfg(test)]
-    mod integration_tests {
-        use super::*;
-
-        #[test]
-        #[ignore] // Stack overflow issue - needs investigation
-        fn test_shine_loop_initialise() {
-            setup_clean_errors();
-            
-            // Run in a thread with larger stack to avoid stack overflow
-            let handle = std::thread::Builder::new()
-                .stack_size(8 * 1024 * 1024) // 8MB stack
-                .spawn(|| {
-                    let config = create_test_config();
-                    
-                    // Verify step tables are initialized
-                    assert!(config.l3loop.steptab[0] > 0.0, "Step table should be initialized");
-                    assert!(config.l3loop.steptabi[0] > 0, "Integer step table should be initialized");
-                    
-                    // Verify int2idx table is initialized
-                    assert_eq!(config.l3loop.int2idx[0], 0, "int2idx[0] should be 0");
-                    assert!(config.l3loop.int2idx[100] > 0, "int2idx should have positive values");
-                })
-                .unwrap();
-            
-            handle.join().unwrap();
-        }
-
-        #[test]
-        #[ignore] // Stack overflow issue - needs investigation
-        fn test_complete_quantization_workflow() {
-            setup_clean_errors();
-            
-            // Run in a thread with larger stack to avoid stack overflow
-            let handle = std::thread::Builder::new()
-                .stack_size(8 * 1024 * 1024) // 8MB stack
-                .spawn(|| {
-                    let mut config = create_test_config();
-                    let mut ix = Box::new([0i32; GRANULE_SIZE]);  // Move to heap
-                    
-                    // Set up test MDCT coefficients
-                    config.l3loop.xrmax = 1000;
-                    unsafe {
-                        config.l3loop.xr = config.mdct_freq[0][0].as_mut_ptr();
-                        for i in 0..GRANULE_SIZE {
-                            let val = ((i as f64 * 0.1).sin() * 1000.0) as i32;
-                            *config.l3loop.xr.add(i) = val;
-                            config.l3loop.xrabs[i] = val.abs();
-                            config.l3loop.xrsq[i] = mulsr(val, val);
-                        }
-                    }
-                    
-                    // Test quantization
-                    let max_val = quantize(&mut *ix, 10, &mut *config);
-                    assert!(max_val > 0, "Should quantize non-zero coefficients");
-                    
-                    // Test run length calculation
-                    let mut cod_info = GrInfo::default();
-                    calc_runlen(&mut *ix, &mut cod_info);
-                    assert!(cod_info.big_values <= 288, "Big values within MP3 limit");
-                    
-                    // Test bit counting
-                    let bits = count1_bitcount(&*ix, &mut cod_info);
-                    assert!(bits >= 0, "Bit count should be non-negative");
-                    
-                    // Test subdivision
-                    subdivide(&mut cod_info, &mut *config);
-                    assert!(cod_info.address1 <= cod_info.address2, "Addresses should be ordered");
-                    assert!(cod_info.address2 <= cod_info.address3, "Addresses should be ordered");
-                    
-                    // Test table selection
-                    bigv_tab_select(&*ix, &mut cod_info);
-                    assert!(cod_info.table_select[0] < 32, "Table select should be valid");
-                    assert!(cod_info.table_select[1] < 32, "Table select should be valid");
-                    assert!(cod_info.table_select[2] < 32, "Table select should be valid");
-                })
-                .unwrap();
-            
-            handle.join().unwrap();
-        }
-    }
 }
