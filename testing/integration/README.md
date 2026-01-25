@@ -5,12 +5,12 @@
 ## 测试文件概述
 
 ### `integration_full_pipeline_validation.rs`
-基于 `tests/input/sample-3s.wav` 前三帧真实编码数据的完整流水线验证测试。
+基于 `testing/fixtures/audio/sample-3s.wav` 前三帧真实编码数据的完整流水线验证测试。
 
 #### 测试数据来源
 所有测试数据都来自实际的编码会话，通过运行以下命令获取：
 ```bash
-cargo run --bin wav2mp3 -- tests/input/sample-3s.wav test_sample_3s_real_data.mp3
+cargo run --bin wav2mp3 -- testing/fixtures/audio/sample-3s.wav test_sample_3s_real_data.mp3
 ```
 
 #### 测试覆盖范围

@@ -183,7 +183,7 @@ mod frame_3_data {
 /// Test the complete encoding pipeline for sample-3s.wav
 #[test]
 fn test_sample_3s_complete_pipeline() {
-    let input_file = "tests/input/sample-3s.wav";
+    let input_file = "testing/fixtures/audio/sample-3s.wav";
     let output_file = "test_sample_3s_pipeline.mp3";
     
     // Ensure input file exists

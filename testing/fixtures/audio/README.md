@@ -1,3 +1,15 @@
+Free_Test_Data_500KB_WAV.wav
+来自 https://freetestdata.com/audio-files/wav/
+
+sample-3s.wav
+sample-12s.wav
+来自
+https://samplelib.com/zh/sample-wav.html
+
+voice-recorder-testing-1-2-3-sound-file.wav
+来自
+https://voicerecorder.org/blog/free-download-testing-1-2-3-sound-file/
+
 # 测试输入文件说明
 
 这个目录包含了用于测试 MP3 编码器的各种输入文件和参考输出文件。

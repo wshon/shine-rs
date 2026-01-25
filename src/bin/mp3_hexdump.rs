@@ -12,8 +12,8 @@ fn main() {
     
     if args.len() < 2 || args.len() > 4 {
         eprintln!("用法: {} <mp3文件路径> [起始位置] [字节数]", args[0]);
-        eprintln!("示例: {} tests/output/encoded_output.mp3", args[0]);
-        eprintln!("示例: {} tests/output/encoded_output.mp3 400 100", args[0]);
+        eprintln!("示例: {} testing/fixtures/output/encoded_output.mp3", args[0]);
+        eprintln!("示例: {} testing/fixtures/output/encoded_output.mp3 400 100", args[0]);
         std::process::exit(1);
     }
 

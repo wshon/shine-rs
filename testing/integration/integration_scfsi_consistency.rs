@@ -12,7 +12,7 @@ use sha2::{Sha256, Digest};
 /// Test that Rust encoder generates identical output to Shine reference implementation
 #[test]
 fn test_scfsi_consistency_with_shine() {
-    let test_input = "test_input.wav";
+    let test_input = "testing/fixtures/audio/test_input.wav";
     let rust_output = "test_rust_scfsi_output.mp3";
     let shine_output = "test_shine_scfsi_output.mp3";
     
@@ -167,7 +167,7 @@ fn test_scfsi_condition_calculation() {
     assert_eq!(condition, 4);
     
     // Simulate en_tot difference check
-    let en_tot = [50, 52]; // Difference = 2, which is < EN_TOT_KRIT
+    let en_tot = [50i32, 52i32]; // Difference = 2, which is < EN_TOT_KRIT
     if (en_tot[0] - en_tot[1]).abs() < EN_TOT_KRIT {
         condition += 1;
     }

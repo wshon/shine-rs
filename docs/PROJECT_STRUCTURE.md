@@ -68,46 +68,35 @@ ref/
 ### 测试相关目录
 
 #### `testing/` - 测试相关文件
-统一的测试目录，包含所有测试相关的子目录：
+统一的测试目录，采用清晰的分类结构：
 
 ```
 testing/
-├── proptest-regressions/       # Proptest回归测试数据
-├── test_data/                  # 测试数据JSON文件
-├── test_inputs/                # 测试输入音频文件
-└── tests/                      # 集成测试
-    ├── bin/                    # 测试可执行程序
-    ├── output/                 # 测试输出文件
-    ├── integration_full_pipeline_validation.rs  # 完整流水线验证测试
-    ├── integration_scfsi_consistency.rs         # SCFSI一致性测试
-    └── README.md               # 测试说明文档
+├── fixtures/                   # 测试固件和数据
+│   ├── audio/                  # 测试音频文件（WAV、MP3）
+│   ├── data/                   # 测试数据JSON文件
+│   ├── output/                 # 测试输出文件
+│   └── tools/                  # 测试工具（ffmpeg、mpck等）
+├── integration/                # 集成测试
+│   ├── integration_full_pipeline_validation.rs  # 完整流水线验证测试
+│   ├── integration_scfsi_consistency.rs         # SCFSI一致性测试
+│   └── README.md               # 测试说明文档
+└── regression/                 # 回归测试数据
+    ├── bitstream.txt           # 比特流模块回归数据
+    └── subband.txt             # 子带模块回归数据
 ```
 
-#### `testing/test_data/` - 测试数据
-存储JSON格式的测试用例数据，用于验证编码器实现的正确性：
-```
-testing/test_data/
-├── test_data.json             # 基础测试用例
-├── sample_3s_test_data.json   # 长音频测试用例
-└── ...                        # 其他测试用例
-```
+#### `testing/fixtures/` - 测试固件
+- **audio/**: 包含所有测试用的音频文件，包括WAV源文件和MP3参考文件
+- **data/**: 存储JSON格式的测试用例数据，用于验证编码器实现的正确性
+- **output/**: 测试过程中生成的输出文件
+- **tools/**: 测试相关的外部工具（如ffmpeg.exe、mpck.exe）
 
-#### `testing/test_inputs/` - 测试输入文件
-存储用于测试的WAV音频文件：
-```
-testing/test_inputs/
-├── test_input.wav             # 基础测试音频
-├── sample-3s.wav             # 3秒测试音频
-└── ...                        # 其他测试音频
-```
+#### `testing/integration/` - 集成测试
+包含完整的端到端测试，验证整个编码流程的正确性
 
-#### `testing/proptest-regressions/` - 属性测试回归数据
-存储proptest发现的失败用例，用于回归测试：
-```
-testing/proptest-regressions/
-├── bitstream.txt              # 比特流模块回归数据
-└── subband.txt               # 子带模块回归数据
-```
+#### `testing/regression/` - 回归测试
+存储proptest发现的失败用例，用于防止回归问题
 
 ### 工具和脚本目录
 
@@ -190,10 +179,10 @@ docs/
 4. **文档更新**: 在 `docs/` 目录下更新相关文档
 
 ### 测试工作流
-1. **添加测试音频**: 放入 `testing/test_inputs/` 目录
-2. **收集测试数据**: 使用 `scripts/run_test_suite.ps1` 或手动运行工具
+1. **添加测试音频**: 放入 `testing/fixtures/audio/` 目录
+2. **收集测试数据**: 使用 `scripts/run_test_suite.ps1` 或手动运行工具，数据保存到 `testing/fixtures/data/`
 3. **验证实现**: 运行集成测试和单元测试
-4. **查看结果**: 检查 `debug_outputs/` 中的输出文件
+4. **查看结果**: 检查 `debug_outputs/` 和 `testing/fixtures/output/` 中的输出文件
 
 ### 脚本使用
 - **完整测试**: `scripts/run_test_suite.ps1`
