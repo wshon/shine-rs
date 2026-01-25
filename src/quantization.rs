@@ -171,9 +171,7 @@ pub fn shine_outer_loop(
 /// Main iteration loop for encoding
 /// Corresponds to shine_iteration_loop() in l3loop.c
 pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
-    use std::sync::atomic::{AtomicI32, Ordering};
-    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
-    let frame_num = FRAME_COUNT.load(Ordering::SeqCst) + 1;
+    let frame_num = crate::get_current_frame_number();
     
     let mut l3_xmin = ShinePsyXmin::default();
     let mut max_bits: i32;

@@ -207,9 +207,7 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 /// Internal encoding function (matches shine_encode_buffer_internal)
 /// (ref/shine/src/lib/layer3.c:136-158)
 fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
-    use std::sync::atomic::{AtomicI32, Ordering};
-    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
-    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    let frame_num = crate::get_next_frame_number();
     
     // Dynamic padding calculation (matches shine exactly)
     if config.mpeg.frac_slots_per_frame != 0.0 {

@@ -113,9 +113,7 @@ pub fn shine_mdct_initialise(config: &mut ShineGlobalConfig) {
 /// 2. MDCT transformation of subband samples to frequency domain
 /// 3. Aliasing reduction butterfly operations
 pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
-    use std::sync::atomic::{AtomicI32, Ordering};
-    static FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
-    let frame_num = FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    let frame_num = crate::get_current_frame_number();
     
     let mut mdct_in = [0i32; 36];
     
