@@ -2,6 +2,10 @@
 
 一个基于 shine 库的纯 Rust MP3 编码器实现。该项目提供了完整的 MP3 Layer III 编码功能，支持各种采样率、比特率和声道配置。
 
+[![Crates.io](https://img.shields.io/crates/v/shine-rs.svg)](https://crates.io/crates/shine-rs)
+[![License: LGPL-2.1-or-later](https://img.shields.io/badge/License-LGPL%202.1--or--later-blue.svg)](LICENSE)
+[![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
+
 ## 特性
 
 - 🦀 **纯 Rust 实现** - 利用 Rust 的内存安全和性能优势
@@ -9,7 +13,9 @@
 - ⚡ **高性能** - 使用固定点算术和 SIMD 优化
 - 🔧 **灵活配置** - 支持多种采样率、比特率和声道模式
 - 📊 **标准兼容** - 符合 ISO/IEC 11172-3 标准
-- 🧪 **全面测试** - 包含单元测试和基于属性的测试
+- 🧪 **全面测试** - 包含单元测试、集成测试和基于属性的测试
+- 🛠️ **实用工具** - 提供 WAV 转 MP3 命令行工具
+- 📋 **诊断支持** - 可选的诊断日志和数据收集功能
 
 ## 支持的格式
 
