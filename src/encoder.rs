@@ -9,9 +9,6 @@ use crate::types::{ShineGlobalConfig, ShineSideInfo, GRANULE_SIZE};
 use crate::tables::{SAMPLERATES, BITRATES};
 use crate::bitstream::BitstreamWriter;
 
-#[cfg(debug_assertions)]
-use log;
-
 /// Buffer size for bitstream (matches shine BUFFER_SIZE)
 /// (ref/shine/src/lib/bitstream.h:19)
 const BUFFER_SIZE: i32 = 4096;
@@ -210,13 +207,11 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 /// Internal encoding function (matches shine_encode_buffer_internal)
 /// (ref/shine/src/lib/layer3.c:136-158)
 fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
     let frame_num = crate::get_next_frame_number();
-    #[cfg(not(debug_assertions))]
-    let _frame_num = crate::get_next_frame_number();
     
     // Start frame data collection
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
     crate::test_data::start_frame_collection(frame_num);
     
     // Dynamic padding calculation (matches shine exactly)
@@ -242,12 +237,15 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     config.bs.data_position = 0;
 
     // Print key parameters for verification (debug mode only)
-    #[cfg(debug_assertions)]
-    log::debug!("[Frame {}] pad={}, bits={}, written={}, slot_lag={:.6}", 
-             frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, written, config.mpeg.slot_lag);
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    {
+        use log::debug;
+        debug!("[Frame {}] pad={}, bits={}, written={}, slot_lag={:.6}", 
+                 frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, written, config.mpeg.slot_lag);
+    }
 
     // Record bitstream data for test collection
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
     crate::test_data::record_bitstream_data(
         config.mpeg.padding,
         config.mpeg.bits_per_frame,
@@ -256,13 +254,17 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     );
 
     // Stop after specified frames for debugging (debug mode only)
-    #[cfg(debug_assertions)]
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
     {
         // Check for frame limit from environment variable or default to unlimited
         if let Ok(max_frames_str) = std::env::var("RUST_MP3_MAX_FRAMES") {
             if let Ok(max_frames) = max_frames_str.parse::<i32>() {
                 if frame_num > max_frames {
-                    log::info!("[RUST] Stopping after {} frames for comparison", max_frames);
+                    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+                    {
+                        use log::info;
+                        info!("[RUST] Stopping after {} frames for comparison", max_frames);
+                    }
                     // Return a special error to indicate we should stop encoding but still write the file
                     return Err(EncodingError::StopAfterFrames);
                 }

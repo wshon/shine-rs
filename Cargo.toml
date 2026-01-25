@@ -9,6 +9,10 @@ repository = "https://github.com/wshon/shine-rs"
 keywords = ["mp3", "audio", "encoder", "codec", "shine"]
 categories = ["multimedia::audio", "encoding"]
 
+[features]
+default = []
+diagnostics = []  # Enable diagnostic logging and data collection
+
 [dependencies]
 thiserror = "1.0"
 lazy_static = "1.4"
