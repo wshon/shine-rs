@@ -45,18 +45,89 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_config_validation_stereo_mode_mismatch() {
-        // Mono mode with 2 channels should fail
+    fn test_config_validation_incompatible_combinations() {
+        // MPEG-2.5 with high bitrate should fail
         let config = Mp3EncoderConfig::new()
-            .channels(2)
-            .stereo_mode(StereoMode::Mono);
-        assert!(matches!(config.validate(), Err(ConfigError::InvalidStereoMode { .. })));
+            .sample_rate(8000)  // MPEG-2.5
+            .bitrate(128);      // Too high for MPEG-2.5
         
-        // Stereo mode with 1 channel should fail
+        match config.validate() {
+            Err(ConfigError::IncompatibleRateCombination { sample_rate, bitrate, reason }) => {
+                assert_eq!(sample_rate, 8000);
+                assert_eq!(bitrate, 128);
+                assert!(reason.contains("MPEG-2.5"));
+                assert!(reason.contains("64 kbps"));
+            },
+            other => panic!("Expected IncompatibleRateCombination error, got: {:?}", other),
+        }
+
+        // MPEG-2 with very high bitrate should fail
         let config = Mp3EncoderConfig::new()
-            .channels(1)
-            .stereo_mode(StereoMode::Stereo);
-        assert!(matches!(config.validate(), Err(ConfigError::InvalidStereoMode { .. })));
+            .sample_rate(22050)  // MPEG-2
+            .bitrate(320);       // Too high for MPEG-2
+        
+        match config.validate() {
+            Err(ConfigError::IncompatibleRateCombination { sample_rate, bitrate, reason }) => {
+                assert_eq!(sample_rate, 22050);
+                assert_eq!(bitrate, 320);
+                assert!(reason.contains("MPEG-2"));
+                assert!(reason.contains("160 kbps"));
+            },
+            other => panic!("Expected IncompatibleRateCombination error, got: {:?}", other),
+        }
+
+        // MPEG-1 with very low bitrate should fail
+        let config = Mp3EncoderConfig::new()
+            .sample_rate(44100)  // MPEG-1
+            .bitrate(16);        // Too low for MPEG-1
+        
+        match config.validate() {
+            Err(ConfigError::IncompatibleRateCombination { sample_rate, bitrate, reason }) => {
+                assert_eq!(sample_rate, 44100);
+                assert_eq!(bitrate, 16);
+                assert!(reason.contains("MPEG-1"));
+                assert!(reason.contains("32 to 320 kbps"));
+            },
+            other => panic!("Expected IncompatibleRateCombination error, got: {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_config_validation_valid_combinations() {
+        // Test valid combinations for each MPEG version
+        
+        // MPEG-2.5 valid combinations
+        let config = Mp3EncoderConfig::new()
+            .sample_rate(8000)
+            .bitrate(32);
+        assert!(config.validate().is_ok());
+
+        let config = Mp3EncoderConfig::new()
+            .sample_rate(11025)
+            .bitrate(64);
+        assert!(config.validate().is_ok());
+
+        // MPEG-2 valid combinations
+        let config = Mp3EncoderConfig::new()
+            .sample_rate(16000)
+            .bitrate(80);
+        assert!(config.validate().is_ok());
+
+        let config = Mp3EncoderConfig::new()
+            .sample_rate(22050)
+            .bitrate(160);
+        assert!(config.validate().is_ok());
+
+        // MPEG-1 valid combinations
+        let config = Mp3EncoderConfig::new()
+            .sample_rate(32000)
+            .bitrate(32);
+        assert!(config.validate().is_ok());
+
+        let config = Mp3EncoderConfig::new()
+            .sample_rate(44100)
+            .bitrate(320);
+        assert!(config.validate().is_ok());
     }
 
     #[test]
@@ -84,9 +155,17 @@ mod unit_tests {
 
     #[test]
     fn test_encoder_creation_with_invalid_config() {
+        // Test with unsupported sample rate
         let config = Mp3EncoderConfig::new().sample_rate(12345);
         let encoder = Mp3Encoder::new(config);
         assert!(matches!(encoder, Err(EncoderError::Config(_))));
+
+        // Test with incompatible sample rate and bitrate combination
+        let config = Mp3EncoderConfig::new()
+            .sample_rate(8000)   // MPEG-2.5
+            .bitrate(320);       // Too high for MPEG-2.5
+        let encoder = Mp3Encoder::new(config);
+        assert!(matches!(encoder, Err(EncoderError::Config(ConfigError::IncompatibleRateCombination { .. }))));
     }
 
     #[test]
@@ -353,6 +432,24 @@ mod error_handling_tests {
         let test_data = vec![100i16; 1000];
         let result = encoder.encode_interleaved(&test_data);
         assert!(matches!(result, Err(EncoderError::InternalState(_))));
+    }
+
+    #[test]
+    fn test_incompatible_rate_combination_error() {
+        let config = Mp3EncoderConfig::new()
+            .sample_rate(8000)   // MPEG-2.5
+            .bitrate(224);       // Too high for MPEG-2.5
+        
+        let encoder = Mp3Encoder::new(config);
+        assert!(matches!(encoder, Err(EncoderError::Config(ConfigError::IncompatibleRateCombination { .. }))));
+        
+        // Test the error message contains useful information
+        if let Err(EncoderError::Config(ConfigError::IncompatibleRateCombination { sample_rate, bitrate, reason })) = encoder {
+            assert_eq!(sample_rate, 8000);
+            assert_eq!(bitrate, 224);
+            assert!(reason.contains("MPEG-2.5"));
+            assert!(reason.contains("64 kbps"));
+        }
     }
 
     #[test]

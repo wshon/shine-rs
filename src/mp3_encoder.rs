@@ -20,7 +20,7 @@ pub const SUPPORTED_SAMPLE_RATES: &[u32] = &[
 
 /// 支持的比特率 (kbps)
 pub const SUPPORTED_BITRATES: &[u32] = &[
-    32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320
+    8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 192, 224, 256, 320
 ];
 
 /// 立体声模式
@@ -127,13 +127,47 @@ impl Mp3EncoderConfig {
 
         // 检查立体声模式与声道数的兼容性
         match (self.channels, self.stereo_mode) {
-            (1, StereoMode::Mono) => Ok(()),
-            (2, StereoMode::Stereo | StereoMode::JointStereo | StereoMode::DualChannel) => Ok(()),
-            (channels, mode) => Err(ConfigError::InvalidStereoMode {
-                mode: format!("{:?}", mode),
-                channels,
-            }),
+            (1, StereoMode::Mono) => {},
+            (2, StereoMode::Stereo | StereoMode::JointStereo | StereoMode::DualChannel) => {},
+            (channels, mode) => {
+                return Err(ConfigError::InvalidStereoMode {
+                    mode: format!("{:?}", mode),
+                    channels,
+                });
+            }
         }
+
+        // 使用shine的验证逻辑检查采样率和比特率组合
+        let shine_result = crate::encoder::shine_check_config(
+            self.sample_rate as i32, 
+            self.bitrate as i32
+        );
+        
+        if shine_result < 0 {
+            // 确定MPEG版本以提供更详细的错误信息
+            let mpeg_version = if self.sample_rate <= 12000 {
+                "MPEG-2.5"
+            } else if self.sample_rate <= 24000 {
+                "MPEG-2"
+            } else {
+                "MPEG-1"
+            };
+
+            let reason = match mpeg_version {
+                "MPEG-2.5" => format!("MPEG-2.5 ({}Hz) only supports bitrates up to 64 kbps", self.sample_rate),
+                "MPEG-2" => format!("MPEG-2 ({}Hz) only supports bitrates up to 160 kbps", self.sample_rate),
+                "MPEG-1" => format!("MPEG-1 ({}Hz) only supports bitrates from 32 to 320 kbps", self.sample_rate),
+                _ => "Invalid combination".to_string(),
+            };
+
+            return Err(ConfigError::IncompatibleRateCombination {
+                sample_rate: self.sample_rate,
+                bitrate: self.bitrate,
+                reason,
+            });
+        }
+
+        Ok(())
     }
 }
 
