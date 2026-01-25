@@ -1,0 +1,8 @@
+[package]
+name = "mp3_validator"
+version = "0.1.0"
+edition = "2021"
+description = "MP3 file validation tool"
+
+[dependencies]
+shine-rs = { path = "../.." }

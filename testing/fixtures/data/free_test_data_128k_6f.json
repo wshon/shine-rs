@@ -1,0 +1,175 @@
+{
+  "metadata": {
+    "name": "test_case_Free_Test_Data_500KB_WAV_44100hz_2ch_128kbps",
+    "input_file": "testing/fixtures/audio/Free_Test_Data_500KB_WAV.wav",
+    "expected_output_size": 0,
+    "expected_hash": "",
+    "created_at": "2026-01-25T05:01:11.646530400+00:00",
+    "description": "Test case for testing/fixtures/audio/Free_Test_Data_500KB_WAV.wav at 128 kbps"
+  },
+  "config": {
+    "sample_rate": 44100,
+    "channels": 2,
+    "bitrate": 128,
+    "stereo_mode": 0,
+    "mpeg_version": 3
+  },
+  "frames": [
+    {
+      "frame_number": 1,
+      "mdct_coefficients": {
+        "coefficients": [
+          -384292,
+          -736927,
+          -815897
+        ],
+        "l3_sb_sample": [
+          8936736
+        ]
+      },
+      "quantization": {
+        "xrmax": 24028904,
+        "max_bits": 764,
+        "part2_3_length": 704,
+        "quantizer_step_size": -37,
+        "global_gain": 173
+      },
+      "bitstream": {
+        "padding": 1,
+        "bits_per_frame": 3344,
+        "written": 416,
+        "slot_lag": -0.9183673469387941
+      }
+    },
+    {
+      "frame_number": 2,
+      "mdct_coefficients": {
+        "coefficients": [
+          -2981398,
+          4785555,
+          3650199
+        ],
+        "l3_sb_sample": [
+          10504397
+        ]
+      },
+      "quantization": {
+        "xrmax": 111586881,
+        "max_bits": 764,
+        "part2_3_length": 681,
+        "quantizer_step_size": -35,
+        "global_gain": 175
+      },
+      "bitstream": {
+        "padding": 1,
+        "bits_per_frame": 3344,
+        "written": 420,
+        "slot_lag": -0.8775510204081911
+      }
+    },
+    {
+      "frame_number": 3,
+      "mdct_coefficients": {
+        "coefficients": [
+          4630593,
+          -8686421,
+          -8205674
+        ],
+        "l3_sb_sample": [
+          -17915249
+        ]
+      },
+      "quantization": {
+        "xrmax": 87438275,
+        "max_bits": 764,
+        "part2_3_length": 694,
+        "quantizer_step_size": -38,
+        "global_gain": 172
+      },
+      "bitstream": {
+        "padding": 1,
+        "bits_per_frame": 3344,
+        "written": 416,
+        "slot_lag": -0.8367346938775881
+      }
+    },
+    {
+      "frame_number": 4,
+      "mdct_coefficients": {
+        "coefficients": [
+          1502311,
+          1054052,
+          -9313681
+        ],
+        "l3_sb_sample": [
+          11007880
+        ]
+      },
+      "quantization": {
+        "xrmax": 58204940,
+        "max_bits": 764,
+        "part2_3_length": 726,
+        "quantizer_step_size": -42,
+        "global_gain": 168
+      },
+      "bitstream": {
+        "padding": 1,
+        "bits_per_frame": 3344,
+        "written": 420,
+        "slot_lag": -0.7959183673469852
+      }
+    },
+    {
+      "frame_number": 5,
+      "mdct_coefficients": {
+        "coefficients": [
+          -4690359,
+          10836199,
+          -5484704
+        ],
+        "l3_sb_sample": [
+          -8615995
+        ]
+      },
+      "quantization": {
+        "xrmax": 54884886,
+        "max_bits": 764,
+        "part2_3_length": 734,
+        "quantizer_step_size": -44,
+        "global_gain": 166
+      },
+      "bitstream": {
+        "padding": 1,
+        "bits_per_frame": 3344,
+        "written": 416,
+        "slot_lag": -0.7551020408163822
+      }
+    },
+    {
+      "frame_number": 6,
+      "mdct_coefficients": {
+        "coefficients": [
+          3426250,
+          13106638,
+          -434664
+        ],
+        "l3_sb_sample": [
+          -9943270
+        ]
+      },
+      "quantization": {
+        "xrmax": 91685698,
+        "max_bits": 764,
+        "part2_3_length": 700,
+        "quantizer_step_size": -46,
+        "global_gain": 164
+      },
+      "bitstream": {
+        "padding": 1,
+        "bits_per_frame": 3344,
+        "written": 420,
+        "slot_lag": -0.7142857142857792
+      }
+    }
+  ]
+}
