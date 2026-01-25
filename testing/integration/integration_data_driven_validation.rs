@@ -7,7 +7,7 @@
 use std::fs;
 use std::path::Path;
 use serde_json;
-use rust_mp3_encoder::test_data::TestDataSet;
+use shine_rs::test_data::TestDataSet;
 
 /// Discover all JSON test data files in the fixtures directory
 fn discover_test_data_files() -> Vec<String> {

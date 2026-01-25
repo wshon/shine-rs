@@ -3,7 +3,7 @@
 //! This tool converts WAV files to MP3 format using the rust-mp3-encoder library.
 //! It supports various sample rates, mono/stereo configurations, and bitrates.
 
-use rust_mp3_encoder::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
+use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
 use std::env;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -345,7 +345,7 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                     }
                 },
                 #[cfg(debug_assertions)]
-                Err(rust_mp3_encoder::error::EncodingError::StopAfterFrames) => {
+                Err(shine_rs::error::EncodingError::StopAfterFrames) => {
                     // This is expected when we stop after a certain number of frames in debug mode
                     println!("Stopped encoding after {} frames as requested", frame_count);
                     break;

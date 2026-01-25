@@ -5,4 +5,4 @@ edition = "2021"
 description = "MP3 file validation tool"
 
 [dependencies]
-rust-mp3-encoder = { path = "../.." }
+shine-rs = { path = "../.." }

@@ -39,7 +39,7 @@ if let Ok(max_frames_str) = std::env::var("RUST_MP3_MAX_FRAMES") {
 ```rust
 // 使用特殊错误类型表示正常停止
 #[cfg(debug_assertions)]
-Err(rust_mp3_encoder::error::EncodingError::StopAfterFrames) => {
+Err(shine_rs::error::EncodingError::StopAfterFrames) => {
     println!("Stopped encoding after {} frames as requested", frame_count);
     break;
 }

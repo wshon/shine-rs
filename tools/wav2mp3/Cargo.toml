@@ -2,9 +2,9 @@
 name = "wav2mp3"
 version = "0.1.0"
 edition = "2021"
-description = "WAV to MP3 converter using rust-mp3-encoder"
+description = "WAV to MP3 converter using shine-rs"
 
 [dependencies]
-rust-mp3-encoder = { path = "../.." }
+shine-rs = { path = "../.." }
 env_logger = "0.10"
 log = "0.4"

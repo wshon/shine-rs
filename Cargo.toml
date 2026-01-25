@@ -1,12 +1,12 @@
 [package]
-name = "rust-mp3-encoder"
+name = "shine-rs"
 version = "0.1.0"
 edition = "2021"
 authors = ["MP3 Encoder Team"]
 description = "A pure Rust MP3 encoder based on the shine library"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/example/rust-mp3-encoder"
-keywords = ["mp3", "audio", "encoder", "codec"]
+repository = "https://github.com/wshon/shine-rs"
+keywords = ["mp3", "audio", "encoder", "codec", "shine"]
 categories = ["multimedia::audio", "encoding"]
 
 [dependencies]
@@ -22,10 +22,6 @@ log = "0.4"
 proptest = "1.4"
 criterion = { version = "0.5", features = ["html_reports"] }
 env_logger = "0.10"
-
-[[bench]]
-name = "encoder_benchmark"
-harness = false
 
 [[test]]
 name = "integration_full_pipeline_validation"
