@@ -3,7 +3,7 @@
 //! This module implements the quantization loop that controls the
 //! trade-off between audio quality and bitrate by adjusting quantization
 //! step sizes and managing the bit reservoir.
-//! 
+//!
 //! The implementation strictly follows the shine reference implementation
 //! in ref/shine/src/lib/l3loop.c
 
@@ -72,14 +72,14 @@ pub fn shine_inner_loop(
             let cod_info = &config.side_info.gr[gr as usize].ch[ch as usize].tt;
             cod_info.quantizer_step_size
         };
-        
+
         loop {
             quantizer_step_size += 1;
             if quantize(ix, quantizer_step_size, config) <= 8192 {
                 break;
             }
         }
-        
+
         // Update quantizer step size
         {
             let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
@@ -93,7 +93,7 @@ pub fn shine_inner_loop(
             bits = count1_bitcount(ix, cod_info); // count1_table selection
             _c1bits = bits;
         }
-        
+
         // Subdivide and select tables - avoid borrowing conflicts by separating operations
         {
             let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
@@ -101,20 +101,20 @@ pub fn shine_inner_loop(
             bits = count1_bitcount(ix, cod_info); // count1_table selection
             _c1bits = bits;
         }
-        
+
         // Create a temporary copy for subdivide to avoid borrowing conflicts
         {
             let mut cod_info_copy = config.side_info.gr[gr as usize].ch[ch as usize].tt.clone();
             subdivide(&mut cod_info_copy, config); // bigvalues sfb division
             config.side_info.gr[gr as usize].ch[ch as usize].tt = cod_info_copy;
         }
-        
+
         {
             let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
             bigv_tab_select(ix, cod_info); // codebook selection
             bvbits = bigv_bitcount(ix, cod_info); // bit count
         }
-        
+
         bits += bvbits;
 
         if bits <= max_bits {
@@ -140,7 +140,7 @@ pub fn shine_outer_loop(
 ) -> i32 {
     let bits: i32;
     let huff_bits: i32;
-    
+
     // Extract quantizer step size to avoid borrowing conflicts
     let quantizer_step_size = {
         let mut cod_info = config.side_info.gr[gr as usize].ch[ch as usize].tt.clone();
@@ -148,7 +148,7 @@ pub fn shine_outer_loop(
         config.side_info.gr[gr as usize].ch[ch as usize].tt = cod_info;
         result
     };
-    
+
     let part2_length = part2_length(gr, ch, config) as u32;
     huff_bits = max_bits - part2_length as i32;
 
@@ -158,9 +158,9 @@ pub fn shine_outer_loop(
         cod_info.quantizer_step_size = quantizer_step_size;
         cod_info.part2_length = part2_length;
     }
-    
+
     bits = shine_inner_loop(ix, huff_bits, gr, ch, config);
-    
+
     // Update final values
     let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
     cod_info.part2_3_length = cod_info.part2_length + bits as u32;
@@ -173,7 +173,7 @@ pub fn shine_outer_loop(
 pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
     let frame_num = crate::get_current_frame_number();
-    
+
     let mut l3_xmin = ShinePsyXmin::default();
     let mut max_bits: i32;
     let mut ix: *mut i32;
@@ -269,7 +269,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                     ch,
                     config,
                 ) as u32;
-                
+
                 // Update part2_3_length after outer loop
                 let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
                 cod_info.part2_3_length = length;
@@ -284,7 +284,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 let quantizer_step_size = cod_info.quantizer_step_size;
                 let cod_info_copy = cod_info.clone(); // Clone for immutable reference
                 cod_info.global_gain = (quantizer_step_size + 210) as u32;
-                
+
                 // Print key quantization results for verification (debug mode only)
                 #[cfg(any(debug_assertions, feature = "diagnostics"))]
                 {
@@ -294,12 +294,12 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                         .parse::<i32>()
                         .unwrap_or(6);
                     if frame_num <= debug_frames && ch == 0 && gr == 0 {
-                        debug!("[Frame {}] part2_3_length={}, quantizer_step_size={}, global_gain={}", 
+                        debug!("[Frame {}] part2_3_length={}, quantizer_step_size={}, global_gain={}",
                                  frame_num, part2_3_length, quantizer_step_size, cod_info.global_gain);
                     }
                     // Record quantization data for test collection
                     #[cfg(feature = "diagnostics")]
-                    crate::test_data::record_quant_data(
+                    crate::diagnostics_data::record_quant_data(
                         config.l3loop.xrmax,
                         max_bits,
                         part2_3_length,
@@ -307,11 +307,11 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                         cod_info.global_gain
                     );
                 }
-                
+
                 // Suppress unused variable warning in release mode
                 #[cfg(not(any(debug_assertions, feature = "diagnostics")))]
                 let _ = part2_3_length;
-                
+
                 // Call reservoir adjust with the copied data
                 crate::reservoir::shine_resv_adjust(&cod_info_copy, config);
             }
@@ -620,7 +620,7 @@ pub fn count1_bitcount(ix: &[i32], cod_info: &mut GrInfo) -> i32 {
             // WARNING: This branch doesn't exist in shine - added for safety
             log::warn!("Missing hlen table for Huffman table 32");
         }
-        
+
         if let Some(hlen) = SHINE_HUFFMAN_TABLE[33].hlen {
             if p < hlen.len() {
                 sum1 += hlen[p] as i32;

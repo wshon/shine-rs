@@ -2,7 +2,7 @@
 //!
 //! 这个示例展示了如何使用高级接口进行MP3编码
 
-use rust_mp3_encoder::{Mp3Encoder, Mp3EncoderConfig, StereoMode, encode_pcm_to_mp3};
+use shine_rs::{Mp3Encoder, Mp3EncoderConfig, StereoMode, encode_pcm_to_mp3};
 use std::fs::File;
 use std::io::Write;
 

@@ -32,6 +32,9 @@ pub mod subband;
 pub mod tables;
 pub mod types;
 
+#[cfg(feature = "diagnostics")]
+pub mod diagnostics_data;
+
 #[cfg(test)]
 pub mod tests;
 
