@@ -3,7 +3,7 @@
 //! Tests the bitstream writing functionality including bit packing,
 //! frame header generation, and data serialization.
 
-use crate::types::*;
+use shine_rs::types::*;
 
 #[cfg(test)]
 mod tests {
@@ -11,7 +11,7 @@ mod tests {
 
     #[test]
     fn test_bitstream_writer_initialization() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         
         let bs = BitstreamWriter::new(8192);
         
@@ -27,7 +27,7 @@ mod tests {
 
     #[test]
     fn test_put_bits_basic() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         
         let mut bs = BitstreamWriter::new(1024);
         
@@ -45,7 +45,7 @@ mod tests {
 
     #[test]
     fn test_put_bits_boundary() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         
         let mut bs = BitstreamWriter::new(1024);
         
@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_bitstream_flush() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         
         let mut bs = BitstreamWriter::new(1024);
         
@@ -113,7 +113,7 @@ mod tests {
 
     #[test]
     fn test_bit_alignment() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         
         let mut bs = BitstreamWriter::new(1024);
         
@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn test_frame_header_encoding() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         
         let mut bs = BitstreamWriter::new(1024);
         
@@ -189,7 +189,7 @@ mod tests {
 
     #[test]
     fn test_side_info_encoding() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         
         let mut bs = BitstreamWriter::new(1024);
         
@@ -234,7 +234,7 @@ mod tests {
 
     #[test]
     fn test_scfsi_encoding() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         
         let mut bs = BitstreamWriter::new(1024);
         
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_zero_bits_write() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         
         let mut bs = BitstreamWriter::new(1024);
         let initial_cache_bits = bs.cache_bits;
@@ -365,7 +365,7 @@ mod tests {
             val in 0u32..0x10000,
             bits in 1u32..17
         ) {
-            use crate::bitstream::BitstreamWriter;
+            use shine_rs::bitstream::BitstreamWriter;
             let mut bs = BitstreamWriter::new(1024);
 
             // Should be able to write bits without error
@@ -380,7 +380,7 @@ mod tests {
         fn test_bitstream_writer_buffer_expansion(
             values in prop::collection::vec(0u32..0x100, 100..200)
         ) {
-            use crate::bitstream::BitstreamWriter;
+            use shine_rs::bitstream::BitstreamWriter;
             let mut bs = BitstreamWriter::new(16); // Small initial size
 
             // Should handle buffer expansion automatically
@@ -393,7 +393,7 @@ mod tests {
 
         #[test]
         fn test_abs_and_sign_function(x in -1000i32..1000) {
-            use crate::bitstream::abs_and_sign;
+            use shine_rs::bitstream::abs_and_sign;
             let mut x_copy = x;
             let sign = abs_and_sign(&mut x_copy);
 
@@ -409,7 +409,7 @@ mod tests {
 
     #[test]
     fn test_bitstream_writer_creation_additional() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         let bs = BitstreamWriter::new(1024);
         assert_eq!(bs.data_size, 1024);
         assert_eq!(bs.data_position, 0);
@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn test_bitstream_writer_simple_write_additional() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         let mut bs = BitstreamWriter::new(1024);
 
         // Write some bits
@@ -432,7 +432,7 @@ mod tests {
 
     #[test]
     fn test_bitstream_writer_flush_additional() {
-        use crate::bitstream::BitstreamWriter;
+        use shine_rs::bitstream::BitstreamWriter;
         let mut bs = BitstreamWriter::new(1024);
 
         bs.put_bits(0xff, 8).unwrap();

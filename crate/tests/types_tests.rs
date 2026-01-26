@@ -3,7 +3,7 @@
 //! Tests the type definitions, constants, and utility functions
 //! to ensure they match the shine reference implementation.
 
-use crate::types::*;
+use shine_rs::types::*;
 
 #[cfg(test)]
 mod tests {
