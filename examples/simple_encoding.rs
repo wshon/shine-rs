@@ -1,153 +1,315 @@
-//! 简单的MP3编码示例
+//! Simple MP3 encoding example
 //!
-//! 这个示例展示了如何使用高级接口进行MP3编码
+//! This example demonstrates how to use the high-level Mp3Encoder API
+//! to convert PCM audio data to MP3 format.
 
-use shine_rs::{Mp3Encoder, Mp3EncoderConfig, StereoMode, encode_pcm_to_mp3};
+use shine_rs::mp3_encoder::{Mp3Encoder, Mp3EncoderConfig, StereoMode, encode_pcm_to_mp3};
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 示例1: 使用高级接口进行流式编码
-    println!("示例1: 流式编码");
-    stream_encoding_example()?;
+/// Simple WAV file reader for demonstration
+struct SimpleWavReader;
 
-    // 示例2: 一次性编码整个文件
-    println!("示例2: 一次性编码");
-    batch_encoding_example()?;
-
-    // 示例3: 使用不同的配置
-    println!("示例3: 自定义配置");
-    custom_config_example()?;
-
-    println!("所有示例完成！");
-    Ok(())
+impl SimpleWavReader {
+    /// Read a simple WAV file and extract PCM data
+    /// This is a simplified version for demonstration purposes
+    fn read_wav_file(path: &str) -> Result<(Vec<i16>, u32, u16), Box<dyn std::error::Error>> {
+        let mut file = File::open(path)?;
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)?;
+        
+        if buffer.len() < 44 {
+            return Err("WAV file too small".into());
+        }
+        
+        // Validate RIFF header
+        if &buffer[0..4] != b"RIFF" || &buffer[8..12] != b"WAVE" {
+            return Err("Not a valid WAV file".into());
+        }
+        
+        let mut sample_rate = 0u32;
+        let mut channels = 0u16;
+        let mut pcm_data = Vec::new();
+        let mut fmt_found = false;
+        let mut data_found = false;
+        
+        // Parse chunks
+        let mut pos = 12;
+        while pos < buffer.len() - 8 {
+            let chunk_id = &buffer[pos..pos+4];
+            let chunk_size = u32::from_le_bytes([buffer[pos+4], buffer[pos+5], buffer[pos+6], buffer[pos+7]]);
+            let chunk_data_start = pos + 8;
+            let chunk_data_end = chunk_data_start + chunk_size as usize;
+            
+            if chunk_data_end > buffer.len() {
+                break;
+            }
+            
+            match chunk_id {
+                b"fmt " => {
+                    if chunk_size >= 16 {
+                        let audio_format = u16::from_le_bytes([buffer[chunk_data_start], buffer[chunk_data_start+1]]);
+                        if audio_format != 1 {
+                            return Err("Only PCM format supported".into());
+                        }
+                        
+                        channels = u16::from_le_bytes([buffer[chunk_data_start+2], buffer[chunk_data_start+3]]);
+                        sample_rate = u32::from_le_bytes([
+                            buffer[chunk_data_start+4], buffer[chunk_data_start+5], 
+                            buffer[chunk_data_start+6], buffer[chunk_data_start+7]
+                        ]);
+                        
+                        let bits_per_sample = u16::from_le_bytes([buffer[chunk_data_start+14], buffer[chunk_data_start+15]]);
+                        if bits_per_sample != 16 {
+                            return Err("Only 16-bit samples supported".into());
+                        }
+                        
+                        fmt_found = true;
+                    }
+                },
+                b"data" => {
+                    if !fmt_found {
+                        return Err("Data chunk found before fmt chunk".into());
+                    }
+                    
+                    // Convert bytes to i16 samples
+                    for i in (chunk_data_start..chunk_data_end).step_by(2) {
+                        if i + 1 < buffer.len() {
+                            let sample = i16::from_le_bytes([buffer[i], buffer[i+1]]);
+                            pcm_data.push(sample);
+                        }
+                    }
+                    data_found = true;
+                },
+                _ => {} // Skip unknown chunks
+            }
+            
+            pos = chunk_data_end;
+            if chunk_size % 2 == 1 {
+                pos += 1; // WAV chunks are word-aligned
+            }
+        }
+        
+        if !fmt_found {
+            return Err("No fmt chunk found".into());
+        }
+        
+        if !data_found {
+            return Err("No data chunk found".into());
+        }
+        
+        if sample_rate == 0 || channels == 0 || pcm_data.is_empty() {
+            return Err("Invalid WAV file data".into());
+        }
+        
+        Ok((pcm_data, sample_rate, channels))
+    }
 }
 
-/// 流式编码示例 - 适合处理大文件或实时音频
-fn stream_encoding_example() -> Result<(), Box<dyn std::error::Error>> {
-    // 创建编码器配置
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    println!("Simple MP3 Encoding Example");
+    println!("===========================");
+    
+    // Example 1: Test with real WAV file
+    println!("\n1. Encoding real WAV file (sample-3s.wav)...");
+    
+    let wav_path = "testing/fixtures/audio/sample-3s.wav";
+    
+    // Check if WAV file exists
+    if std::path::Path::new(wav_path).exists() {
+        match SimpleWavReader::read_wav_file(wav_path) {
+            Ok((pcm_data, sample_rate, channels)) => {
+                println!("   WAV info: {} Hz, {} channels, {} samples", 
+                         sample_rate, channels, pcm_data.len());
+                
+                // Determine appropriate stereo mode
+                let stereo_mode = if channels == 1 {
+                    StereoMode::Mono
+                } else {
+                    StereoMode::JointStereo
+                };
+                
+                // Create encoder configuration based on WAV properties
+                let config = Mp3EncoderConfig::new()
+                    .sample_rate(sample_rate)
+                    .bitrate(128)
+                    .channels(channels as u8)
+                    .stereo_mode(stereo_mode);
+                
+                // Encode using convenience function
+                let mp3_data = encode_pcm_to_mp3(config, &pcm_data)?;
+                
+                // Write to file
+                let mut output_file = File::create("output_sample.mp3")?;
+                output_file.write_all(&mp3_data)?;
+                
+                println!("   Generated {} bytes of MP3 data", mp3_data.len());
+                println!("   Saved to: output_sample.mp3");
+                
+                // Calculate compression ratio and duration
+                let input_size = pcm_data.len() * 2; // 16-bit samples
+                let compression_ratio = input_size as f64 / mp3_data.len() as f64;
+                let duration = pcm_data.len() as f64 / (sample_rate as f64 * channels as f64);
+                
+                println!("   Input size:  {} bytes", input_size);
+                println!("   Output size: {} bytes", mp3_data.len());
+                println!("   Compression: {:.1}:1", compression_ratio);
+                println!("   Duration:    {:.2} seconds", duration);
+                println!("   Actual bitrate: {:.1} kbps", 
+                         (mp3_data.len() as f64 * 8.0) / (duration * 1000.0));
+            },
+            Err(e) => {
+                println!("   Error reading WAV file: {}", e);
+                println!("   Continuing with synthetic audio examples...");
+            }
+        }
+    } else {
+        println!("   WAV file not found: {}", wav_path);
+        println!("   Continuing with synthetic audio examples...");
+    }
+    
+    // Example 2: Generate synthetic audio data
+    println!("\n2. Encoding synthetic audio data...");
+    
+    // Generate a simple sine wave (440 Hz for 1 second at 44.1 kHz, stereo)
+    let sample_rate = 44100;
+    let duration = 1.0; // seconds
+    let frequency = 440.0; // Hz (A4 note)
+    let samples_per_channel = (sample_rate as f64 * duration) as usize;
+    
+    let mut pcm_data = Vec::with_capacity(samples_per_channel * 2); // stereo
+    
+    for i in 0..samples_per_channel {
+        let t = i as f64 / sample_rate as f64;
+        let sample = (2.0 * std::f64::consts::PI * frequency * t).sin();
+        let sample_i16 = (sample * 16383.0) as i16; // Scale to 16-bit range
+        
+        // Add stereo samples (left and right channels)
+        pcm_data.push(sample_i16); // Left channel
+        pcm_data.push(sample_i16); // Right channel
+    }
+    
+    // Create encoder configuration
     let config = Mp3EncoderConfig::new()
         .sample_rate(44100)
         .bitrate(128)
         .channels(2)
         .stereo_mode(StereoMode::Stereo);
-
-    // 创建编码器
-    let mut encoder = Mp3Encoder::new(config)?;
-
-    // 创建输出文件
-    let mut output_file = File::create("output_stream.mp3")?;
-
-    // 模拟音频数据流（这里生成简单的正弦波）
-    let sample_rate = 44100;
-    let duration_seconds = 2;
-    let total_samples = sample_rate * duration_seconds * 2; // 立体声
-
-    let mut samples_processed = 0;
-    let chunk_size = encoder.samples_per_frame() * 4; // 处理4帧的数据
-
-    while samples_processed < total_samples {
-        // 生成一块音频数据
-        let mut chunk = Vec::new();
-        for i in 0..chunk_size.min(total_samples - samples_processed) {
-            let sample_index = samples_processed + i;
-            let time = sample_index as f32 / (sample_rate * 2) as f32;
-            
-            // 生成440Hz的正弦波
-            let sample = (time * 440.0 * 2.0 * std::f32::consts::PI).sin();
-            let sample_i16 = (sample * 32767.0) as i16;
-            
-            chunk.push(sample_i16);
-        }
-
-        // 编码这块数据
-        let mp3_frames = encoder.encode_interleaved(&chunk)?;
-        
-        // 写入输出文件
-        for frame in mp3_frames {
-            output_file.write_all(&frame)?;
-        }
-
-        samples_processed += chunk.len();
-        println!("已处理 {} / {} 样本", samples_processed, total_samples);
-    }
-
-    // 完成编码
-    let final_data = encoder.finish()?;
-    if !final_data.is_empty() {
-        output_file.write_all(&final_data)?;
-    }
-
-    println!("流式编码完成，输出文件: output_stream.mp3");
-    Ok(())
-}
-
-/// 一次性编码示例 - 适合小文件
-fn batch_encoding_example() -> Result<(), Box<dyn std::error::Error>> {
-    // 创建配置
-    let config = Mp3EncoderConfig::new()
-        .sample_rate(22050)  // 较低的采样率
-        .bitrate(96)         // 较低的比特率
-        .channels(1)         // 单声道
-        .stereo_mode(StereoMode::Mono);
-
-    // 生成测试音频数据（1秒的440Hz正弦波）
-    let sample_rate = 22050;
-    let duration_seconds = 1;
-    let total_samples = sample_rate * duration_seconds;
-
-    let mut pcm_data = Vec::with_capacity(total_samples);
-    for i in 0..total_samples {
-        let time = i as f32 / sample_rate as f32;
-        let sample = (time * 440.0 * 2.0 * std::f32::consts::PI).sin();
-        let sample_i16 = (sample * 32767.0) as i16;
-        pcm_data.push(sample_i16);
-    }
-
-    // 一次性编码
-    let mp3_data = encode_pcm_to_mp3(config, &pcm_data)?;
-
-    // 写入文件
-    let mut output_file = File::create("output_batch.mp3")?;
+    
+    // Method 1: Using the convenience function
+    println!("   Using convenience function...");
+    let mp3_data = encode_pcm_to_mp3(config.clone(), &pcm_data)?;
+    
+    // Write to file
+    let mut output_file = File::create("output_simple.mp3")?;
     output_file.write_all(&mp3_data)?;
-
-    println!("一次性编码完成，输出文件: output_batch.mp3");
-    println!("输入: {} 样本, 输出: {} 字节", pcm_data.len(), mp3_data.len());
-    Ok(())
-}
-
-/// 自定义配置示例
-fn custom_config_example() -> Result<(), Box<dyn std::error::Error>> {
-    // 高质量立体声配置
-    let high_quality_config = Mp3EncoderConfig::new()
+    
+    println!("   Generated {} bytes of MP3 data", mp3_data.len());
+    println!("   Saved to: output_simple.mp3");
+    
+    // Method 2: Using the encoder directly (streaming approach)
+    println!("\n3. Using streaming encoder...");
+    
+    let mut encoder = Mp3Encoder::new(config)?;
+    let mut streaming_mp3_data = Vec::new();
+    
+    // Process data in chunks (simulating streaming)
+    let chunk_size = encoder.samples_per_frame() * 4; // Process 4 frames at a time
+    
+    for chunk in pcm_data.chunks(chunk_size) {
+        let frames = encoder.encode_interleaved(chunk)?;
+        for frame in frames {
+            streaming_mp3_data.extend(frame);
+        }
+    }
+    
+    // Finish encoding
+    let final_data = encoder.finish()?;
+    streaming_mp3_data.extend(final_data);
+    
+    // Write streaming result
+    let mut streaming_file = File::create("output_streaming.mp3")?;
+    streaming_file.write_all(&streaming_mp3_data)?;
+    
+    println!("   Generated {} bytes of MP3 data (streaming)", streaming_mp3_data.len());
+    println!("   Saved to: output_streaming.mp3");
+    
+    // Example 4: Different configurations
+    println!("\n4. Testing different configurations...");
+    
+    // Mono, lower bitrate
+    let mono_config = Mp3EncoderConfig::new()
+        .sample_rate(22050)
+        .bitrate(64)
+        .channels(1)
+        .stereo_mode(StereoMode::Mono);
+    
+    // Convert stereo to mono by taking only left channel
+    let mono_pcm: Vec<i16> = pcm_data.iter().step_by(2).cloned().collect();
+    
+    let mono_mp3 = encode_pcm_to_mp3(mono_config, &mono_pcm)?;
+    
+    let mut mono_file = File::create("output_mono.mp3")?;
+    mono_file.write_all(&mono_mp3)?;
+    
+    println!("   Mono (22kHz, 64kbps): {} bytes -> output_mono.mp3", mono_mp3.len());
+    
+    // High quality stereo
+    let hq_config = Mp3EncoderConfig::new()
         .sample_rate(48000)
         .bitrate(320)
         .channels(2)
-        .stereo_mode(StereoMode::JointStereo)
-        .copyright(true)
-        .original(true);
-
-    println!("高质量配置: {:?}", high_quality_config);
-
-    // 低质量单声道配置（适合语音）
-    let voice_config = Mp3EncoderConfig::new()
-        .sample_rate(16000)
-        .bitrate(32)
-        .channels(1)
-        .stereo_mode(StereoMode::Mono);
-
-    println!("语音配置: {:?}", voice_config);
-
-    // 验证配置
-    high_quality_config.validate()?;
-    voice_config.validate()?;
-
-    println!("所有配置验证通过");
-
-    // 创建编码器并显示信息
-    let encoder = Mp3Encoder::new(high_quality_config)?;
-    println!("每帧样本数: {}", encoder.samples_per_frame());
-    println!("编码器配置: {:?}", encoder.config());
-
+        .stereo_mode(StereoMode::JointStereo);
+    
+    // Resample to 48kHz (simple upsampling for demo)
+    let mut hq_pcm = Vec::new();
+    let ratio = 48000.0 / 44100.0;
+    for i in 0..(pcm_data.len() as f64 * ratio) as usize {
+        let src_idx = (i as f64 / ratio) as usize;
+        if src_idx < pcm_data.len() {
+            hq_pcm.push(pcm_data[src_idx]);
+        }
+    }
+    
+    let hq_mp3 = encode_pcm_to_mp3(hq_config, &hq_pcm)?;
+    
+    let mut hq_file = File::create("output_hq.mp3")?;
+    hq_file.write_all(&hq_mp3)?;
+    
+    println!("   HQ (48kHz, 320kbps): {} bytes -> output_hq.mp3", hq_mp3.len());
+    
+    // Example 5: Error handling demonstration
+    println!("\n5. Error handling examples...");
+    
+    // Invalid configuration
+    let invalid_config = Mp3EncoderConfig::new()
+        .sample_rate(96000) // Unsupported sample rate
+        .bitrate(128);
+    
+    match Mp3Encoder::new(invalid_config) {
+        Ok(_) => println!("   Unexpected: invalid config was accepted"),
+        Err(e) => println!("   Expected error: {}", e),
+    }
+    
+    // Invalid bitrate for sample rate
+    let invalid_combo = Mp3EncoderConfig::new()
+        .sample_rate(8000)  // MPEG-2.5
+        .bitrate(320);      // Too high for MPEG-2.5
+    
+    match Mp3Encoder::new(invalid_combo) {
+        Ok(_) => println!("   Unexpected: invalid combo was accepted"),
+        Err(e) => println!("   Expected error: {}", e),
+    }
+    
+    println!("\n✅ All examples completed successfully!");
+    println!("\nGenerated files:");
+    if std::path::Path::new("output_sample.mp3").exists() {
+        println!("  - output_sample.mp3 (from sample-3s.wav)");
+    }
+    println!("  - output_simple.mp3 (convenience function)");
+    println!("  - output_streaming.mp3 (streaming encoder)");
+    println!("  - output_mono.mp3 (mono, 22kHz, 64kbps)");
+    println!("  - output_hq.mp3 (stereo, 48kHz, 320kbps)");
+    
     Ok(())
 }
