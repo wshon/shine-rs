@@ -1,198 +1,219 @@
-# 参考文件生成脚本
+# Scripts Directory
 
-这个目录包含用于生成和维护MP3编码器测试参考文件的脚本。
+This directory contains Python scripts for managing reference files, validation, and performance testing for the MP3 encoder project.
 
-## 脚本说明
+## 🛠️ Available Scripts
 
-### generate_reference_files.py
+### 1. Reference File Generation (`generate_reference_files.py`)
 
-自动化生成参考MP3文件的Python脚本，用于确保测试的可靠性和可复制性。
+Generates reference MP3 files using the Shine encoder for testing purposes.
 
-#### 功能特性
-
-- **跨平台兼容**: 自动检测Shine编码器二进制文件（支持Linux/macOS/Windows）
-- **多配置支持**: 支持生成不同帧数限制的参考文件
-- **自动验证**: 验证生成文件的大小和完整性
-- **测试常量更新**: 自动更新测试代码中的哈希值常量
-- **清单生成**: 生成包含所有参考文件信息的JSON清单
-
-#### 使用方法
-
+**Usage:**
 ```bash
-# 生成所有参考文件
+# Generate all reference files
 python scripts/generate_reference_files.py
 
-# 只生成6帧参考文件（用于SCFSI测试）
-python scripts/generate_reference_files.py --configs 6frames
+# Generate specific configurations
+python scripts/generate_reference_files.py --configs 3frames 6frames
 
-# 生成3帧参考文件（用于快速测试）
-python scripts/generate_reference_files.py --configs 3frames
-
-# 生成多个配置
-python scripts/generate_reference_files.py --configs 6frames 3frames
-
-# 不自动更新测试常量
+# Don't update test constants automatically
 python scripts/generate_reference_files.py --no-update-tests
 
-# 指定工作目录
-python scripts/generate_reference_files.py --workspace /path/to/shine-rs
+# Specify workspace directory
+python scripts/generate_reference_files.py --workspace /path/to/project
 ```
 
-#### 配置说明
+**Features:**
+- ✅ 11 different configurations (1-20 frames)
+- ✅ Multiple audio formats support
+- ✅ Automatic validation and hash calculation
+- ✅ Test constant updates
+- ✅ Cross-platform compatibility
 
-脚本支持以下预定义配置：
+### 2. Reference File Validation (`validate_reference_files.py`)
 
-| 配置名 | 描述 | 帧数 | 预期大小 | 用途 |
-|--------|------|------|----------|------|
-| 6frames | 6帧参考文件 | 6 | 2508字节 | SCFSI一致性测试 |
-| 3frames | 3帧参考文件 | 3 | 1252字节 | 快速测试 |
+Validates that the Rust encoder produces identical output to Shine reference files.
 
-#### 输出文件
+**Usage:**
+```bash
+# Validate all reference files
+python scripts/validate_reference_files.py
 
-脚本会生成以下文件：
+# Validate specific configurations
+python scripts/validate_reference_files.py --configs 3frames 6frames voice_3frames
 
-- `tests/audio/shine_reference_6frames.mp3` - 6帧参考文件
-- `tests/audio/shine_reference_3frames.mp3` - 3帧参考文件（如果生成）
-- `tests/audio/reference_manifest.json` - 参考文件清单
-
-#### 前置条件
-
-1. **Shine编码器**: 确保Shine编码器已构建并可用
-   - Linux/macOS: `ref/shine/shineenc`
-   - Windows: `ref/shine/shineenc.exe`
-
-2. **输入文件**: 确保测试音频文件存在
-   - `tests/audio/sample-3s.wav`
-
-3. **Python环境**: Python 3.6+
-
-#### 工作流程
-
-1. **检查前置条件**: 验证Shine编码器和输入文件
-2. **生成参考文件**: 使用Shine编码器生成MP3文件
-3. **验证输出**: 检查文件大小和计算SHA256哈希
-4. **更新测试常量**: 自动更新测试代码中的哈希值
-5. **生成清单**: 创建包含所有文件信息的JSON清单
-
-#### 错误处理
-
-脚本包含完整的错误处理：
-
-- **缺少Shine编码器**: 提供清晰的错误信息和解决建议
-- **输入文件不存在**: 列出所有缺少的文件
-- **编码失败**: 显示Shine编码器的错误输出
-- **验证失败**: 报告文件大小或哈希不匹配
-
-#### 示例输出
-
-```
-🚀 Starting reference file generation...
-   Workspace: /path/to/shine-rs
-🔍 Checking prerequisites...
-✅ Shine encoder found: /path/to/shine-rs/ref/shine/shineenc
-✅ Audio directory found: /path/to/shine-rs/tests/audio
-✅ Input file found: /path/to/shine-rs/tests/audio/sample-3s.wav
-
-📁 Generating reference file: 6frames
-   Description: 6-frame reference for SCFSI consistency testing
-🎵 Running Shine encoder...
-   Command: /path/to/shine-rs/ref/shine/shineenc /path/to/shine-rs/tests/audio/sample-3s.wav /path/to/shine-rs/tests/audio/shine_reference_6frames.mp3
-   Frame limit: 6
-✅ Shine encoder completed successfully
-✅ Reference file generated successfully
-   File: /path/to/shine-rs/tests/audio/shine_reference_6frames.mp3
-   Size: 2508 bytes
-   SHA256: 4385b617a86cb3891ce3c99dabe6b47c2ac9182b32c46cbc5ad167fb28b959c4
-
-📊 Generation Summary:
-   ✅ Successful: 1
-   ❌ Failed: 0
-
-🔧 Updating test constants...
-✅ Updated SCFSI test constants
-✅ Generated manifest: /path/to/shine-rs/tests/audio/reference_manifest.json
-
-🎉 Reference file generation completed successfully!
+# Specify workspace directory
+python scripts/validate_reference_files.py --workspace /path/to/project
 ```
 
-## 维护指南
+**Features:**
+- ✅ Comprehensive validation across all configurations
+- ✅ SHA256 hash verification
+- ✅ File size checking
+- ✅ Detailed error reporting
+- ✅ Success rate statistics
 
-### 添加新配置
+### 3. Performance Benchmark (`benchmark_encoders.py`)
 
-要添加新的参考文件配置，编辑`generate_reference_files.py`中的`reference_configs`字典：
+Benchmarks the performance of Rust and Shine encoders.
 
-```python
-self.reference_configs = {
-    "new_config": {
-        "description": "新配置的描述",
-        "frame_limit": 10,  # 帧数限制
-        "expected_size": 4180,  # 预期文件大小（字节）
-        "input_file": "sample-3s.wav",  # 输入文件名
-        "output_file": "shine_reference_10frames.mp3"  # 输出文件名
-    }
-}
+**Usage:**
+```bash
+# Benchmark all configurations
+python scripts/benchmark_encoders.py
+
+# Benchmark specific configurations with multiple iterations
+python scripts/benchmark_encoders.py --configs 3frames 6frames --iterations 5
+
+# Save detailed report to JSON
+python scripts/benchmark_encoders.py --output benchmark_report.json
+
+# Specify workspace directory
+python scripts/benchmark_encoders.py --workspace /path/to/project
 ```
 
-### 更新Shine编码器
+**Features:**
+- ✅ Performance comparison between Rust and Shine
+- ✅ Multiple iteration support for accuracy
+- ✅ Frames per second calculation
+- ✅ Statistical analysis
+- ✅ JSON report generation
 
-如果Shine编码器有更新，重新生成参考文件：
+### 4. Voice Issue Diagnosis (`diagnose_voice_issue.py`)
+
+Diagnoses encoding differences for voice/mono audio files.
+
+**Usage:**
+```bash
+# Diagnose voice file encoding issues
+python scripts/diagnose_voice_issue.py
+```
+
+**Features:**
+- ✅ Audio format analysis
+- ✅ Encoder output comparison
+- ✅ MP3 header parsing
+- ✅ Detailed debugging information
+
+### 5. Encoding Differences Analysis (`analyze_encoding_differences.py`)
+
+Analyzes differences between encoders for various audio formats.
+
+**Usage:**
+```bash
+# Analyze encoding differences
+python scripts/analyze_encoding_differences.py
+```
+
+**Features:**
+- ✅ Multi-format audio analysis
+- ✅ Header comparison
+- ✅ Detailed difference reporting
+- ✅ Cross-platform compatibility
+
+## 📊 Current Test Status
+
+### ✅ Passing Configurations (9/11 - 82% success rate)
+
+| Configuration | Frames | Input File | Size | Status |
+|---------------|--------|------------|------|--------|
+| 1frame | 1 | sample-3s.wav | 416 bytes | ✅ |
+| 2frames | 2 | sample-3s.wav | 836 bytes | ✅ |
+| 3frames | 3 | sample-3s.wav | 1252 bytes | ✅ |
+| 6frames | 6 | sample-3s.wav | 2508 bytes | ✅ |
+| 10frames | 10 | sample-3s.wav | 4180 bytes | ✅ |
+| 15frames | 15 | sample-3s.wav | 6268 bytes | ✅ |
+| 20frames | 20 | sample-3s.wav | 8360 bytes | ✅ |
+| large_3frames | 3 | Free_Test_Data_500KB_WAV.wav | 1252 bytes | ✅ |
+| large_6frames | 6 | Free_Test_Data_500KB_WAV.wav | 2508 bytes | ✅ |
+
+### ⚠️ Known Issues (2/11)
+
+| Configuration | Issue | Cause |
+|---------------|-------|-------|
+| voice_3frames | Hash mismatch | Mono 48kHz processing differences |
+| voice_6frames | Hash mismatch | Mono 48kHz processing differences |
+
+## 🔧 Environment Variables
+
+Both Rust and Shine encoders support frame limiting through environment variables:
+
+**Rust Encoder:**
+```bash
+RUST_MP3_MAX_FRAMES=6 cargo run -- input.wav output.mp3
+```
+
+**Shine Encoder:**
+```bash
+SHINE_MAX_FRAMES=6 ./ref/shine/shineenc input.wav output.mp3
+```
+
+## 📁 Generated Files
+
+The scripts generate and manage the following files:
+
+```
+tests/audio/
+├── reference_manifest.json          # Reference file metadata
+├── shine_reference_*.mp3           # Generated reference files
+└── README.md                       # Audio files documentation
+
+tests/docs/
+└── environment_variable_integration.md  # Environment variable docs
+```
+
+## 🚀 Quick Start
+
+1. **Generate reference files:**
+   ```bash
+   python scripts/generate_reference_files.py
+   ```
+
+2. **Validate Rust implementation:**
+   ```bash
+   python scripts/validate_reference_files.py
+   ```
+
+3. **Run performance benchmark:**
+   ```bash
+   python scripts/benchmark_encoders.py --configs 3frames 6frames
+   ```
+
+## 🎯 Integration with Rust Tests
+
+These Python scripts complement the Rust integration tests:
 
 ```bash
-# 重新构建Shine
-cd ref/shine
-make clean && make
+# Run Rust integration tests
+cargo test --test integration_reference_validation
 
-# 重新生成所有参考文件
-python scripts/generate_reference_files.py
+# Run Python validation
+python scripts/validate_reference_files.py
 ```
 
-### 验证参考文件
+Both should produce consistent results, with the Python scripts providing more detailed diagnostics.
 
-生成参考文件后，运行测试验证：
+## 📈 Success Metrics
 
-```bash
-# 运行SCFSI一致性测试
-cargo test test_scfsi_consistency_with_shine --features diagnostics
+- **File Size Match**: Rust output matches Shine output exactly
+- **SHA256 Hash Match**: Byte-level identical files
+- **Performance Comparison**: Objective speed measurements
+- **Cross-Platform Consistency**: Same results on different systems
 
-# 运行所有SCFSI测试
-cargo test --test integration_scfsi_consistency --features diagnostics
-```
+## 🛡️ Error Handling
 
-## 故障排除
+All scripts include comprehensive error handling:
 
-### 常见问题
+- **Missing files**: Clear error messages with suggested fixes
+- **Encoding failures**: Detailed stdout/stderr capture
+- **Hash mismatches**: Precise difference reporting
+- **Timeout handling**: Graceful handling of long-running processes
 
-1. **Shine编码器未找到**
-   - 确保Shine已正确构建
-   - 检查二进制文件权限（Linux/macOS需要执行权限）
+## 📚 Related Documentation
 
-2. **输入文件缺失**
-   - 确保`tests/audio/sample-3s.wav`存在
-   - 检查文件路径和权限
+- [Testing Guide](../docs/TESTING_GUIDE.md)
+- [Reference Data Status](../docs/REFERENCE_DATA_STATUS.md)
+- [Completion Summary](../REFERENCE_DATA_COMPLETION_SUMMARY.md)
+- [Environment Variable Integration](../tests/docs/environment_variable_integration.md)
 
-3. **文件大小不匹配**
-   - 可能是Shine版本差异导致
-   - 检查Shine的调试输出和帧数限制
-
-4. **哈希值不匹配**
-   - 重新生成参考文件
-   - 检查Shine编码器是否有修改
-
-### 调试模式
-
-要获得更详细的调试信息，可以修改脚本中的日志级别或添加额外的调试输出。
-
-## 集成到CI/CD
-
-可以将参考文件生成集成到持续集成流程中：
-
-```yaml
-# GitHub Actions示例
-- name: Generate reference files
-  run: python scripts/generate_reference_files.py --no-update-tests
-
-- name: Verify reference files
-  run: cargo test --test integration_scfsi_consistency --features diagnostics
-```
-
-这确保了参考文件始终与当前的Shine实现保持同步。
+This script collection provides enterprise-grade testing infrastructure for the MP3 encoder project, ensuring high quality and reliability.
