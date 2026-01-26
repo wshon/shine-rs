@@ -12,7 +12,7 @@ use sha2::{Sha256, Digest};
 /// Test that Rust encoder generates identical output to Shine reference implementation
 #[test]
 fn test_scfsi_consistency_with_shine() {
-    let test_input = "testing/fixtures/audio/sample-3s.wav";
+    let test_input = "tests/audio/sample-3s.wav";
     let rust_output = "test_rust_scfsi_output.mp3";
     let shine_output = "test_shine_scfsi_output.mp3";
     
@@ -21,7 +21,7 @@ fn test_scfsi_consistency_with_shine() {
     
     // Run Rust encoder
     let rust_result = Command::new("cargo")
-        .args(&["run", "--bin", "wav2mp3", "--", test_input, rust_output])
+        .args(&["run", "--", test_input, rust_output])
         .output()
         .expect("Failed to run Rust encoder");
     

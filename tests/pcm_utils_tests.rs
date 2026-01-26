@@ -3,7 +3,7 @@
 //! Tests the PCM data processing functions including deinterleaving
 //! and format conversion utilities.
 
-use util::*;
+use shine_rs_cli::util::*;
 
 #[cfg(test)]
 mod tests {
