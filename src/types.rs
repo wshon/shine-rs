@@ -7,13 +7,13 @@ use crate::bitstream::BitstreamWriter;
 
 /// Constants from shine (matches types.h exactly)
 pub const GRANULE_SIZE: usize = 576;
-pub const PI: f64 = 3.14159265358979;
-pub const PI4: f64 = 0.78539816339745;
+pub const PI: f64 = std::f64::consts::PI;
+pub const PI4: f64 = std::f64::consts::FRAC_PI_4;
 pub const PI12: f64 = 0.26179938779915;
 pub const PI36: f64 = 0.087266462599717;
 pub const PI64: f64 = 0.049087385212;
-pub const SQRT2: f64 = 1.41421356237;
-pub const LN2: f64 = 0.69314718;
+pub const SQRT2: f64 = std::f64::consts::SQRT_2;
+pub const LN2: f64 = std::f64::consts::LN_2;
 pub const LN_TO_LOG10: f64 = 0.2302585093;
 pub const BLKSIZE: usize = 1024;
 pub const HAN_SIZE: usize = 512; // for loop unrolling, require that HAN_SIZE%8==0

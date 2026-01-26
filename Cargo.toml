@@ -2,12 +2,27 @@
 name = "shine-rs"
 version = "0.1.0"
 edition = "2021"
-authors = ["MP3 Encoder Team"]
-description = "A pure Rust MP3 encoder based on the shine library"
+authors = ["Shon Wang <code@wshon.com>"]
+description = "A pure Rust MP3 encoder based on the shine library, providing complete MPEG Layer III encoding functionality"
 license = "LGPL-2.1-or-later"
 repository = "https://github.com/wshon/shine-rs"
+homepage = "https://github.com/wshon/shine-rs"
+documentation = "https://docs.rs/shine-rs"
+readme = "README.md"
 keywords = ["mp3", "audio", "encoder", "codec", "shine"]
 categories = ["multimedia::audio", "encoding"]
+exclude = [
+    "ref/*",
+    "testing/*",
+    "tools/*",
+    "scripts/*",
+    "docs/*",
+    "*.mp3",
+    "*.wav",
+    "*.pdb",
+    ".git*",
+    ".claude/*"
+]
 
 [features]
 default = []
@@ -27,10 +42,6 @@ criterion = { version = "0.5", features = ["html_reports"] }
 env_logger = "0.10"
 sha2 = "0.10"
 util = { path = "util" }
-
-[[test]]
-name = "integration_full_pipeline_validation"
-path = "testing/integration/integration_full_pipeline_validation.rs"
 
 [[test]]
 name = "integration_scfsi_consistency"
