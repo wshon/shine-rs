@@ -35,8 +35,7 @@ pub mod types;
 #[cfg(feature = "diagnostics")]
 pub mod diagnostics_data;
 
-#[cfg(test)]
-pub mod tests;
+
 
 // Re-export high-level interface (recommended for most users)
 pub use mp3_encoder::{

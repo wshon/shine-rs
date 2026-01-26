@@ -3,7 +3,7 @@
 //! These tests validate quantization parameters, global gain calculation,
 //! and big_values constraints against the Shine reference implementation.
 
-use crate::types::*;
+use shine_rs::types::*;
 
 #[cfg(test)]
 mod tests {

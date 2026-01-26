@@ -3,7 +3,7 @@
 //! Tests the MDCT analysis functionality including coefficient calculation
 //! and aliasing reduction operations.
 
-use crate::types::*;
+use shine_rs::types::*;
 
 #[cfg(test)]
 mod tests {

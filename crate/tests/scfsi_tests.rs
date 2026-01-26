@@ -3,7 +3,7 @@
 //! These tests validate the SCFSI calculation logic in isolation,
 //! ensuring it matches the Shine reference implementation exactly.
 
-use crate::types::ShineGlobalConfig;
+use shine_rs::types::ShineGlobalConfig;
 
 #[cfg(test)]
 mod unit_tests {

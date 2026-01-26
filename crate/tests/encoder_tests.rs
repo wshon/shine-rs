@@ -3,11 +3,11 @@
 //! Tests the main encoder functionality including configuration validation,
 //! initialization, and encoding parameter setup.
 
-use crate::encoder::*;
-use crate::types::*;
+use shine_rs::encoder::*;
+use shine_rs::types::*;
 
 // Import constants from encoder module
-use crate::encoder::{MPEG_I, MPEG_II, MPEG_25, NONE, LAYER_III};
+use shine_rs::encoder::{MPEG_I, MPEG_II, MPEG_25, NONE, LAYER_III};
 
 #[cfg(test)]
 mod tests {

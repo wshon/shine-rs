@@ -288,12 +288,10 @@ pub fn shine_encode_buffer<'a>(config: &'a mut ShineGlobalConfig, data: &[*const
 
 /// Encode buffer with interleaved channels (matches shine_encode_buffer_interleaved)
 /// (ref/shine/src/lib/layer3.c:169-176)
-pub fn shine_encode_buffer_interleaved<'a>(config: &'a mut ShineGlobalConfig, data: *const i16) -> EncodingResult<(&'a [u8], usize)> {
+pub unsafe fn shine_encode_buffer_interleaved(config: &mut ShineGlobalConfig, data: *const i16) -> EncodingResult<(&[u8], usize)> {
     config.buffer[0] = data as *mut i16;
     if config.wave.channels == 2 {
-        unsafe {
-            config.buffer[1] = data.offset(1) as *mut i16;
-        }
+        config.buffer[1] = data.offset(1) as *mut i16;
     }
 
     shine_encode_buffer_internal(config, config.wave.channels)

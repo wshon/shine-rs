@@ -3,7 +3,7 @@
 //! Tests the polyphase filter bank that splits the input signal
 //! into 32 subbands for further processing.
 
-use crate::types::*;
+use shine_rs::types::*;
 
 #[cfg(test)]
 mod tests {
@@ -11,8 +11,8 @@ mod tests {
 
     #[test]
     fn test_subband_filter_initialization() {
-        use crate::subband::shine_subband_initialise;
-        use crate::types::Subband;
+        use shine_rs::subband::shine_subband_initialise;
+        use shine_rs::types::Subband;
         
         let mut subband = Subband::default();
         
@@ -39,8 +39,8 @@ mod tests {
 
     #[test]
     fn test_subband_filter_mono() {
-        use crate::subband::shine_subband_initialise;
-        use crate::types::Subband;
+        use shine_rs::subband::shine_subband_initialise;
+        use shine_rs::types::Subband;
         
         let mut subband = Subband::default();
         shine_subband_initialise(&mut subband);
@@ -65,8 +65,8 @@ mod tests {
 
     #[test]
     fn test_subband_filter_stereo() {
-        use crate::subband::shine_subband_initialise;
-        use crate::types::Subband;
+        use shine_rs::subband::shine_subband_initialise;
+        use shine_rs::types::Subband;
         
         let mut subband = Subband::default();
         shine_subband_initialise(&mut subband);
@@ -92,8 +92,8 @@ mod tests {
 
     #[test]
     fn test_subband_filter_dc_input() {
-        use crate::subband::shine_subband_initialise;
-        use crate::types::Subband;
+        use shine_rs::subband::shine_subband_initialise;
+        use shine_rs::types::Subband;
         
         let mut subband = Subband::default();
         shine_subband_initialise(&mut subband);
@@ -117,8 +117,8 @@ mod tests {
 
     #[test]
     fn test_subband_filter_impulse_response() {
-        use crate::subband::shine_subband_initialise;
-        use crate::types::Subband;
+        use shine_rs::subband::shine_subband_initialise;
+        use shine_rs::types::Subband;
         
         let mut subband = Subband::default();
         shine_subband_initialise(&mut subband);
@@ -150,8 +150,8 @@ mod tests {
 
     #[test]
     fn test_subband_filter_symmetry() {
-        use crate::subband::shine_subband_initialise;
-        use crate::types::Subband;
+        use shine_rs::subband::shine_subband_initialise;
+        use shine_rs::types::Subband;
         
         let mut subband1 = Subband::default();
         let mut subband2 = Subband::default();
@@ -188,8 +188,8 @@ mod tests {
 
     #[test]
     fn test_subband_energy_conservation() {
-        use crate::subband::shine_subband_initialise;
-        use crate::types::Subband;
+        use shine_rs::subband::shine_subband_initialise;
+        use shine_rs::types::Subband;
         
         let mut subband = Subband::default();
         shine_subband_initialise(&mut subband);
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn test_subband_state_default() {
-        use crate::types::Subband;
+        use shine_rs::types::Subband;
         
         let subband = Subband::default();
         
@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn test_subband_structure_initialization() {
-        use crate::types::Subband;
+        use shine_rs::types::Subband;
         
         let subband = Subband::default();
         
