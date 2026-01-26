@@ -17,9 +17,31 @@ ls -la output_*.mp3
 
 ## 示例列表
 
-### simple_encoding.rs - 简单编码示例
+### simple_encoding.rs - 基础编码示例
 
-这是一个综合性的示例，展示了 `Mp3Encoder` 高级 API 的各种用法：
+最简单的 MP3 编码示例，展示 `encode_pcm_to_mp3` 便利函数的基本用法：
+
+#### 功能特性
+
+- **单一功能演示** - 只展示最基本的编码流程
+- **合成音频** - 生成 2 秒 440Hz 正弦波
+- **便利函数** - 使用 `encode_pcm_to_mp3` 一次性编码
+- **简洁代码** - 不到 60 行代码，易于理解
+
+#### 运行示例
+
+```bash
+# 运行基础编码示例
+cargo run --example simple_encoding
+```
+
+#### 输出文件
+
+- `simple_output.mp3` - 2 秒 440Hz 正弦波，44.1kHz, 128kbps, 立体声 (~32KB)
+
+### comprehensive_example.rs - 综合示例
+
+这是一个全面的示例，展示了 `Mp3Encoder` 高级 API 的各种用法：
 
 #### 功能特性
 
@@ -32,8 +54,8 @@ ls -la output_*.mp3
 #### 运行示例
 
 ```bash
-# 运行简单编码示例
-cargo run --example simple_encoding
+# 运行综合示例
+cargo run --example comprehensive_example
 ```
 
 #### 输出文件
