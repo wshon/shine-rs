@@ -21,10 +21,10 @@ mod tests {
         assert_eq!(BLKSIZE, 1024, "Block size should match shine");
         assert_eq!(SCALE, 32768, "Scale factor should match shine");
         
-        // Verify mathematical constants
-        assert!((PI - 3.14159265358979).abs() < 1e-15, "PI should be accurate");
-        assert!((SQRT2 - 1.41421356237).abs() < 1e-10, "SQRT2 should be accurate");
-        assert!((LN2 - 0.69314718).abs() < 1e-8, "LN2 should be accurate");
+        // Verify mathematical constants (now using std constants)
+        assert!((PI - std::f64::consts::PI).abs() < 1e-15, "PI should match std::f64::consts::PI");
+        assert!((SQRT2 - std::f64::consts::SQRT_2).abs() < 1e-15, "SQRT2 should match std::f64::consts::SQRT_2");
+        assert!((LN2 - std::f64::consts::LN_2).abs() < 1e-15, "LN2 should match std::f64::consts::LN_2");
     }
 
     #[test]

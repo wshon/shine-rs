@@ -12,16 +12,18 @@ readme = "README.md"
 keywords = ["mp3", "audio", "encoder", "codec", "shine"]
 categories = ["multimedia::audio", "encoding"]
 exclude = [
-    "ref/*",
-    "testing/*",
-    "tools/*",
-    "scripts/*",
-    "docs/*",
+    "ref/",
+    "testing/",
+    "tools/",
+    "scripts/",
+    "docs/",
+    "util/",
+    ".cargo/",
+    ".kiro/",
     "*.mp3",
-    "*.wav",
+    "*.wav", 
     "*.pdb",
-    ".git*",
-    ".claude/*"
+    "PUBLISHING_GUIDE.md"
 ]
 
 [features]
