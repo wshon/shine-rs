@@ -254,10 +254,12 @@ impl Mp3Encoder {
             let frame_data: Vec<i16> = self.input_buffer.drain(..self.samples_per_frame).collect();
             
             // 调用底层编码函数
-            let (mp3_data, written) = shine_encode_buffer_interleaved(
-                &mut self.config,
-                frame_data.as_ptr()
-            ).map_err(|e| EncoderError::Encoding(e))?;
+            let (mp3_data, written) = unsafe {
+                shine_encode_buffer_interleaved(
+                    &mut self.config,
+                    frame_data.as_ptr()
+                )
+            }.map_err(EncoderError::Encoding)?;
 
             if written > 0 {
                 output_frames.push(mp3_data[..written].to_vec());
@@ -350,10 +352,12 @@ impl Mp3Encoder {
 
             let frame_data: Vec<i16> = self.input_buffer.drain(..).collect();
             
-            let (mp3_data, written) = shine_encode_buffer_interleaved(
-                &mut self.config,
-                frame_data.as_ptr()
-            ).map_err(|e| EncoderError::Encoding(e))?;
+            let (mp3_data, written) = unsafe {
+                shine_encode_buffer_interleaved(
+                    &mut self.config,
+                    frame_data.as_ptr()
+                )
+            }.map_err(EncoderError::Encoding)?;
 
             if written > 0 {
                 final_output.extend_from_slice(&mp3_data[..written]);
