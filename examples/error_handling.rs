@@ -2,8 +2,8 @@
 //!
 //! 这个示例展示了如何处理MP3编码器的各种错误情况
 
-use shine_rs::{Mp3Encoder, Mp3EncoderConfig, StereoMode};
-use shine_rs::{EncoderError, ConfigError, InputDataError};
+use shine_rs::mp3_encoder::{Mp3Encoder, Mp3EncoderConfig, StereoMode};
+use shine_rs::error::{EncoderError, ConfigError, InputDataError};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("MP3编码器错误处理示例");

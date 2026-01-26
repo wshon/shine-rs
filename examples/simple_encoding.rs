@@ -1,153 +1,185 @@
-//! 简单的MP3编码示例
+//! Simple MP3 encoding example
 //!
-//! 这个示例展示了如何使用高级接口进行MP3编码
+//! This example demonstrates the most basic usage of the MP3 encoder
+//! using the convenience function encode_pcm_to_mp3().
+//!
+//! Usage: cargo run --example simple_encoding <input.wav> <output.mp3>
 
-use rust_mp3_encoder::{Mp3Encoder, Mp3EncoderConfig, StereoMode, encode_pcm_to_mp3};
+use shine_rs::mp3_encoder::{encode_pcm_to_mp3, Mp3EncoderConfig, StereoMode};
+use std::env;
 use std::fs::File;
-use std::io::Write;
+use std::io::{Read, Write};
+use std::path::Path;
+
+/// Simple WAV file reader
+fn read_wav_file(path: &str) -> Result<(Vec<i16>, u32, u16), Box<dyn std::error::Error>> {
+    let mut file = File::open(path)?;
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+    
+    if buffer.len() < 44 {
+        return Err("WAV file too small".into());
+    }
+    
+    // Validate RIFF header
+    if &buffer[0..4] != b"RIFF" || &buffer[8..12] != b"WAVE" {
+        return Err("Not a valid WAV file".into());
+    }
+    
+    let mut sample_rate = 0u32;
+    let mut channels = 0u16;
+    let mut pcm_data = Vec::new();
+    let mut fmt_found = false;
+    let mut data_found = false;
+    
+    // Parse chunks
+    let mut pos = 12;
+    while pos < buffer.len() - 8 {
+        let chunk_id = &buffer[pos..pos+4];
+        let chunk_size = u32::from_le_bytes([buffer[pos+4], buffer[pos+5], buffer[pos+6], buffer[pos+7]]);
+        let chunk_data_start = pos + 8;
+        let chunk_data_end = chunk_data_start + chunk_size as usize;
+        
+        if chunk_data_end > buffer.len() {
+            break;
+        }
+        
+        match chunk_id {
+            b"fmt " => {
+                if chunk_size >= 16 {
+                    let audio_format = u16::from_le_bytes([buffer[chunk_data_start], buffer[chunk_data_start+1]]);
+                    if audio_format != 1 {
+                        return Err("Only PCM format supported".into());
+                    }
+                    
+                    channels = u16::from_le_bytes([buffer[chunk_data_start+2], buffer[chunk_data_start+3]]);
+                    sample_rate = u32::from_le_bytes([
+                        buffer[chunk_data_start+4], buffer[chunk_data_start+5], 
+                        buffer[chunk_data_start+6], buffer[chunk_data_start+7]
+                    ]);
+                    
+                    let bits_per_sample = u16::from_le_bytes([buffer[chunk_data_start+14], buffer[chunk_data_start+15]]);
+                    if bits_per_sample != 16 {
+                        return Err("Only 16-bit samples supported".into());
+                    }
+                    
+                    fmt_found = true;
+                }
+            },
+            b"data" => {
+                if !fmt_found {
+                    return Err("Data chunk found before fmt chunk".into());
+                }
+                
+                // Convert bytes to i16 samples
+                for i in (chunk_data_start..chunk_data_end).step_by(2) {
+                    if i + 1 < buffer.len() {
+                        let sample = i16::from_le_bytes([buffer[i], buffer[i+1]]);
+                        pcm_data.push(sample);
+                    }
+                }
+                data_found = true;
+            },
+            _ => {} // Skip unknown chunks
+        }
+        
+        pos = chunk_data_end;
+        if chunk_size % 2 == 1 {
+            pos += 1; // WAV chunks are word-aligned
+        }
+    }
+    
+    if !fmt_found {
+        return Err("No fmt chunk found".into());
+    }
+    
+    if !data_found {
+        return Err("No data chunk found".into());
+    }
+    
+    if sample_rate == 0 || channels == 0 || pcm_data.is_empty() {
+        return Err("Invalid WAV file data".into());
+    }
+    
+    Ok((pcm_data, sample_rate, channels))
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 示例1: 使用高级接口进行流式编码
-    println!("示例1: 流式编码");
-    stream_encoding_example()?;
-
-    // 示例2: 一次性编码整个文件
-    println!("示例2: 一次性编码");
-    batch_encoding_example()?;
-
-    // 示例3: 使用不同的配置
-    println!("示例3: 自定义配置");
-    custom_config_example()?;
-
-    println!("所有示例完成！");
-    Ok(())
-}
-
-/// 流式编码示例 - 适合处理大文件或实时音频
-fn stream_encoding_example() -> Result<(), Box<dyn std::error::Error>> {
-    // 创建编码器配置
+    let args: Vec<String> = env::args().collect();
+    
+    // Check command line arguments
+    if args.len() != 3 {
+        eprintln!("Simple MP3 Encoding Example");
+        eprintln!("===========================");
+        eprintln!();
+        eprintln!("Usage: {} <input.wav> <output.mp3>", args[0]);
+        eprintln!();
+        eprintln!("Examples:");
+        eprintln!("  {} input.wav output.mp3", args[0]);
+        eprintln!("  {} testing/fixtures/audio/sample-3s.wav my_output.mp3", args[0]);
+        std::process::exit(1);
+    }
+    
+    let input_path = &args[1];
+    let output_path = &args[2];
+    
+    println!("Simple MP3 Encoding Example");
+    println!("===========================");
+    println!("Input:  {}", input_path);
+    println!("Output: {}", output_path);
+    println!();
+    
+    // Check if input file exists
+    if !Path::new(input_path).exists() {
+        eprintln!("Error: Input file '{}' does not exist", input_path);
+        std::process::exit(1);
+    }
+    
+    // Read WAV file
+    println!("Reading WAV file...");
+    let (pcm_data, sample_rate, channels) = read_wav_file(input_path)?;
+    
+    println!("WAV info: {} Hz, {} channels, {} samples", 
+             sample_rate, channels, pcm_data.len());
+    
+    // Determine appropriate stereo mode
+    let stereo_mode = if channels == 1 {
+        StereoMode::Mono
+    } else {
+        StereoMode::JointStereo
+    };
+    
+    // Create encoder configuration based on WAV properties
     let config = Mp3EncoderConfig::new()
-        .sample_rate(44100)
-        .bitrate(128)
-        .channels(2)
-        .stereo_mode(StereoMode::Stereo);
-
-    // 创建编码器
-    let mut encoder = Mp3Encoder::new(config)?;
-
-    // 创建输出文件
-    let mut output_file = File::create("output_stream.mp3")?;
-
-    // 模拟音频数据流（这里生成简单的正弦波）
-    let sample_rate = 44100;
-    let duration_seconds = 2;
-    let total_samples = sample_rate * duration_seconds * 2; // 立体声
-
-    let mut samples_processed = 0;
-    let chunk_size = encoder.samples_per_frame() * 4; // 处理4帧的数据
-
-    while samples_processed < total_samples {
-        // 生成一块音频数据
-        let mut chunk = Vec::new();
-        for i in 0..chunk_size.min(total_samples - samples_processed) {
-            let sample_index = samples_processed + i;
-            let time = sample_index as f32 / (sample_rate * 2) as f32;
-            
-            // 生成440Hz的正弦波
-            let sample = (time * 440.0 * 2.0 * std::f32::consts::PI).sin();
-            let sample_i16 = (sample * 32767.0) as i16;
-            
-            chunk.push(sample_i16);
-        }
-
-        // 编码这块数据
-        let mp3_frames = encoder.encode_interleaved(&chunk)?;
-        
-        // 写入输出文件
-        for frame in mp3_frames {
-            output_file.write_all(&frame)?;
-        }
-
-        samples_processed += chunk.len();
-        println!("已处理 {} / {} 样本", samples_processed, total_samples);
-    }
-
-    // 完成编码
-    let final_data = encoder.finish()?;
-    if !final_data.is_empty() {
-        output_file.write_all(&final_data)?;
-    }
-
-    println!("流式编码完成，输出文件: output_stream.mp3");
-    Ok(())
-}
-
-/// 一次性编码示例 - 适合小文件
-fn batch_encoding_example() -> Result<(), Box<dyn std::error::Error>> {
-    // 创建配置
-    let config = Mp3EncoderConfig::new()
-        .sample_rate(22050)  // 较低的采样率
-        .bitrate(96)         // 较低的比特率
-        .channels(1)         // 单声道
-        .stereo_mode(StereoMode::Mono);
-
-    // 生成测试音频数据（1秒的440Hz正弦波）
-    let sample_rate = 22050;
-    let duration_seconds = 1;
-    let total_samples = sample_rate * duration_seconds;
-
-    let mut pcm_data = Vec::with_capacity(total_samples);
-    for i in 0..total_samples {
-        let time = i as f32 / sample_rate as f32;
-        let sample = (time * 440.0 * 2.0 * std::f32::consts::PI).sin();
-        let sample_i16 = (sample * 32767.0) as i16;
-        pcm_data.push(sample_i16);
-    }
-
-    // 一次性编码
+        .sample_rate(sample_rate)
+        .bitrate(128)  // Use standard 128 kbps
+        .channels(channels as u8)
+        .stereo_mode(stereo_mode);
+    
+    println!("Encoding to MP3 ({}Hz, 128kbps, {:?})...", 
+             sample_rate, stereo_mode);
+    
+    // Encode PCM data to MP3 using the convenience function
     let mp3_data = encode_pcm_to_mp3(config, &pcm_data)?;
-
-    // 写入文件
-    let mut output_file = File::create("output_batch.mp3")?;
+    
+    // Write to file
+    let mut output_file = File::create(output_path)?;
     output_file.write_all(&mp3_data)?;
-
-    println!("一次性编码完成，输出文件: output_batch.mp3");
-    println!("输入: {} 样本, 输出: {} 字节", pcm_data.len(), mp3_data.len());
-    Ok(())
-}
-
-/// 自定义配置示例
-fn custom_config_example() -> Result<(), Box<dyn std::error::Error>> {
-    // 高质量立体声配置
-    let high_quality_config = Mp3EncoderConfig::new()
-        .sample_rate(48000)
-        .bitrate(320)
-        .channels(2)
-        .stereo_mode(StereoMode::JointStereo)
-        .copyright(true)
-        .original(true);
-
-    println!("高质量配置: {:?}", high_quality_config);
-
-    // 低质量单声道配置（适合语音）
-    let voice_config = Mp3EncoderConfig::new()
-        .sample_rate(16000)
-        .bitrate(32)
-        .channels(1)
-        .stereo_mode(StereoMode::Mono);
-
-    println!("语音配置: {:?}", voice_config);
-
-    // 验证配置
-    high_quality_config.validate()?;
-    voice_config.validate()?;
-
-    println!("所有配置验证通过");
-
-    // 创建编码器并显示信息
-    let encoder = Mp3Encoder::new(high_quality_config)?;
-    println!("每帧样本数: {}", encoder.samples_per_frame());
-    println!("编码器配置: {:?}", encoder.config());
-
+    
+    // Calculate statistics
+    let input_size = pcm_data.len() * 2; // 16-bit samples = 2 bytes each
+    let compression_ratio = input_size as f64 / mp3_data.len() as f64;
+    let duration = pcm_data.len() as f64 / (sample_rate as f64 * channels as f64);
+    let actual_bitrate = (mp3_data.len() as f64 * 8.0) / (duration * 1000.0);
+    
+    println!();
+    println!("✅ Encoding completed successfully!");
+    println!("   Input size:  {} bytes ({} samples)", input_size, pcm_data.len());
+    println!("   Output size: {} bytes", mp3_data.len());
+    println!("   Compression: {:.1}:1", compression_ratio);
+    println!("   Duration:    {:.2} seconds", duration);
+    println!("   Bitrate:     {:.1} kbps", actual_bitrate);
+    println!("   Saved to:    {}", output_path);
+    
     Ok(())
 }

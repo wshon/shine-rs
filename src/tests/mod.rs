@@ -10,5 +10,4 @@ pub mod pcm_utils_tests;
 pub mod quantization_tests;
 pub mod scfsi_tests;
 pub mod subband_tests;
-pub mod test_data;
 pub mod types_tests;

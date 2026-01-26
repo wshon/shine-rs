@@ -43,7 +43,7 @@
 
 ```bash
 # 基本用法：WAV 转 MP3
-cd tools && cargo run --bin wav2mp3 input.wav output.mp3
+cd tools && cargo run --bin wav2mp3 ..\testing\fixtures\audio\sample-3s.wav ..\testing\fixtures\output\wav2mp3_output.mp3
 
 # 指定比特率和立体声模式
 cd tools && cargo run --bin wav2mp3 input.wav output.mp3 128 stereo

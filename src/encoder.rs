@@ -174,7 +174,7 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
     config.mpeg.granules_per_frame = GRANULES_PER_FRAME[config.mpeg.version as usize];
 
     // Figure average number of 'slots' per frame
-    let avg_slots_per_frame = (config.mpeg.granules_per_frame as f64 * GRANULE_SIZE as f64 / 
+    let avg_slots_per_frame = (config.mpeg.granules_per_frame as f64 * GRANULE_SIZE as f64 /
                               config.wave.samplerate as f64) *
                               (1000.0 * config.mpeg.bitr as f64 / config.mpeg.bits_per_slot as f64);
 
@@ -209,11 +209,11 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
     let frame_num = crate::get_next_frame_number();
-    
+
     // Start frame data collection
     #[cfg(feature = "diagnostics")]
-    crate::test_data::start_frame_collection(frame_num);
-    
+    crate::diagnostics_data::start_frame_collection(frame_num);
+
     // Dynamic padding calculation (matches shine exactly)
     if config.mpeg.frac_slots_per_frame != 0.0 {
         config.mpeg.padding = if config.mpeg.slot_lag <= (config.mpeg.frac_slots_per_frame - 1.0) { 1 } else { 0 };
@@ -240,13 +240,13 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
     {
         use log::debug;
-        debug!("[Frame {}] pad={}, bits={}, written={}, slot_lag={:.6}", 
+        debug!("[Frame {}] pad={}, bits={}, written={}, slot_lag={:.6}",
                  frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, written, config.mpeg.slot_lag);
     }
 
     // Record bitstream data for test collection
     #[cfg(feature = "diagnostics")]
-    crate::test_data::record_bitstream_data(
+    crate::diagnostics_data::record_bitstream_data(
         config.mpeg.padding,
         config.mpeg.bits_per_frame,
         written,
@@ -318,4 +318,3 @@ pub fn shine_close(_config: Box<ShineGlobalConfig>) {
     // free(config);
     // In Rust, the Box will be automatically dropped
 }
-
