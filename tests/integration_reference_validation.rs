@@ -112,7 +112,7 @@ fn run_rust_encoder(input_file: &str, output_file: &str, frame_limit: Option<u32
     }
     
     let mut cmd = Command::new("cargo");
-    cmd.args(&["run", "--", input_file, output_file]);
+    cmd.args(&["run", "--features", "diagnostics", "--", input_file, output_file]);
     
     if let Some(limit) = frame_limit {
         cmd.env("RUST_MP3_MAX_FRAMES", limit.to_string());
