@@ -216,20 +216,15 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             let max_bits = crate::reservoir::shine_max_reservoir_bits(&pe_value, &config);
 
             // Debug logging for algorithm verification
-            #[cfg(any(debug_assertions, feature = "diagnostics"))]
+            #[cfg(feature = "diagnostics")]
             {
-                use log::debug;
                 let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
                     .unwrap_or_else(|_| "6".to_string())
                     .parse::<i32>()
                     .unwrap_or(6);
                 if frame_num <= debug_frames && ch == 0 && gr == 0 {
-                    debug!("[Frame {}] xrmax={}, max_bits={}", frame_num, config.l3loop.xrmax, max_bits);
                     // Save xrmax for the first channel and granule
-                    #[cfg(feature = "diagnostics")]
-                    {
-                        saved_xrmax = config.l3loop.xrmax;
-                    }
+                    saved_xrmax = config.l3loop.xrmax;
                 }
             }
 
@@ -303,16 +298,12 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 // Debug output for verification (but don't record data here)
                 #[cfg(feature = "diagnostics")]
                 {
-                    use log::debug;
                     let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
                         .unwrap_or_else(|_| "6".to_string())
                         .parse::<i32>()
                         .unwrap_or(6);
                     if frame_num <= debug_frames && ch == 0 && gr == 0 {
-                        debug!("[Frame {}] part2_3_length={}, quantizer_step_size={}, global_gain={}",
-                                 frame_num, cod_info.part2_3_length, quantizer_step_size, cod_info.global_gain);
-                        println!("[RUST DEBUG] Intermediate: xrmax={}, max_bits={}, part2_3_length={}, quantizer_step_size={}, global_gain={}",
-                                 config.l3loop.xrmax, max_bits, cod_info.part2_3_length, quantizer_step_size, cod_info.global_gain);
+                        // Silent - no debug output
                     }
                 }
 
@@ -345,9 +336,6 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 cod_info.quantizer_step_size,
                 cod_info.global_gain
             );
-            
-            println!("[RUST DEBUG] Final Recording: xrmax={}, max_bits={}, part2_3_length={}, quantizer_step_size={}, global_gain={}",
-                     saved_xrmax, max_bits, cod_info.part2_3_length, cod_info.quantizer_step_size, cod_info.global_gain);
         }
     }
 }

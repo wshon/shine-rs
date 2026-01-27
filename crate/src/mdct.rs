@@ -117,47 +117,19 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
     let frame_num = crate::get_current_frame_number();
 
-    #[cfg(any(debug_assertions, feature = "diagnostics"))]
-    {
-        println!("[RUST DEBUG] MDCT: channels={}, granules_per_frame={}", 
-                 config.wave.channels, config.mpeg.granules_per_frame);
-    }
-
     let mut mdct_in = [0i32; 36];
 
     // Process each channel (matches shine: for (ch = config->wave.channels; ch--;))
     for ch in (0..config.wave.channels).rev() {
         let ch_idx = ch as usize;
 
-        #[cfg(any(debug_assertions, feature = "diagnostics"))]
-        {
-            println!("[RUST DEBUG] MDCT: Processing channel {} (channels={})", ch, config.wave.channels);
-        }
-
         // Process each granule (matches shine: for (gr = 0; gr < config->mpeg.granules_per_frame; gr++))
         for gr in 0..config.mpeg.granules_per_frame {
             let gr_idx = gr as usize;
 
-            #[cfg(any(debug_assertions, feature = "diagnostics"))]
-            {
-                println!("[RUST DEBUG] MDCT: Processing ch={}, gr={} (granules_per_frame={})", 
-                         ch, gr, config.mpeg.granules_per_frame);
-            }
-
             // Polyphase filtering (matches shine implementation exactly)
             // for (k = 0; k < 18; k += 2)
             for k in (0..18).step_by(2) {
-                #[cfg(any(debug_assertions, feature = "diagnostics"))]
-                {
-                    let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
-                        .unwrap_or_else(|_| "6".to_string())
-                        .parse::<i32>()
-                        .unwrap_or(6);
-                    if ch == 0 && gr == 0 && k == 0 {
-                        println!("[RUST DEBUG Frame {}] Starting polyphase filtering for ch={}, gr={}, k={} (debug_frames={})", 
-                                 frame_num, ch, gr, k, debug_frames);
-                    }
-                }
 
                 // Create a fresh buffer reference for each k iteration
                 // This is critical - we need to track the buffer pointer correctly
@@ -185,8 +157,6 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                         .unwrap_or(6);
                     if frame_num <= debug_frames && ch == 0 && gr == 0 && k == 0 {
                         let sample_value = config.l3_sb_sample[ch_idx][gr_idx + 1][k][0];
-                        println!("[RUST DEBUG Frame {}] l3_sb_sample[{}][{}][{}][0] = {} (after subband filtering)",
-                                 frame_num, ch, gr_idx + 1, k, sample_value);
                         crate::diagnostics::record_sb_sample(ch_idx, sample_value);
                     }
                 }
@@ -217,16 +187,6 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
             // Perform IMDCT of 18 previous + 18 current subband samples
             // (matches shine: for (band = 0; band < 32; band++))
             for band in 0..32 {
-                #[cfg(any(debug_assertions, feature = "diagnostics"))]
-                {
-                    let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
-                        .unwrap_or_else(|_| "6".to_string())
-                        .parse::<i32>()
-                        .unwrap_or(6);
-                    if frame_num <= debug_frames && ch == 0 && gr == 0 && band == 0 {
-                        println!("[RUST DEBUG Frame {}] Starting MDCT calculation for band {}", frame_num, band);
-                    }
-                }
 
                 // Prepare input for MDCT (matches shine exactly)
                 for k in (0..18).rev() {  // k from 17 down to 0 (matches shine: for (k = 18; k--;))
@@ -235,21 +195,6 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                 }
 
                 // Debug: Print MDCT input for first band of first frame
-                #[cfg(any(debug_assertions, feature = "diagnostics"))]
-                {
-                    let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
-                        .unwrap_or_else(|_| "6".to_string())
-                        .parse::<i32>()
-                        .unwrap_or(6);
-                    if frame_num <= debug_frames && ch == 0 && gr == 0 && band == 0 {
-                        println!("[RUST DEBUG Frame {}] MDCT input band {}: first 8 values: [{}, {}, {}, {}, {}, {}, {}, {}]", 
-                                 frame_num, band, mdct_in[0], mdct_in[1], mdct_in[2], mdct_in[3], 
-                                 mdct_in[4], mdct_in[5], mdct_in[6], mdct_in[7]);
-                        println!("[RUST DEBUG Frame {}] MDCT input band {}: last 8 values: [{}, {}, {}, {}, {}, {}, {}, {}]", 
-                                 frame_num, band, mdct_in[28], mdct_in[29], mdct_in[30], mdct_in[31], 
-                                 mdct_in[32], mdct_in[33], mdct_in[34], mdct_in[35]);
-                    }
-                }
 
 
 
@@ -287,7 +232,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     config.mdct_freq[ch_idx][gr_idx][band * 18 + k] = vm;
 
                     // Print key MDCT coefficients for verification (debug mode only)
-                    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+                    #[cfg(feature = "diagnostics")]
                     {
                         let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
                             .unwrap_or_else(|_| "6".to_string())
@@ -295,13 +240,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                             .unwrap_or(6);
                         
                         // Debug: Show all k values for first band
-                        if frame_num <= debug_frames && ch == 0 && gr == 0 && band == 0 {
-                            println!("[RUST DEBUG Frame {}] MDCT coeff band {} k {}: {} (before aliasing reduction)",
-                                     frame_num, band, k, vm);
-                        }
-                        
-                        #[cfg(feature = "diagnostics")]
-                        if ch == 0 && gr == 0 && band == 0 && k >= 15 {
+                        if frame_num <= debug_frames && ch == 0 && gr == 0 && band == 0 && k >= 15 {
                             crate::diagnostics::record_mdct_coeff_before_aliasing(k, vm);
                         }
                     }
@@ -363,7 +302,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     
                     // Debug: Print MDCT coefficients after aliasing reduction for first band
                     // (matches shine: if (frame_count <= 3 && ch == 0 && gr == 0 && band == 1))
-                    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+                    #[cfg(feature = "diagnostics")]
                     {
                         let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
                             .unwrap_or_else(|_| "6".to_string())
@@ -372,10 +311,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                         if frame_num <= debug_frames && ch == 0 && gr == 0 && band == 1 {
                             for k in [17, 16, 15] {
                                 let final_coeff = config.mdct_freq[ch_idx][gr_idx][0 * 18 + k];
-                                println!("[RUST DEBUG Frame {}] Final MDCT coeff band 0 k {}: {} (after aliasing reduction)",
-                                         frame_num, k, final_coeff);
                                 // Record final MDCT coefficient for test collection (after aliasing reduction)
-                                #[cfg(feature = "diagnostics")]
                                 crate::diagnostics::record_mdct_coeff_after_aliasing(k, final_coeff);
                             }
                         }
