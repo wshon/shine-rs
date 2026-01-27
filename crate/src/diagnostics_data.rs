@@ -416,11 +416,17 @@ impl Encoder {
         let mut coefficients = Vec::new();
         let mut l3_sb_sample = Vec::new();
 
-        // Extract key MDCT coefficients (positions 15, 16, 17 from first channel/granule)
+        // Extract key MDCT coefficients (positions 17, 16, 15 from first channel/granule/band)
+        // MDCT coefficients are stored as mdct_freq[ch][gr][band*18 + k]
+        // We want band=0, k=17,16,15 from ch=0, gr=0 (in that order to match test data)
         if self.config.mpeg.granules_per_frame > 0 {
-            for k in 15..18 {
-                if k < crate::types::GRANULE_SIZE {
-                    coefficients.push(self.config.mdct_freq[0][0][k]);
+            for k in [17, 16, 15] {
+                let index = 0 * 18 + k; // band=0, k=17,16,15
+                if index < self.config.mdct_freq[0][0].len() {
+                    let coeff = self.config.mdct_freq[0][0][index];
+                    coefficients.push(coeff);
+                    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+                    println!("[RUST DEBUG] Captured MDCT coeff k={}: {}", k, coeff);
                 }
             }
         }
