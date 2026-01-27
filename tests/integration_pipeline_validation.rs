@@ -8,11 +8,11 @@
 
 use std::fs;
 use std::path::Path;
-use std::io::{Read, Write};
+use std::io::Read;
 use serde_json;
 use sha2::{Sha256, Digest};
-use shine_rs::tests::test_data::{TestDataSet, Encoder, EncodingConfig, TestDataCollector, TestCaseData};
-use util::read_wav_file;
+use shine_rs::diagnostics_data::{TestDataSet, Encoder, EncodingConfig, TestDataCollector, TestCaseData, MdctData, QuantizationData, BitstreamData};
+use shine_rs_cli::util::read_wav_file;
 use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
 
 /// Calculate SHA256 hash of data
@@ -200,7 +200,7 @@ fn validate_complete_encoding_pipeline(file_path: &str) -> Result<(), Box<dyn st
             // Convert to raw pointer for shine API
             let data_ptr = chunk.as_ptr();
             
-            match shine_encode_buffer_interleaved(&mut encoder, data_ptr) {
+            match unsafe { shine_encode_buffer_interleaved(&mut encoder, data_ptr) } {
                 Ok((frame_data, written)) => {
                     if written > 0 {
                         mp3_data.extend_from_slice(&frame_data[..written]);
@@ -250,7 +250,7 @@ fn validate_complete_encoding_pipeline(file_path: &str) -> Result<(), Box<dyn st
 
 /// Discover all JSON test data files in the fixtures directory
 fn discover_test_data_files() -> Vec<String> {
-    let data_dir = "testing/fixtures/data";
+    let data_dir = "tests/pipeline_data";
     let mut files = Vec::new();
     
     if let Ok(entries) = fs::read_dir(data_dir) {
@@ -341,8 +341,8 @@ fn validate_encoding_against_reference(file_path: &str) -> Result<(), Box<dyn st
 
 /// Validate MDCT coefficients against reference data
 fn validate_mdct_coefficients(
-    actual: &shine_rs::test_data::MdctData,
-    reference: &shine_rs::test_data::MdctData
+    actual: &MdctData,
+    reference: &MdctData
 ) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check coefficient count
@@ -357,7 +357,7 @@ fn validate_mdct_coefficients(
     for (i, (&actual_coeff, &ref_coeff)) in actual.coefficients.iter()
         .zip(reference.coefficients.iter()).enumerate() {
         
-        let diff = (actual_coeff - ref_coeff).abs();
+        let diff = (actual_coeff as i64 - ref_coeff as i64).abs() as i32;
         if diff > 1 { // Allow small integer differences
             return Err(format!(
                 "MDCT coefficient {} mismatch: actual={}, reference={}, diff={}",
@@ -377,7 +377,7 @@ fn validate_mdct_coefficients(
     for (i, (&actual_sample, &ref_sample)) in actual.l3_sb_sample.iter()
         .zip(reference.l3_sb_sample.iter()).enumerate() {
         
-        let diff = (actual_sample - ref_sample).abs();
+        let diff = (actual_sample as i64 - ref_sample as i64).abs() as i32;
         if diff > 1 { // Allow small integer differences
             return Err(format!(
                 "l3_sb_sample {} mismatch: actual={}, reference={}, diff={}",
@@ -391,8 +391,8 @@ fn validate_mdct_coefficients(
 
 /// Validate quantization parameters against reference data
 fn validate_quantization_data(
-    actual: &shine_rs::test_data::QuantizationData,
-    reference: &shine_rs::test_data::QuantizationData
+    actual: &QuantizationData,
+    reference: &QuantizationData
 ) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check global gain
@@ -433,8 +433,8 @@ fn validate_quantization_data(
 
 /// Validate bitstream parameters against reference data
 fn validate_bitstream_data(
-    actual: &shine_rs::test_data::BitstreamData,
-    reference: &shine_rs::test_data::BitstreamData
+    actual: &BitstreamData,
+    reference: &BitstreamData
 ) -> Result<(), Box<dyn std::error::Error>> {
     
     // Check written bytes
@@ -532,7 +532,7 @@ fn test_mdct_encoding_consistency() {
         let test_data: TestDataSet = serde_json::from_str(&content).unwrap();
         
         // Load audio file
-        let audio_path = format!("testing/fixtures/audio/{}", test_data.metadata.input_file);
+        let audio_path = format!("tests/audio/{}", test_data.metadata.input_file);
         if !Path::new(&audio_path).exists() {
             println!("Skipping {} - audio file not found: {}", file_path, audio_path);
             continue;
@@ -597,7 +597,7 @@ fn test_quantization_encoding_consistency() {
         let test_data: TestDataSet = serde_json::from_str(&content).unwrap();
         
         // Load audio file
-        let audio_path = format!("testing/fixtures/audio/{}", test_data.metadata.input_file);
+        let audio_path = format!("tests/audio/{}", test_data.metadata.input_file);
         if !Path::new(&audio_path).exists() {
             println!("Skipping {} - audio file not found: {}", file_path, audio_path);
             continue;
@@ -662,7 +662,7 @@ fn test_bitstream_encoding_consistency() {
         let test_data: TestDataSet = serde_json::from_str(&content).unwrap();
         
         // Load audio file
-        let audio_path = format!("testing/fixtures/audio/{}", test_data.metadata.input_file);
+        let audio_path = format!("tests/audio/{}", test_data.metadata.input_file);
         if !Path::new(&audio_path).exists() {
             println!("Skipping {} - audio file not found: {}", file_path, audio_path);
             continue;

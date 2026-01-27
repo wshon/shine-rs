@@ -1,58 +1,37 @@
+[workspace]
+members = [
+    "crate"
+]
+resolver = "2"
+
 [package]
-name = "shine-rs"
+name = "shine-rs-cli"
 version = "0.1.2"
 edition = "2021"
 authors = ["Shon Wang <code@wshon.com>"]
-description = "A pure Rust MP3 encoder based on the shine library, providing complete MPEG Layer III encoding functionality"
+description = "Command-line tools for the shine-rs MP3 encoder library"
 license = "LGPL-2.0"
 repository = "https://github.com/wshon/shine-rs"
 homepage = "https://github.com/wshon/shine-rs"
-documentation = "https://docs.rs/shine-rs"
 readme = "README.md"
-keywords = ["mp3", "audio", "encoder", "codec", "shine"]
-categories = ["multimedia::audio", "encoding"]
-exclude = [
-    "ref/",
-    "testing/",
-    "tools/",
-    "scripts/",
-    "docs/",
-    "util/",
-    ".cargo/",
-    ".kiro/",
-    "*.mp3",
-    "*.wav", 
-    "*.pdb",
-    "PUBLISHING_GUIDE.md"
-]
-
-[features]
-default = []
-diagnostics = ["serde", "serde_json", "chrono"]  # Enable diagnostic logging and data collection
 
 [dependencies]
-thiserror = "1.0"
-lazy_static = "1.4"
-serde = { version = "1.0", features = ["derive"], optional = true }
-serde_json = { version = "1.0", optional = true }
-chrono = { version = "0.4", features = ["serde"], optional = true }
+shine-rs = { path = "crate" }
+env_logger = "0.10"
 log = "0.4"
+anyhow = "1.0"
 
 [dev-dependencies]
 proptest = "1.4"
-criterion = { version = "0.5", features = ["html_reports"] }
-env_logger = "0.10"
 sha2 = "0.10"
-util = { path = "util" }
+env_logger = "0.10"
+serde_json = "1.0"
 
-[[test]]
-name = "integration_scfsi_consistency"
-path = "testing/integration/integration_scfsi_consistency.rs"
+[features]
+default = []
+diagnostics = ["shine-rs/diagnostics"]
 
-[[test]]
-name = "integration_data_driven_validation"
-path = "testing/integration/integration_data_driven_validation.rs"
-required-features = ["diagnostics"]
+# 集成测试配置
 
 [profile.dev]
 debug = true

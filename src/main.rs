@@ -1,6 +1,6 @@
 //! WAV to MP3 converter command line tool
 //!
-//! This tool converts WAV files to MP3 format using the rust-mp3-encoder library.
+//! This tool converts WAV files to MP3 format using the shine-rs library.
 //! It supports various sample rates, mono/stereo configurations, and bitrates.
 
 use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
@@ -316,7 +316,7 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             let pcm_start = frame_count * frame_size;
             let pcm_end = pcm_start + frame_size - 1;
             
-            match shine_encode_buffer_interleaved(&mut encoder, data_ptr) {
+            match unsafe { shine_encode_buffer_interleaved(&mut encoder, data_ptr) } {
                 Ok((frame_data, written)) => {
                     if written > 0 {
                         if args.verbose {

@@ -388,7 +388,7 @@ impl Encoder {
         let sample_ptr = samples.as_ptr();
 
         // Encode frame and immediately copy the data to avoid borrow issues
-        let (frame_data_slice, written) = shine_encode_buffer_interleaved(&mut self.config, sample_ptr)?;
+        let (frame_data_slice, written) = unsafe { shine_encode_buffer_interleaved(&mut self.config, sample_ptr)? };
         let frame_data = frame_data_slice.to_vec(); // Copy immediately
 
         // Now we can safely access self.config again

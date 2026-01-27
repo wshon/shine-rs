@@ -1,11 +1,40 @@
-//! PCM audio data processing utilities
+//! Utility functions for MP3 encoder
 //!
-//! This module provides utility functions for processing PCM audio data,
-//! including interleaving/deinterleaving operations and WAV file reading.
+//! This module provides common utility functions used by the MP3 encoder,
+//! including PCM audio data processing utilities and error handling.
 
-use crate::error::{UtilError, UtilResult};
+use std::fmt;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
+
+/// Error type for utility operations
+#[derive(Debug)]
+pub enum UtilError {
+    /// I/O operation failed
+    IoError(std::io::Error),
+    /// Validation error
+    ValidationError(String),
+}
+
+impl fmt::Display for UtilError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            UtilError::IoError(err) => write!(f, "I/O error: {}", err),
+            UtilError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for UtilError {}
+
+impl From<std::io::Error> for UtilError {
+    fn from(err: std::io::Error) -> Self {
+        UtilError::IoError(err)
+    }
+}
+
+/// Result type for utility operations
+pub type UtilResult<T> = std::result::Result<T, UtilError>;
 
 /// Read WAV file and return PCM samples, sample rate, and channel count
 pub fn read_wav_file(file_path: &str) -> UtilResult<(Vec<i16>, i32, i32)> {
