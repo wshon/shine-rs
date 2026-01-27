@@ -1,0 +1,98 @@
+{
+  "metadata": {
+    "name": "test_case_sample-3s_192k_3f_44100hz_2ch_192kbps",
+    "input_file": "tests/audio/sample-3s.wav",
+    "expected_output_size": 1880,
+    "expected_hash": "DB57E5DFF83B263E99E9C45992798621F9C2C55CE0DA27A6D25C60FC4868917F",
+    "created_at": "2026-01-27T01:03:08.551921Z",
+    "description": "3-second sample at 192kbps, 3 frames",
+    "generated_by": "Shine reference implementation"
+  },
+  "config": {
+    "sample_rate": 44100,
+    "channels": 2,
+    "bitrate": 192,
+    "stereo_mode": 0,
+    "mpeg_version": 3
+  },
+  "frames": [
+    {
+      "frame_number": 1,
+      "mdct_coefficients": {
+        "coefficients": [
+          0,
+          0,
+          0
+        ],
+        "l3_sb_sample": [
+          0
+        ]
+      },
+      "quantization": {
+        "xrmax": 0,
+        "max_bits": 0,
+        "part2_3_length": 0,
+        "quantizer_step_size": 0,
+        "global_gain": 0
+      },
+      "bitstream": {
+        "padding": 0,
+        "bits_per_frame": 0,
+        "written": 0,
+        "slot_lag": 0.0
+      }
+    },
+    {
+      "frame_number": 2,
+      "mdct_coefficients": {
+        "coefficients": [
+          0,
+          0,
+          0
+        ],
+        "l3_sb_sample": [
+          0
+        ]
+      },
+      "quantization": {
+        "xrmax": 0,
+        "max_bits": 0,
+        "part2_3_length": 0,
+        "quantizer_step_size": 0,
+        "global_gain": 0
+      },
+      "bitstream": {
+        "padding": 0,
+        "bits_per_frame": 0,
+        "written": 0,
+        "slot_lag": 0.0
+      }
+    },
+    {
+      "frame_number": 3,
+      "mdct_coefficients": {
+        "coefficients": [
+          0,
+          0,
+          0
+        ],
+        "l3_sb_sample": [
+          0
+        ]
+      },
+      "quantization": {
+        "xrmax": 0,
+        "max_bits": 0,
+        "part2_3_length": 0,
+        "quantizer_step_size": 0,
+        "global_gain": 0
+      },
+      "bitstream": {
+        "padding": 0,
+        "bits_per_frame": 0,
+        "written": 0,
+        "slot_lag": 0.0
+      }
+    }
+  ]
+}
