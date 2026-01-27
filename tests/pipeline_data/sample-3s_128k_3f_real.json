@@ -4,9 +4,9 @@
     "input_file": "tests/audio/sample-3s.wav",
     "expected_output_size": 1252,
     "expected_hash": "2D9ACB93B5B57E16DC2BCC4B59BAA8A223EA10F079B1F76F8919E3D83156549F",
-    "created_at": "2026-01-27T09:17:12.829285Z",
-    "description": "3-second sample at 128kbps, 3 frames - real Shine data",
-    "generated_by": "Shine reference implementation with debug output"
+    "created_at": "2026-01-27T09:27:14.622877Z",
+    "description": "3秒音频样本，128kbps，3帧 - 真实Shine数据",
+    "generated_by": "Shine参考实现，带JSON调试输出"
   },
   "config": {
     "sample_rate": 44100,
