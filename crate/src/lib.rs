@@ -5,21 +5,6 @@
 //! support for various sample rates, bitrates, and channel configurations.
 //!
 
-use std::sync::atomic::{AtomicI32, Ordering};
-
-/// Global frame counter for debugging consistency across modules
-pub static GLOBAL_FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
-
-/// Get the current frame number and increment the global counter
-pub fn get_next_frame_number() -> i32 {
-    GLOBAL_FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1
-}
-
-/// Get the current frame number without incrementing
-pub fn get_current_frame_number() -> i32 {
-    GLOBAL_FRAME_COUNT.load(Ordering::SeqCst)
-}
-
 pub mod bitstream;
 pub mod encoder;
 pub mod error;
@@ -33,7 +18,21 @@ pub mod tables;
 pub mod types;
 
 #[cfg(feature = "diagnostics")]
-pub mod diagnostics_data;
+pub mod diagnostics;
+
+// Re-export diagnostics functions for backward compatibility
+#[cfg(feature = "diagnostics")]
+pub use diagnostics::{reset_frame_counter, get_next_frame_number, get_current_frame_number};
+
+// Stub functions when diagnostics feature is not enabled
+#[cfg(not(feature = "diagnostics"))]
+pub fn reset_frame_counter() {}
+
+#[cfg(not(feature = "diagnostics"))]
+pub fn get_next_frame_number() -> i32 { 1 }
+
+#[cfg(not(feature = "diagnostics"))]
+pub fn get_current_frame_number() -> i32 { 1 }
 
 
 
