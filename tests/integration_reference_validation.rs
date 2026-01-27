@@ -260,7 +260,6 @@ fn test_large_file_configurations() {
 
 /// Test voice file configurations (mono 48kHz) - these may fail due to known issues
 #[test]
-#[ignore] // Ignored by default due to known mono 48kHz processing differences
 fn test_voice_file_configurations() {
     let configs = load_reference_manifest();
     
