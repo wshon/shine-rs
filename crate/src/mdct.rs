@@ -337,8 +337,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                 .parse::<i32>()
                 .unwrap_or(6);
             if frame_num <= debug_frames && ch == 0 {
-                println!("[RUST DEBUG Frame {}] Saved l3_sb_sample[{}][0][0][0] = {}",
-                         frame_num, ch, config.l3_sb_sample[ch_idx][0][0][0]);
+                // Silent - no debug output
             }
         }
     }

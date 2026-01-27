@@ -336,7 +336,7 @@ impl TestDataCollector {
             let json = serde_json::to_string_pretty(&collector.test_case)?;
             let mut file = File::create(filename)?;
             file.write_all(json.as_bytes())?;
-            log::info!("Test data saved to: {}", filename);
+            // Silent - no debug output
             Ok(())
         } else {
             Err("No test data collector initialized for current thread".into())
@@ -531,19 +531,19 @@ impl Encoder {
     /// Capture quantization parameters from the encoder state
     fn capture_quantization_data(&self) -> QuantizationData {
         // Try to get data from the global test data collector first
-                {
+        {
             if let Some(frame_data) = TestDataCollector::get_current_frame_data() {
-                println!("[RUST DEBUG] Using TestDataCollector data: global_gain={}", frame_data.quantization.global_gain);
+                // Silent - no debug output
                 return frame_data.quantization;
             } else {
-                println!("[RUST DEBUG] TestDataCollector has no current frame data, using fallback");
+                // Silent - no debug output
             }
         }
         
         // Fallback: get data from the first granule and channel
         let gr_info = &self.config.side_info.gr[0].ch[0].tt;
         
-        println!("[RUST DEBUG] Using fallback data: global_gain={}", gr_info.global_gain);
+        // Silent - no debug output
 
         QuantizationData {
             global_gain: gr_info.global_gain,

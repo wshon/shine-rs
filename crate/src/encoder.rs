@@ -209,6 +209,15 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
     let frame_num = crate::get_next_frame_number();
+    
+    #[cfg(not(any(debug_assertions, feature = "diagnostics")))]
+    let _frame_num = {
+        static mut FRAME_COUNTER: i32 = 0;
+        unsafe {
+            FRAME_COUNTER += 1;
+            FRAME_COUNTER
+        }
+    };
 
     // Start frame data collection
     #[cfg(feature = "diagnostics")]
@@ -239,9 +248,7 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     // Print key parameters for verification (debug mode only)
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
     {
-        use log::debug;
-        debug!("[Frame {}] pad={}, bits={}, written={}, slot_lag={:.6}",
-                 frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, written, config.mpeg.slot_lag);
+        // Silent - no debug output
     }
 
     // Record bitstream data for test collection

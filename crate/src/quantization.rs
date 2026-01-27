@@ -309,7 +309,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
 
                 // Suppress unused variable warning in release mode
                 #[cfg(not(any(debug_assertions, feature = "diagnostics")))]
-                let _ = part2_3_length;
+                let _ = _part2_3_length;
             }
         } // for gr
     } // for ch
