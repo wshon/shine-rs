@@ -308,7 +308,8 @@ fn test_all_passing_configurations() {
     let passing_configs = [
         "1frame", "2frames", "3frames", "6frames", 
         "10frames", "15frames", "20frames",
-        "large_3frames", "large_6frames"
+        "large_3frames", "large_6frames",
+        "voice_3frames", "voice_6frames"
     ];
     
     let mut results = Vec::new();
