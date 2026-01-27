@@ -1,219 +1,131 @@
-# Scripts Directory
+# MP3编码器参考数据生成脚本
 
-This directory contains Python scripts for managing reference files, validation, and performance testing for the MP3 encoder project.
+## 概述
 
-## 🛠️ Available Scripts
+`generate_reference_data.py` 是一个完整的参考数据生成脚本，用于为MP3编码器集成测试生成真实的Shine参考数据。
 
-### 1. Reference File Generation (`generate_reference_files.py`)
+## 功能
 
-Generates reference MP3 files using the Shine encoder for testing purposes.
+该脚本自动完成以下步骤：
 
-**Usage:**
-```bash
-# Generate all reference files
-python scripts/generate_reference_files.py
+1. **运行Shine编码器** - 使用指定的音频文件和参数运行Shine编码器
+2. **捕获调试输出** - 提取MDCT系数、量化参数和比特流数据
+3. **解析调试数据** - 从Shine的调试输出中提取关键算法参数
+4. **生成JSON测试数据** - 创建包含真实参考值的JSON测试文件
+5. **计算文件哈希** - 生成MP3文件的SHA256哈希用于验证
 
-# Generate specific configurations
-python scripts/generate_reference_files.py --configs 3frames 6frames
-
-# Don't update test constants automatically
-python scripts/generate_reference_files.py --no-update-tests
-
-# Specify workspace directory
-python scripts/generate_reference_files.py --workspace /path/to/project
-```
-
-**Features:**
-- ✅ 11 different configurations (1-20 frames)
-- ✅ Multiple audio formats support
-- ✅ Automatic validation and hash calculation
-- ✅ Test constant updates
-- ✅ Cross-platform compatibility
-
-### 2. Reference File Validation (`validate_reference_files.py`)
-
-Validates that the Rust encoder produces identical output to Shine reference files.
-
-**Usage:**
-```bash
-# Validate all reference files
-python scripts/validate_reference_files.py
-
-# Validate specific configurations
-python scripts/validate_reference_files.py --configs 3frames 6frames voice_3frames
-
-# Specify workspace directory
-python scripts/validate_reference_files.py --workspace /path/to/project
-```
-
-**Features:**
-- ✅ Comprehensive validation across all configurations
-- ✅ SHA256 hash verification
-- ✅ File size checking
-- ✅ Detailed error reporting
-- ✅ Success rate statistics
-
-### 3. Performance Benchmark (`benchmark_encoders.py`)
-
-Benchmarks the performance of Rust and Shine encoders.
-
-**Usage:**
-```bash
-# Benchmark all configurations
-python scripts/benchmark_encoders.py
-
-# Benchmark specific configurations with multiple iterations
-python scripts/benchmark_encoders.py --configs 3frames 6frames --iterations 5
-
-# Save detailed report to JSON
-python scripts/benchmark_encoders.py --output benchmark_report.json
-
-# Specify workspace directory
-python scripts/benchmark_encoders.py --workspace /path/to/project
-```
-
-**Features:**
-- ✅ Performance comparison between Rust and Shine
-- ✅ Multiple iteration support for accuracy
-- ✅ Frames per second calculation
-- ✅ Statistical analysis
-- ✅ JSON report generation
-
-### 4. Voice Issue Diagnosis (`diagnose_voice_issue.py`)
-
-Diagnoses encoding differences for voice/mono audio files.
-
-**Usage:**
-```bash
-# Diagnose voice file encoding issues
-python scripts/diagnose_voice_issue.py
-```
-
-**Features:**
-- ✅ Audio format analysis
-- ✅ Encoder output comparison
-- ✅ MP3 header parsing
-- ✅ Detailed debugging information
-
-### 5. Encoding Differences Analysis (`analyze_encoding_differences.py`)
-
-Analyzes differences between encoders for various audio formats.
-
-**Usage:**
-```bash
-# Analyze encoding differences
-python scripts/analyze_encoding_differences.py
-```
-
-**Features:**
-- ✅ Multi-format audio analysis
-- ✅ Header comparison
-- ✅ Detailed difference reporting
-- ✅ Cross-platform compatibility
-
-## 📊 Current Test Status
-
-### ✅ Passing Configurations (9/11 - 82% success rate)
-
-| Configuration | Frames | Input File | Size | Status |
-|---------------|--------|------------|------|--------|
-| 1frame | 1 | sample-3s.wav | 416 bytes | ✅ |
-| 2frames | 2 | sample-3s.wav | 836 bytes | ✅ |
-| 3frames | 3 | sample-3s.wav | 1252 bytes | ✅ |
-| 6frames | 6 | sample-3s.wav | 2508 bytes | ✅ |
-| 10frames | 10 | sample-3s.wav | 4180 bytes | ✅ |
-| 15frames | 15 | sample-3s.wav | 6268 bytes | ✅ |
-| 20frames | 20 | sample-3s.wav | 8360 bytes | ✅ |
-| large_3frames | 3 | Free_Test_Data_500KB_WAV.wav | 1252 bytes | ✅ |
-| large_6frames | 6 | Free_Test_Data_500KB_WAV.wav | 2508 bytes | ✅ |
-
-### ⚠️ Known Issues (2/11)
-
-| Configuration | Issue | Cause |
-|---------------|-------|-------|
-| voice_3frames | Hash mismatch | Mono 48kHz processing differences |
-| voice_6frames | Hash mismatch | Mono 48kHz processing differences |
-
-## 🔧 Environment Variables
-
-Both Rust and Shine encoders support frame limiting through environment variables:
-
-**Rust Encoder:**
-```bash
-RUST_MP3_MAX_FRAMES=6 cargo run -- input.wav output.mp3
-```
-
-**Shine Encoder:**
-```bash
-SHINE_MAX_FRAMES=6 ./ref/shine/shineenc input.wav output.mp3
-```
-
-## 📁 Generated Files
-
-The scripts generate and manage the following files:
-
-```
-tests/audio/
-├── reference_manifest.json          # Reference file metadata
-├── shine_reference_*.mp3           # Generated reference files
-└── README.md                       # Audio files documentation
-
-tests/docs/
-└── environment_variable_integration.md  # Environment variable docs
-```
-
-## 🚀 Quick Start
-
-1. **Generate reference files:**
-   ```bash
-   python scripts/generate_reference_files.py
-   ```
-
-2. **Validate Rust implementation:**
-   ```bash
-   python scripts/validate_reference_files.py
-   ```
-
-3. **Run performance benchmark:**
-   ```bash
-   python scripts/benchmark_encoders.py --configs 3frames 6frames
-   ```
-
-## 🎯 Integration with Rust Tests
-
-These Python scripts complement the Rust integration tests:
+## 使用方法
 
 ```bash
-# Run Rust integration tests
-cargo test --test integration_reference_validation
-
-# Run Python validation
-python scripts/validate_reference_files.py
+# 生成所有参考数据
+python scripts/generate_reference_data.py
 ```
 
-Both should produce consistent results, with the Python scripts providing more detailed diagnostics.
+## 生成的数据
 
-## 📈 Success Metrics
+脚本会在 `tests/pipeline_data/` 目录下生成以下文件：
 
-- **File Size Match**: Rust output matches Shine output exactly
-- **SHA256 Hash Match**: Byte-level identical files
-- **Performance Comparison**: Objective speed measurements
-- **Cross-Platform Consistency**: Same results on different systems
+- `sample-3s_128k_3f_real.json` - 3秒样本，128kbps，3帧
+- `voice_recorder_128k_3f_real.json` - 语音录音，128kbps，3帧  
+- `free_test_data_128k_3f_real.json` - 免费测试数据，128kbps，3帧
+- `sample-3s_192k_3f_real.json` - 3秒样本，192kbps，3帧
 
-## 🛡️ Error Handling
+## 数据结构
 
-All scripts include comprehensive error handling:
+每个JSON文件包含：
 
-- **Missing files**: Clear error messages with suggested fixes
-- **Encoding failures**: Detailed stdout/stderr capture
-- **Hash mismatches**: Precise difference reporting
-- **Timeout handling**: Graceful handling of long-running processes
+### 元数据 (metadata)
+- `name`: 测试用例名称
+- `input_file`: 输入音频文件路径
+- `expected_output_size`: 预期MP3文件大小
+- `expected_hash`: 预期SHA256哈希值
+- `created_at`: 创建时间
+- `description`: 描述信息
+- `generated_by`: 生成工具信息
 
-## 📚 Related Documentation
+### 配置 (config)
+- `sample_rate`: 采样率
+- `channels`: 声道数
+- `bitrate`: 比特率
+- `stereo_mode`: 立体声模式 (0=立体声, 3=单声道)
+- `mpeg_version`: MPEG版本 (3=MPEG-I)
 
-- [Testing Guide](../docs/TESTING_GUIDE.md)
-- [Reference Data Status](../docs/REFERENCE_DATA_STATUS.md)
-- [Completion Summary](../REFERENCE_DATA_COMPLETION_SUMMARY.md)
-- [Environment Variable Integration](../tests/docs/environment_variable_integration.md)
+### 帧数据 (frames)
+每帧包含：
 
-This script collection provides enterprise-grade testing infrastructure for the MP3 encoder project, ensuring high quality and reliability.
+#### MDCT系数 (mdct_coefficients)
+- `coefficients`: MDCT系数 [k17, k16, k15]
+- `l3_sb_sample`: 子带样本数据
+
+#### 量化参数 (quantization)
+- `xrmax`: 最大频谱值
+- `max_bits`: 最大比特数
+- `part2_3_length`: Part2/3长度
+- `quantizer_step_size`: 量化步长
+- `global_gain`: 全局增益
+
+#### 比特流参数 (bitstream)
+- `padding`: 填充位
+- `bits_per_frame`: 每帧比特数
+- `written`: 写入字节数
+- `slot_lag`: 时隙延迟
+
+## 依赖要求
+
+- Python 3.6+
+- Shine编码器 (`ref/shine/shineenc.exe`)
+- 测试音频文件在 `tests/audio/` 目录
+
+## 配置
+
+要添加新的测试配置，修改脚本中的 `TEST_CONFIGS` 列表：
+
+```python
+TEST_CONFIGS = [
+    {
+        "name": "my_test_128k_3f_real",
+        "audio_file": "tests/audio/my_audio.wav",
+        "bitrate": 128,
+        "frames": 3,
+        "description": "My custom test case"
+    }
+]
+```
+
+## 验证
+
+生成的参考数据可用于集成测试：
+
+```bash
+# 运行集成测试验证Rust实现与Shine的一致性
+cargo test test_complete_encoding_pipeline
+```
+
+## 注意事项
+
+1. **Shine调试输出**: 脚本依赖于Shine编码器的调试输出，确保使用包含调试信息的Shine版本
+2. **路径处理**: 脚本会自动处理相对路径和绝对路径
+3. **帧限制**: 使用环境变量 `SHINE_MAX_FRAMES` 限制编码帧数
+4. **数据精度**: 所有数值都与Shine的输出完全一致，确保测试的准确性
+
+## 故障排除
+
+### 常见问题
+
+1. **"Shine encoder not found"**
+   - 确保 `ref/shine/shineenc.exe` 存在
+   - 检查Shine是否正确编译
+
+2. **"Audio file not found"**
+   - 确保音频文件存在于指定路径
+   - 检查文件路径是否正确
+
+3. **"No debug data extracted"**
+   - 确保Shine版本包含调试输出
+   - 检查环境变量 `SHINE_MAX_FRAMES` 是否设置
+
+### 调试技巧
+
+- 查看Shine的标准输出和错误输出
+- 检查生成的MP3文件是否存在
+- 验证WAV文件格式是否正确 (16位PCM)
