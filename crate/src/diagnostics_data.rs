@@ -336,6 +336,12 @@ impl TestDataCollector {
         let guard = TEST_DATA_COLLECTOR.lock().unwrap();
         guard.is_some()
     }
+    
+    /// Reset the test data collector (for testing)
+    pub fn reset() {
+        let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
+        *guard = None;
+    }
 }
 
     /// Check if collection is enabled (for performance)

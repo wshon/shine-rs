@@ -13,6 +13,10 @@ pub static GLOBAL_FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
 /// Reset the global frame counter (for testing)
 pub fn reset_frame_counter() {
     GLOBAL_FRAME_COUNT.store(0, Ordering::SeqCst);
+    
+    // Also reset TestDataCollector if diagnostics feature is enabled
+    #[cfg(feature = "diagnostics")]
+    crate::diagnostics_data::TestDataCollector::reset();
 }
 
 /// Get the current frame number and increment the global counter
