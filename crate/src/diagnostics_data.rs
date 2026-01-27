@@ -215,7 +215,15 @@ impl TestDataCollector {
             if collector.current_frame <= 6 && k >= 15 && k <= 17 {
                 if let Some(frame) = collector.test_case.frames.iter_mut()
                     .find(|f| f.frame_number == collector.current_frame) {
-                    frame.mdct_coefficients.coefficients_before_aliasing.push(value);
+                    // Ensure the vector has the right size
+                    if frame.mdct_coefficients.coefficients_before_aliasing.len() < 3 {
+                        frame.mdct_coefficients.coefficients_before_aliasing.resize(3, 0);
+                    }
+                    // Store in order: k=17 at index 0, k=16 at index 1, k=15 at index 2
+                    let index = 17 - k;
+                    if index < 3 {
+                        frame.mdct_coefficients.coefficients_before_aliasing[index] = value;
+                    }
                 }
             }
         }
@@ -228,7 +236,15 @@ impl TestDataCollector {
             if collector.current_frame <= 6 && k >= 15 && k <= 17 {
                 if let Some(frame) = collector.test_case.frames.iter_mut()
                     .find(|f| f.frame_number == collector.current_frame) {
-                    frame.mdct_coefficients.coefficients_after_aliasing.push(value);
+                    // Ensure the vector has the right size
+                    if frame.mdct_coefficients.coefficients_after_aliasing.len() < 3 {
+                        frame.mdct_coefficients.coefficients_after_aliasing.resize(3, 0);
+                    }
+                    // Store in order: k=17 at index 0, k=16 at index 1, k=15 at index 2
+                    let index = 17 - k;
+                    if index < 3 {
+                        frame.mdct_coefficients.coefficients_after_aliasing[index] = value;
+                    }
                 }
             }
         }
