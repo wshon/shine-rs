@@ -400,7 +400,7 @@ def main():
     print()
     
     # 创建输出目录
-    output_dir = Path("tests/pipeline_data")
+    output_dir = Path("tests/integration_pipeline_validation.data")
     output_dir.mkdir(parents=True, exist_ok=True)
     
     success_count = 0
