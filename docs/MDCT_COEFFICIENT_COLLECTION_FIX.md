@@ -66,7 +66,7 @@ pub fn reset_frame_counter() {
     
     // Also reset TestDataCollector if diagnostics feature is enabled
     #[cfg(feature = "diagnostics")]
-    crate::diagnostics_data::TestDataCollector::reset();
+    crate::diagnostics::TestDataCollector::reset();
 }
 ```
 
@@ -132,8 +132,8 @@ if ch == 0 && gr == 0 && band == 1 {
     #[cfg(feature = "diagnostics")]
     {
         // 收集混叫减少前后的系数
-        crate::diagnostics_data::record_mdct_coeff_before_aliasing(k, coeff);
-        crate::diagnostics_data::record_mdct_coeff_after_aliasing(k, final_coeff);
+        crate::diagnostics::record_mdct_coeff_before_aliasing(k, coeff);
+        crate::diagnostics::record_mdct_coeff_after_aliasing(k, final_coeff);
     }
 }
 ```

@@ -5,29 +5,51 @@
 //! 
 //! This module is only available when the "diagnostics" feature is enabled.
 
-#[cfg(feature = "diagnostics")]
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "diagnostics")]
 use std::fs::File;
-#[cfg(feature = "diagnostics")]
 use std::io::Write;
-#[cfg(feature = "diagnostics")]
 use std::sync::Mutex;
-#[cfg(feature = "diagnostics")]
 use std::collections::HashMap;
-#[cfg(feature = "diagnostics")]
 use std::thread;
-#[cfg(feature = "diagnostics")]
 use lazy_static::lazy_static;
 
-#[cfg(feature = "diagnostics")]
+lazy_static! {
+    /// Thread-local frame counters for debugging consistency across modules
+    static ref THREAD_FRAME_COUNTERS: Mutex<HashMap<std::thread::ThreadId, i32>> = Mutex::new(HashMap::new());
+}
 lazy_static! {
     /// Global test data collector - now supports multiple threads
     static ref TEST_DATA_COLLECTORS: Mutex<HashMap<std::thread::ThreadId, TestDataCollector>> = Mutex::new(HashMap::new());
 }
 
+/// Reset the frame counter for current thread (for testing)
+pub fn reset_frame_counter() {
+    let thread_id = thread::current().id();
+    let mut counters = THREAD_FRAME_COUNTERS.lock().unwrap();
+    counters.insert(thread_id, 0);
+    
+    // Also reset TestDataCollector if diagnostics feature is enabled
+    TestDataCollector::reset();
+}
+
+/// Get the current frame number and increment the counter for current thread
+pub fn get_next_frame_number() -> i32 {
+    let thread_id = thread::current().id();
+    let mut counters = THREAD_FRAME_COUNTERS.lock().unwrap();
+    let counter = counters.entry(thread_id).or_insert(0);
+    *counter += 1;
+    *counter
+}
+
+/// Get the current frame number without incrementing for current thread
+pub fn get_current_frame_number() -> i32 {
+    let thread_id = thread::current().id();
+    let counters = THREAD_FRAME_COUNTERS.lock().unwrap();
+    *counters.get(&thread_id).unwrap_or(&0)
+}
+
+
 /// Frame-specific encoding data
-#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FrameData {
     /// Frame number (1-based)
@@ -44,7 +66,6 @@ pub struct FrameData {
 }
 
 /// MDCT coefficient data
-#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MdctData {
     /// MDCT coefficients before aliasing reduction [k=17, k=16, k=15]
@@ -60,7 +81,6 @@ pub struct MdctData {
 }
 
 /// Quantization data
-#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QuantizationData {
     /// Maximum spectral value (xrmax)
@@ -80,7 +100,6 @@ pub struct QuantizationData {
 }
 
 /// Bitstream data
-#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BitstreamData {
     /// Padding bit
@@ -97,7 +116,6 @@ pub struct BitstreamData {
 }
 
 /// Complete test case data
-#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestCaseData {
     /// Test case metadata
@@ -111,11 +129,9 @@ pub struct TestCaseData {
 }
 
 /// Type alias for backward compatibility with integration tests
-#[cfg(feature = "diagnostics")]
 pub type TestDataSet = TestCaseData;
 
 /// Test metadata
-#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TestMetadata {
     /// Test case name
@@ -138,7 +154,6 @@ pub struct TestMetadata {
 }
 
 /// Encoding configuration
-#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EncodingConfig {
     /// Sample rate in Hz
@@ -160,14 +175,12 @@ pub struct EncodingConfig {
 
 
 /// Test data collector implementation
-#[cfg(feature = "diagnostics")]
 #[derive(Debug)]
 pub struct TestDataCollector {
     pub test_case: TestCaseData,
     pub current_frame: i32,
 }
 
-#[cfg(feature = "diagnostics")]
 impl TestDataCollector {
     /// Initialize the test data collector for current thread
     pub fn initialize(metadata: TestMetadata, config: EncodingConfig) {
@@ -371,42 +384,36 @@ impl TestDataCollector {
     }
 }
 
-#[cfg(feature = "diagnostics")]
 pub fn start_frame_collection(frame_number: i32) {
     if TestDataCollector::is_collecting() {
         TestDataCollector::start_frame(frame_number);
     }
 }
 
-#[cfg(feature = "diagnostics")]
 pub fn record_mdct_coeff_before_aliasing(k: usize, value: i32) {
     if TestDataCollector::is_collecting() {
         TestDataCollector::record_mdct_coefficient_before_aliasing(k, value);
     }
 }
 
-#[cfg(feature = "diagnostics")]
 pub fn record_mdct_coeff_after_aliasing(k: usize, value: i32) {
     if TestDataCollector::is_collecting() {
         TestDataCollector::record_mdct_coefficient_after_aliasing(k, value);
     }
 }
 
-#[cfg(feature = "diagnostics")]
 pub fn record_sb_sample(ch: usize, value: i32) {
     if TestDataCollector::is_collecting() {
         TestDataCollector::record_l3_sb_sample(ch, value);
     }
 }
 
-#[cfg(feature = "diagnostics")]
 pub fn record_quant_data(xrmax: i32, max_bits: i32, part2_3_length: u32, quantizer_step_size: i32, global_gain: u32) {
     if TestDataCollector::is_collecting() {
         TestDataCollector::record_quantization(xrmax, max_bits, part2_3_length, quantizer_step_size, global_gain);
     }
 }
 
-#[cfg(feature = "diagnostics")]
 pub fn record_bitstream_data(padding: i32, bits_per_frame: i32, written: usize, slot_lag: f64) {
     if TestDataCollector::is_collecting() {
         TestDataCollector::record_bitstream(padding, bits_per_frame, written, slot_lag);
@@ -414,11 +421,8 @@ pub fn record_bitstream_data(padding: i32, bits_per_frame: i32, written: usize, 
 }
 
 // High-level encoder interface for integration testing
-#[cfg(feature = "diagnostics")]
 use crate::error::EncodingResult;
-#[cfg(feature = "diagnostics")]
 use crate::encoder::{shine_initialise, shine_encode_buffer_interleaved, ShineConfig, ShineWave, ShineMpeg};
-#[cfg(feature = "diagnostics")]
 use crate::types::ShineGlobalConfig;
 
 /// Channel mode enumeration
@@ -429,7 +433,6 @@ pub enum ChannelMode {
 }
 
 /// Complete frame encoding result for validation
-#[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone)]
 pub struct EncodedFrame {
     pub mdct_data: MdctData,
@@ -439,12 +442,10 @@ pub struct EncodedFrame {
 }
 
 /// High-level MP3 encoder for integration testing
-#[cfg(feature = "diagnostics")]
 pub struct Encoder {
     config: Box<ShineGlobalConfig>,
 }
 
-#[cfg(feature = "diagnostics")]
 impl Encoder {
     /// Create a new encoder with the given configuration
     pub fn new(encoding_config: EncodingConfig) -> EncodingResult<Self> {
@@ -504,8 +505,7 @@ impl Encoder {
     /// Capture MDCT coefficients from the encoder state
     fn capture_mdct_data(&self) -> MdctData {
         // Try to get data from the global test data collector first
-        #[cfg(feature = "diagnostics")]
-        {
+                {
             if let Some(frame_data) = TestDataCollector::get_current_frame_data() {
                 return frame_data.mdct_coefficients;
             }
@@ -531,8 +531,7 @@ impl Encoder {
     /// Capture quantization parameters from the encoder state
     fn capture_quantization_data(&self) -> QuantizationData {
         // Try to get data from the global test data collector first
-        #[cfg(feature = "diagnostics")]
-        {
+                {
             if let Some(frame_data) = TestDataCollector::get_current_frame_data() {
                 println!("[RUST DEBUG] Using TestDataCollector data: global_gain={}", frame_data.quantization.global_gain);
                 return frame_data.quantization;

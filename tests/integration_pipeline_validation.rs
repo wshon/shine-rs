@@ -11,7 +11,7 @@ use std::path::Path;
 use serde_json;
 use sha2::{Sha256, Digest};
 use chrono;
-use shine_rs::diagnostics_data::{TestDataSet, Encoder, EncodingConfig, TestDataCollector, MdctData, QuantizationData, BitstreamData};
+use shine_rs::diagnostics::{TestDataSet, Encoder, EncodingConfig, TestDataCollector, MdctData, QuantizationData, BitstreamData};
 use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
 use shine_rs_cli::util::read_wav_file;
 
@@ -218,7 +218,7 @@ fn validate_encoding_against_reference(file_path: &str) -> Result<(), Box<dyn st
     // Initialize test data collector
     #[cfg(feature = "diagnostics")]
     {
-        use shine_rs::diagnostics_data::{TestDataCollector, TestMetadata};
+        use shine_rs::diagnostics::{TestDataCollector, TestMetadata};
         
         // Reset frame counter for each test file
         shine_rs::reset_frame_counter();
@@ -519,7 +519,7 @@ fn test_mdct_encoding_consistency() {
         // Initialize test data collector
         #[cfg(feature = "diagnostics")]
         {
-            use shine_rs::diagnostics_data::{TestDataCollector, TestMetadata};
+            use shine_rs::diagnostics::{TestDataCollector, TestMetadata};
             use chrono;
             
             let metadata = TestMetadata {
@@ -604,7 +604,7 @@ fn test_quantization_encoding_consistency() {
         // Initialize test data collector
         #[cfg(feature = "diagnostics")]
         {
-            use shine_rs::diagnostics_data::{TestDataCollector, TestMetadata};
+            use shine_rs::diagnostics::{TestDataCollector, TestMetadata};
             use chrono;
             
             let metadata = TestMetadata {
@@ -692,7 +692,7 @@ fn test_bitstream_encoding_consistency() {
         // Initialize test data collector
         #[cfg(feature = "diagnostics")]
         {
-            use shine_rs::diagnostics_data::{TestDataCollector, TestMetadata};
+            use shine_rs::diagnostics::{TestDataCollector, TestMetadata};
             use chrono;
             
             let metadata = TestMetadata {

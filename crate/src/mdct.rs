@@ -187,7 +187,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                         let sample_value = config.l3_sb_sample[ch_idx][gr_idx + 1][k][0];
                         println!("[RUST DEBUG Frame {}] l3_sb_sample[{}][{}][{}][0] = {} (after subband filtering)",
                                  frame_num, ch, gr_idx + 1, k, sample_value);
-                        crate::diagnostics_data::record_sb_sample(ch_idx, sample_value);
+                        crate::diagnostics::record_sb_sample(ch_idx, sample_value);
                     }
                 }
 
@@ -300,10 +300,9 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                                      frame_num, band, k, vm);
                         }
                         
-                        // Record MDCT coefficient for test collection (before aliasing reduction)
                         #[cfg(feature = "diagnostics")]
                         if ch == 0 && gr == 0 && band == 0 && k >= 15 {
-                            crate::diagnostics_data::record_mdct_coeff_before_aliasing(k, vm);
+                            crate::diagnostics::record_mdct_coeff_before_aliasing(k, vm);
                         }
                     }
                 }
@@ -377,7 +376,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                                          frame_num, k, final_coeff);
                                 // Record final MDCT coefficient for test collection (after aliasing reduction)
                                 #[cfg(feature = "diagnostics")]
-                                crate::diagnostics_data::record_mdct_coeff_after_aliasing(k, final_coeff);
+                                crate::diagnostics::record_mdct_coeff_after_aliasing(k, final_coeff);
                             }
                         }
                     }

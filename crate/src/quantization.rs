@@ -338,7 +338,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             let cod_info = &config.side_info.gr[0].ch[0].tt;
             let max_bits = crate::reservoir::shine_max_reservoir_bits(&config.pe[0][0], &config);
             
-            crate::diagnostics_data::record_quant_data(
+            crate::diagnostics::record_quant_data(
                 saved_xrmax,  // Use the saved xrmax from ch=0, gr=0
                 max_bits,
                 cod_info.part2_3_length,  // Final value after all reservoir adjustments

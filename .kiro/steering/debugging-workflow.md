@@ -180,7 +180,7 @@ cargo test test_encoding_validation_all_files --features diagnostics -- --nocapt
 ```rust
 // 确保只在第一个channel和granule收集数据
 if ch == 0 && gr == 0 {
-    crate::diagnostics_data::record_quant_data(/* ... */);
+    crate::diagnostics::record_quant_data(/* ... */);
 }
 ```
 
@@ -364,7 +364,7 @@ crate::reservoir::shine_resv_frame_end(config);
         let cod_info = &config.side_info.gr[0].ch[0].tt;
         let max_bits = crate::reservoir::shine_max_reservoir_bits(&config.pe[0][0], &config);
         
-        crate::diagnostics_data::record_quant_data(
+        crate::diagnostics::record_quant_data(
             saved_xrmax,  // 使用保存的xrmax值
             max_bits,
             cod_info.part2_3_length,  // 最终的part2_3_length值

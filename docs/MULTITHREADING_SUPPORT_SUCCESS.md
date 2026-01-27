@@ -83,7 +83,7 @@ impl TestDataCollector {
 {
     if frame_num <= 6 && ch == 0 && gr == 0 && band == 1 {
         let final_coeff = config.mdct_freq[ch_idx][gr_idx][0 * 18 + k];
-        crate::diagnostics_data::record_mdct_coeff_after_aliasing(k, final_coeff);
+        crate::diagnostics::record_mdct_coeff_after_aliasing(k, final_coeff);
     }
 }
 ```

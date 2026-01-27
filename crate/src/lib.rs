@@ -5,43 +5,6 @@
 //! support for various sample rates, bitrates, and channel configurations.
 //!
 
-use std::sync::Mutex;
-use std::collections::HashMap;
-use std::thread;
-use lazy_static::lazy_static;
-
-lazy_static! {
-    /// Thread-local frame counters for debugging consistency across modules
-    static ref THREAD_FRAME_COUNTERS: Mutex<HashMap<std::thread::ThreadId, i32>> = Mutex::new(HashMap::new());
-}
-
-/// Reset the frame counter for current thread (for testing)
-pub fn reset_frame_counter() {
-    let thread_id = thread::current().id();
-    let mut counters = THREAD_FRAME_COUNTERS.lock().unwrap();
-    counters.insert(thread_id, 0);
-    
-    // Also reset TestDataCollector if diagnostics feature is enabled
-    #[cfg(feature = "diagnostics")]
-    crate::diagnostics_data::TestDataCollector::reset();
-}
-
-/// Get the current frame number and increment the counter for current thread
-pub fn get_next_frame_number() -> i32 {
-    let thread_id = thread::current().id();
-    let mut counters = THREAD_FRAME_COUNTERS.lock().unwrap();
-    let counter = counters.entry(thread_id).or_insert(0);
-    *counter += 1;
-    *counter
-}
-
-/// Get the current frame number without incrementing for current thread
-pub fn get_current_frame_number() -> i32 {
-    let thread_id = thread::current().id();
-    let counters = THREAD_FRAME_COUNTERS.lock().unwrap();
-    *counters.get(&thread_id).unwrap_or(&0)
-}
-
 pub mod bitstream;
 pub mod encoder;
 pub mod error;
@@ -55,7 +18,21 @@ pub mod tables;
 pub mod types;
 
 #[cfg(feature = "diagnostics")]
-pub mod diagnostics_data;
+pub mod diagnostics;
+
+// Re-export diagnostics functions for backward compatibility
+#[cfg(feature = "diagnostics")]
+pub use diagnostics::{reset_frame_counter, get_next_frame_number, get_current_frame_number};
+
+// Stub functions when diagnostics feature is not enabled
+#[cfg(not(feature = "diagnostics"))]
+pub fn reset_frame_counter() {}
+
+#[cfg(not(feature = "diagnostics"))]
+pub fn get_next_frame_number() -> i32 { 1 }
+
+#[cfg(not(feature = "diagnostics"))]
+pub fn get_current_frame_number() -> i32 { 1 }
 
 
 
