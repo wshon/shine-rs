@@ -24,6 +24,7 @@ fn set_debug_frames_env(frame_count: usize) {
 }
 
 /// Set debug frames environment variable for a specific test data file
+#[allow(dead_code)]
 fn set_debug_frames_for_file(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let content = fs::read_to_string(file_path)?;
     let test_data: TestDataSet = serde_json::from_str(&content)?;
@@ -218,6 +219,9 @@ fn validate_encoding_against_reference(file_path: &str) -> Result<(), Box<dyn st
     #[cfg(feature = "diagnostics")]
     {
         use shine_rs::diagnostics_data::{TestDataCollector, TestMetadata};
+        
+        // Reset frame counter for each test file
+        shine_rs::reset_frame_counter();
         
         let metadata = TestMetadata {
             name: format!("test_validation_{}", file_path),
