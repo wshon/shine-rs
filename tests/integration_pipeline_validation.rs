@@ -11,43 +11,15 @@ use std::path::Path;
 use serde_json;
 use sha2::{Sha256, Digest};
 use chrono;
-use hound;
 use shine_rs::diagnostics_data::{TestDataSet, Encoder, EncodingConfig, TestDataCollector, MdctData, QuantizationData, BitstreamData};
 use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
+use shine_rs_cli::util::read_wav_file;
 
 /// Calculate SHA256 hash of data
 fn calculate_sha256(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
     format!("{:x}", hasher.finalize())
-}
-
-/// Read WAV file using hound library and return PCM data, sample rate, and channel count
-fn read_wav_file(path: &str) -> Result<(Vec<i16>, u32, u16), Box<dyn std::error::Error>> {
-    let mut reader = hound::WavReader::open(path)?;
-    let spec = reader.spec();
-    
-    // Validate format requirements
-    if spec.sample_format != hound::SampleFormat::Int {
-        return Err("Only integer PCM format is supported".into());
-    }
-    
-    if spec.bits_per_sample != 16 {
-        return Err("Only 16-bit samples are supported".into());
-    }
-
-    let sample_rate = spec.sample_rate;
-    let channels = spec.channels;
-
-    // Read all samples
-    let samples: Result<Vec<i16>, _> = reader.samples::<i16>().collect();
-    let samples = samples?;
-
-    if samples.is_empty() {
-        return Err("No audio data found in WAV file".into());
-    }
-
-    Ok((samples, sample_rate, channels))
 }
 
 /// Perform end-to-end encoding validation including output hash verification
@@ -60,16 +32,17 @@ fn validate_complete_encoding_pipeline(file_path: &str) -> Result<(), Box<dyn st
         return Err(format!("Input file '{}' does not exist", test_case.metadata.input_file).into());
     }
     
-    // Read WAV file using hound library
-    let (pcm_data, sample_rate, channels) = read_wav_file(&test_case.metadata.input_file)?;
+    // Read WAV file using util module
+    let (pcm_data, sample_rate, channels) = read_wav_file(&test_case.metadata.input_file)
+        .map_err(|e| format!("Failed to read WAV file: {}", e))?;
     
     // Verify WAV file matches expected configuration
-    if sample_rate as i32 != test_case.config.sample_rate {
+    if sample_rate != test_case.config.sample_rate {
         return Err(format!("Sample rate mismatch: expected {}, got {}", 
                           test_case.config.sample_rate, sample_rate).into());
     }
     
-    if channels as i32 != test_case.config.channels {
+    if channels != test_case.config.channels {
         return Err(format!("Channel count mismatch: expected {}, got {}", 
                           test_case.config.channels, channels).into());
     }
@@ -193,7 +166,8 @@ fn validate_encoding_against_reference(file_path: &str) -> Result<(), Box<dyn st
         return Ok(());
     }
     
-    let (samples, sample_rate, channels) = read_wav_file(&audio_path)?;
+    let (samples, sample_rate, channels) = read_wav_file(&audio_path)
+        .map_err(|e| format!("Failed to read WAV file: {}", e))?;
     
     // Create encoder configuration matching test data
     let config = EncodingConfig {
@@ -205,9 +179,9 @@ fn validate_encoding_against_reference(file_path: &str) -> Result<(), Box<dyn st
     };
     
     // Verify audio file matches expected configuration
-    assert_eq!(sample_rate as i32, config.sample_rate, 
+    assert_eq!(sample_rate, config.sample_rate, 
               "Audio file sample rate doesn't match test data");
-    assert_eq!(channels as i32, config.channels,
+    assert_eq!(channels, config.channels,
               "Audio file channels don't match test data");
     
     // Initialize test data collector
@@ -483,7 +457,7 @@ fn test_mdct_encoding_consistency() {
             continue;
         }
         
-        let (samples, sample_rate, channels) = read_wav_file(&audio_path).unwrap();
+        let (samples, _sample_rate, channels) = read_wav_file(&audio_path).unwrap();
         
         // Create encoder configuration
         let config = EncodingConfig {
@@ -548,7 +522,7 @@ fn test_quantization_encoding_consistency() {
             continue;
         }
         
-        let (samples, sample_rate, channels) = read_wav_file(&audio_path).unwrap();
+        let (samples, _sample_rate, channels) = read_wav_file(&audio_path).unwrap();
         
         // Create encoder configuration
         let config = EncodingConfig {
@@ -613,7 +587,7 @@ fn test_bitstream_encoding_consistency() {
             continue;
         }
         
-        let (samples, sample_rate, channels) = read_wav_file(&audio_path).unwrap();
+        let (samples, _sample_rate, channels) = read_wav_file(&audio_path).unwrap();
         
         // Create encoder configuration
         let config = EncodingConfig {

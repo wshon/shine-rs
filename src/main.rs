@@ -6,133 +6,17 @@
 use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
 use std::env;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::Path;
 use std::process;
 use log::{info, debug, error};
+use shine_rs_cli::util::read_wav_file;
 
 /// Stereo mode constants (matches shine's stereo modes)
 const STEREO_MONO: i32 = 3;
 const STEREO_STEREO: i32 = 0;
 const STEREO_JOINT_STEREO: i32 = 1;
 const STEREO_DUAL_CHANNEL: i32 = 2;
-
-/// WAV file reader that extracts PCM data and metadata
-struct WavReader;
-
-impl WavReader {
-    /// Read WAV file and extract PCM data, sample rate, and channel count
-    fn read_wav_file(path: &str) -> Result<(Vec<i16>, u32, u16), Box<dyn std::error::Error>> {
-        let mut file = File::open(path)?;
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)?;
-        
-        if buffer.len() < 44 {
-            return Err("WAV file too small".into());
-        }
-        
-        // Validate RIFF header
-        if &buffer[0..4] != b"RIFF" {
-            return Err("Not a RIFF file".into());
-        }
-        
-        let file_size = u32::from_le_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
-        if file_size as usize + 8 != buffer.len() {
-            return Err("Invalid RIFF file size".into());
-        }
-        
-        // Validate WAVE format
-        if &buffer[8..12] != b"WAVE" {
-            return Err("Not a WAVE file".into());
-        }
-        
-        let mut sample_rate = 0u32;
-        let mut channels = 0u16;
-        let mut pcm_data = Vec::new();
-        let mut fmt_found = false;
-        let mut data_found = false;
-        
-        // Parse chunks
-        let mut pos = 12;
-        while pos < buffer.len() - 8 {
-            if pos + 8 > buffer.len() {
-                break;
-            }
-            
-            let chunk_id = &buffer[pos..pos+4];
-            let chunk_size = u32::from_le_bytes([buffer[pos+4], buffer[pos+5], buffer[pos+6], buffer[pos+7]]);
-            let chunk_data_start = pos + 8;
-            let chunk_data_end = chunk_data_start + chunk_size as usize;
-            
-            if chunk_data_end > buffer.len() {
-                return Err("Invalid chunk size".into());
-            }
-            
-            match chunk_id {
-                b"fmt " => {
-                    if chunk_size < 16 {
-                        return Err("Invalid fmt chunk size".into());
-                    }
-                    
-                    let audio_format = u16::from_le_bytes([buffer[chunk_data_start], buffer[chunk_data_start+1]]);
-                    if audio_format != 1 {
-                        return Err("Only PCM format supported".into());
-                    }
-                    
-                    channels = u16::from_le_bytes([buffer[chunk_data_start+2], buffer[chunk_data_start+3]]);
-                    sample_rate = u32::from_le_bytes([
-                        buffer[chunk_data_start+4], buffer[chunk_data_start+5], 
-                        buffer[chunk_data_start+6], buffer[chunk_data_start+7]
-                    ]);
-                    let bits_per_sample = u16::from_le_bytes([buffer[chunk_data_start+14], buffer[chunk_data_start+15]]);
-                    
-                    if bits_per_sample != 16 {
-                        return Err("Only 16-bit samples supported".into());
-                    }
-                    
-                    fmt_found = true;
-                },
-                b"data" => {
-                    if !fmt_found {
-                        return Err("Data chunk found before fmt chunk".into());
-                    }
-                    
-                    // Convert bytes to i16 samples
-                    for i in (chunk_data_start..chunk_data_end).step_by(2) {
-                        if i + 1 < buffer.len() {
-                            let sample = i16::from_le_bytes([buffer[i], buffer[i+1]]);
-                            pcm_data.push(sample);
-                        }
-                    }
-                    data_found = true;
-                },
-                _ => {
-                    // Skip unknown chunks
-                }
-            }
-            
-            // Move to next chunk (ensure even alignment)
-            pos = chunk_data_end;
-            if chunk_size % 2 == 1 {
-                pos += 1; // WAV chunks are word-aligned
-            }
-        }
-        
-        if !fmt_found {
-            return Err("No fmt chunk found".into());
-        }
-        
-        if !data_found {
-            return Err("No data chunk found".into());
-        }
-        
-        if pcm_data.is_empty() {
-            return Err("No audio data found".into());
-        }
-        
-        Ok((pcm_data, sample_rate, channels))
-    }
-}
 
 /// Command line arguments structure
 struct Args {
@@ -254,7 +138,11 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     }
     
     // Read WAV file
-    let (pcm_data, sample_rate, channels) = WavReader::read_wav_file(&args.input_file)?;
+    let (pcm_data, sample_rate_i32, channels_i32) = read_wav_file(&args.input_file)
+        .map_err(|e| format!("Failed to read WAV file: {}", e))?;
+    
+    let sample_rate = sample_rate_i32 as u32;
+    let channels = channels_i32 as u16;
     
     info!("WAV info: {} Hz, {} channels, {} samples", 
              sample_rate, channels, pcm_data.len());
