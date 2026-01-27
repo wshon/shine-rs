@@ -13,6 +13,18 @@ use std::fs::File;
 use std::io::Write;
 #[cfg(feature = "diagnostics")]
 use std::sync::Mutex;
+#[cfg(feature = "diagnostics")]
+use std::collections::HashMap;
+#[cfg(feature = "diagnostics")]
+use std::thread;
+#[cfg(feature = "diagnostics")]
+use lazy_static::lazy_static;
+
+#[cfg(feature = "diagnostics")]
+lazy_static! {
+    /// Global test data collector - now supports multiple threads
+    static ref TEST_DATA_COLLECTORS: Mutex<HashMap<std::thread::ThreadId, TestDataCollector>> = Mutex::new(HashMap::new());
+}
 
 /// Frame-specific encoding data
 #[cfg(feature = "diagnostics")]
@@ -145,9 +157,7 @@ pub struct EncodingConfig {
     pub mpeg_version: i32,
 }
 
-/// Global test data collector
-#[cfg(feature = "diagnostics")]
-static TEST_DATA_COLLECTOR: Mutex<Option<TestDataCollector>> = Mutex::new(None);
+
 
 /// Test data collector implementation
 #[cfg(feature = "diagnostics")]
@@ -159,8 +169,9 @@ pub struct TestDataCollector {
 
 #[cfg(feature = "diagnostics")]
 impl TestDataCollector {
-    /// Initialize the test data collector
+    /// Initialize the test data collector for current thread
     pub fn initialize(metadata: TestMetadata, config: EncodingConfig) {
+        let thread_id = thread::current().id();
         let collector = TestDataCollector {
             test_case: TestCaseData {
                 metadata,
@@ -170,14 +181,15 @@ impl TestDataCollector {
             current_frame: 0,
         };
         
-        let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        *guard = Some(collector);
+        let mut guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        guard.insert(thread_id, collector);
     }
     
-    /// Start collecting data for a new frame
+    /// Start collecting data for a new frame in current thread
     pub fn start_frame(frame_number: i32) {
-        let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        if let Some(collector) = guard.as_mut() {
+        let thread_id = thread::current().id();
+        let mut guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        if let Some(collector) = guard.get_mut(&thread_id) {
             collector.current_frame = frame_number;
             
             // Initialize frame data if this is a new frame within our collection range
@@ -210,10 +222,11 @@ impl TestDataCollector {
         }
     }
     
-    /// Record MDCT coefficient before aliasing reduction
+    /// Record MDCT coefficient before aliasing reduction for current thread
     pub fn record_mdct_coefficient_before_aliasing(k: usize, value: i32) {
-        let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        if let Some(collector) = guard.as_mut() {
+        let thread_id = thread::current().id();
+        let mut guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        if let Some(collector) = guard.get_mut(&thread_id) {
             if collector.current_frame <= 6 && k >= 15 && k <= 17 {
                 if let Some(frame) = collector.test_case.frames.iter_mut()
                     .find(|f| f.frame_number == collector.current_frame) {
@@ -231,10 +244,11 @@ impl TestDataCollector {
         }
     }
     
-    /// Record MDCT coefficient after aliasing reduction
+    /// Record MDCT coefficient after aliasing reduction for current thread
     pub fn record_mdct_coefficient_after_aliasing(k: usize, value: i32) {
-        let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        if let Some(collector) = guard.as_mut() {
+        let thread_id = thread::current().id();
+        let mut guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        if let Some(collector) = guard.get_mut(&thread_id) {
             if collector.current_frame <= 6 && k >= 15 && k <= 17 {
                 if let Some(frame) = collector.test_case.frames.iter_mut()
                     .find(|f| f.frame_number == collector.current_frame) {
@@ -252,10 +266,11 @@ impl TestDataCollector {
         }
     }
     
-    /// Record l3_sb_sample value
+    /// Record l3_sb_sample value for current thread
     pub fn record_l3_sb_sample(ch: usize, value: i32) {
-        let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        if let Some(collector) = guard.as_mut() {
+        let thread_id = thread::current().id();
+        let mut guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        if let Some(collector) = guard.get_mut(&thread_id) {
             if collector.current_frame <= 6 && ch == 0 {
                 if let Some(frame) = collector.test_case.frames.iter_mut()
                     .find(|f| f.frame_number == collector.current_frame) {
@@ -265,10 +280,11 @@ impl TestDataCollector {
         }
     }
     
-    /// Record quantization data
+    /// Record quantization data for current thread
     pub fn record_quantization(xrmax: i32, max_bits: i32, part2_3_length: u32, quantizer_step_size: i32, global_gain: u32) {
-        let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        if let Some(collector) = guard.as_mut() {
+        let thread_id = thread::current().id();
+        let mut guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        if let Some(collector) = guard.get_mut(&thread_id) {
             if collector.current_frame <= 6 {
                 if let Some(frame) = collector.test_case.frames.iter_mut()
                     .find(|f| f.frame_number == collector.current_frame) {
@@ -282,10 +298,11 @@ impl TestDataCollector {
         }
     }
     
-    /// Record bitstream data
+    /// Record bitstream data for current thread
     pub fn record_bitstream(padding: i32, bits_per_frame: i32, written: usize, slot_lag: f64) {
-        let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        if let Some(collector) = guard.as_mut() {
+        let thread_id = thread::current().id();
+        let mut guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        if let Some(collector) = guard.get_mut(&thread_id) {
             if collector.current_frame <= 6 {
                 if let Some(frame) = collector.test_case.frames.iter_mut()
                     .find(|f| f.frame_number == collector.current_frame) {
@@ -298,17 +315,18 @@ impl TestDataCollector {
         }
     }
     
-    /// Save collected data to JSON file
+    /// Save collected data to JSON file for current thread
     pub fn save_to_file(filename: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        if let Some(collector) = guard.as_ref() {
+        let thread_id = thread::current().id();
+        let guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        if let Some(collector) = guard.get(&thread_id) {
             let json = serde_json::to_string_pretty(&collector.test_case)?;
             let mut file = File::create(filename)?;
             file.write_all(json.as_bytes())?;
             log::info!("Test data saved to: {}", filename);
             Ok(())
         } else {
-            Err("No test data collector initialized".into())
+            Err("No test data collector initialized for current thread".into())
         }
     }
     
@@ -319,10 +337,11 @@ impl TestDataCollector {
         Ok(test_case)
     }
     
-    /// Get current frame data from the collector
+    /// Get current frame data from the collector for current thread
     pub fn get_current_frame_data() -> Option<FrameData> {
-        let guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        if let Some(collector) = guard.as_ref() {
+        let thread_id = thread::current().id();
+        let guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        if let Some(collector) = guard.get(&thread_id) {
             if let Some(frame) = collector.test_case.frames.iter()
                 .find(|f| f.frame_number == collector.current_frame) {
                 return Some(frame.clone());
@@ -331,24 +350,27 @@ impl TestDataCollector {
         None
     }
     
-    /// Check if collection is enabled (for performance)
+    /// Check if collection is enabled for current thread (for performance)
     pub fn is_collecting() -> bool {
-        let guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        guard.is_some()
+        let thread_id = thread::current().id();
+        let guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        guard.contains_key(&thread_id)
     }
     
-    /// Reset the test data collector (for testing)
+    /// Reset the test data collector for current thread (for testing)
     pub fn reset() {
-        let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        *guard = None;
+        let thread_id = thread::current().id();
+        let mut guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        guard.remove(&thread_id);
+    }
+    
+    /// Reset all test data collectors (for global cleanup)
+    pub fn reset_all() {
+        let mut guard = TEST_DATA_COLLECTORS.lock().unwrap();
+        guard.clear();
     }
 }
 
-    /// Check if collection is enabled (for performance)
-    pub fn is_collecting() -> bool {
-        let guard = TEST_DATA_COLLECTOR.lock().unwrap();
-        guard.is_some()
-    }
 #[cfg(feature = "diagnostics")]
 pub fn start_frame_collection(frame_number: i32) {
     if TestDataCollector::is_collecting() {

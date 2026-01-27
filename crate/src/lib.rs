@@ -5,28 +5,41 @@
 //! support for various sample rates, bitrates, and channel configurations.
 //!
 
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::Mutex;
+use std::collections::HashMap;
+use std::thread;
+use lazy_static::lazy_static;
 
-/// Global frame counter for debugging consistency across modules
-pub static GLOBAL_FRAME_COUNT: AtomicI32 = AtomicI32::new(0);
+lazy_static! {
+    /// Thread-local frame counters for debugging consistency across modules
+    static ref THREAD_FRAME_COUNTERS: Mutex<HashMap<std::thread::ThreadId, i32>> = Mutex::new(HashMap::new());
+}
 
-/// Reset the global frame counter (for testing)
+/// Reset the frame counter for current thread (for testing)
 pub fn reset_frame_counter() {
-    GLOBAL_FRAME_COUNT.store(0, Ordering::SeqCst);
+    let thread_id = thread::current().id();
+    let mut counters = THREAD_FRAME_COUNTERS.lock().unwrap();
+    counters.insert(thread_id, 0);
     
     // Also reset TestDataCollector if diagnostics feature is enabled
     #[cfg(feature = "diagnostics")]
     crate::diagnostics_data::TestDataCollector::reset();
 }
 
-/// Get the current frame number and increment the global counter
+/// Get the current frame number and increment the counter for current thread
 pub fn get_next_frame_number() -> i32 {
-    GLOBAL_FRAME_COUNT.fetch_add(1, Ordering::SeqCst) + 1
+    let thread_id = thread::current().id();
+    let mut counters = THREAD_FRAME_COUNTERS.lock().unwrap();
+    let counter = counters.entry(thread_id).or_insert(0);
+    *counter += 1;
+    *counter
 }
 
-/// Get the current frame number without incrementing
+/// Get the current frame number without incrementing for current thread
 pub fn get_current_frame_number() -> i32 {
-    GLOBAL_FRAME_COUNT.load(Ordering::SeqCst)
+    let thread_id = thread::current().id();
+    let counters = THREAD_FRAME_COUNTERS.lock().unwrap();
+    *counters.get(&thread_id).unwrap_or(&0)
 }
 
 pub mod bitstream;

@@ -15,6 +15,36 @@ use shine_rs::diagnostics_data::{TestDataSet, Encoder, EncodingConfig, TestDataC
 use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
 use shine_rs_cli::util::read_wav_file;
 
+/// Set debug frames environment variable based on test data
+fn set_debug_frames_env(frame_count: usize) {
+    // Set debug frames to cover all test frames plus a small buffer
+    let debug_frames = std::cmp::max(frame_count + 2, 6);
+    std::env::set_var("RUST_MP3_DEBUG_FRAMES", debug_frames.to_string());
+    println!("Set RUST_MP3_DEBUG_FRAMES={}", debug_frames);
+}
+
+/// Set debug frames environment variable for a specific test data file
+fn set_debug_frames_for_file(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let content = fs::read_to_string(file_path)?;
+    let test_data: TestDataSet = serde_json::from_str(&content)?;
+    set_debug_frames_env(test_data.frames.len());
+    Ok(())
+}
+
+/// Set debug frames environment variable for multiple test files
+fn set_debug_frames_for_files(file_paths: &[String]) {
+    let max_frames = file_paths.iter()
+        .filter_map(|path| {
+            fs::read_to_string(path).ok()
+                .and_then(|content| serde_json::from_str::<TestDataSet>(&content).ok())
+                .map(|test_data| test_data.frames.len())
+        })
+        .max()
+        .unwrap_or(6);
+    
+    set_debug_frames_env(max_frames);
+}
+
 /// Calculate SHA256 hash of data
 fn calculate_sha256(data: &[u8]) -> String {
     let mut hasher = Sha256::new();
@@ -188,9 +218,6 @@ fn validate_encoding_against_reference(file_path: &str) -> Result<(), Box<dyn st
     #[cfg(feature = "diagnostics")]
     {
         use shine_rs::diagnostics_data::{TestDataCollector, TestMetadata};
-        
-        // Reset global frame counter for consistent testing
-        shine_rs::reset_frame_counter();
         
         let metadata = TestMetadata {
             name: format!("test_validation_{}", file_path),
@@ -405,6 +432,9 @@ fn test_complete_encoding_pipeline() {
     
     assert!(!test_files.is_empty(), "Should find at least one test data file");
     
+    // Set debug frames environment variable for all test files
+    set_debug_frames_for_files(&test_files);
+    
     for file_path in test_files {
         println!("Testing complete encoding pipeline for: {}", file_path);
         
@@ -425,12 +455,12 @@ fn test_complete_encoding_pipeline() {
 /// Test that all discovered test data files pass encoding validation
 #[test]
 fn test_encoding_validation_all_files() {
-    // Reset global frame counter for consistent testing
-    shine_rs::reset_frame_counter();
-    
     let test_files = discover_test_data_files();
     
     assert!(!test_files.is_empty(), "Should find at least one test data file");
+    
+    // Set debug frames environment variable for all test files
+    set_debug_frames_for_files(&test_files);
     
     for file_path in test_files {
         println!("Validating encoding for: {}", file_path);
@@ -449,10 +479,10 @@ fn test_encoding_validation_all_files() {
 /// Test MDCT consistency by encoding and comparing coefficients
 #[test]
 fn test_mdct_encoding_consistency() {
-    // Reset global frame counter for consistent testing
-    shine_rs::reset_frame_counter();
-    
     let test_files = discover_test_data_files();
+    
+    // Set debug frames environment variable for all test files
+    set_debug_frames_for_files(&test_files);
     
     for file_path in test_files {
         println!("Testing MDCT encoding consistency for: {}", file_path);
@@ -534,10 +564,10 @@ fn test_mdct_encoding_consistency() {
 /// Test quantization consistency by encoding and comparing parameters
 #[test]
 fn test_quantization_encoding_consistency() {
-    // Reset global frame counter for consistent testing
-    shine_rs::reset_frame_counter();
-    
     let test_files = discover_test_data_files();
+    
+    // Set debug frames environment variable for all test files
+    set_debug_frames_for_files(&test_files);
     
     for file_path in test_files {
         println!("Testing quantization encoding consistency for: {}", file_path);
@@ -623,6 +653,9 @@ fn test_bitstream_encoding_consistency() {
     shine_rs::reset_frame_counter();
     
     let test_files = discover_test_data_files();
+    
+    // Set debug frames environment variable for all test files
+    set_debug_frames_for_files(&test_files);
     
     for file_path in test_files {
         println!("Testing bitstream encoding consistency for: {}", file_path);
