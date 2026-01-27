@@ -4,8 +4,7 @@
 //! including PCM audio data processing utilities and error handling.
 
 use std::fmt;
-use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use hound;
 
 /// Error type for utility operations
 #[derive(Debug)]
@@ -38,53 +37,30 @@ pub type UtilResult<T> = std::result::Result<T, UtilError>;
 
 /// Read WAV file and return PCM samples, sample rate, and channel count
 pub fn read_wav_file(file_path: &str) -> UtilResult<(Vec<i16>, i32, i32)> {
-    let mut file = File::open(file_path)
+    let mut reader = hound::WavReader::open(file_path)
         .map_err(|e| UtilError::ValidationError(format!("Failed to open WAV file: {}", e)))?;
 
-    // Read WAV header
-    let mut header = [0u8; 44];
-    file.read_exact(&mut header)
-        .map_err(|e| UtilError::ValidationError(format!("Failed to read WAV header: {}", e)))?;
-
-    // Validate WAV format
-    if &header[0..4] != b"RIFF" || &header[8..12] != b"WAVE" {
-        return Err(UtilError::ValidationError("Invalid WAV file format".to_string()));
+    let spec = reader.spec();
+    
+    // Validate format requirements
+    if spec.sample_format != hound::SampleFormat::Int {
+        return Err(UtilError::ValidationError("Only integer PCM format is supported".to_string()));
+    }
+    
+    if spec.bits_per_sample != 16 {
+        return Err(UtilError::ValidationError("Only 16-bit samples are supported".to_string()));
     }
 
-    // Extract format information
-    let channels = u16::from_le_bytes([header[22], header[23]]) as i32;
-    let sample_rate = u32::from_le_bytes([header[24], header[25], header[26], header[27]]) as i32;
-    let bits_per_sample = u16::from_le_bytes([header[34], header[35]]);
+    let sample_rate = spec.sample_rate as i32;
+    let channels = spec.channels as i32;
 
-    if bits_per_sample != 16 {
-        return Err(UtilError::ValidationError("Only 16-bit WAV files are supported".to_string()));
-    }
+    // Read all samples
+    let samples: Result<Vec<i16>, _> = reader.samples::<i16>().collect();
+    let samples = samples
+        .map_err(|e| UtilError::ValidationError(format!("Failed to read WAV samples: {}", e)))?;
 
-    // Find data chunk
-    file.seek(SeekFrom::Start(36))
-        .map_err(|e| UtilError::ValidationError(format!("Failed to seek in WAV file: {}", e)))?;
-
-    let mut chunk_header = [0u8; 8];
-    file.read_exact(&mut chunk_header)
-        .map_err(|e| UtilError::ValidationError(format!("Failed to read chunk header: {}", e)))?;
-
-    if &chunk_header[0..4] != b"data" {
-        return Err(UtilError::ValidationError("Data chunk not found".to_string()));
-    }
-
-    let data_size = u32::from_le_bytes([chunk_header[4], chunk_header[5], chunk_header[6], chunk_header[7]]) as usize;
-    let sample_count = data_size / 2; // 16-bit samples
-
-    // Read PCM data
-    let mut pcm_data = vec![0u8; data_size];
-    file.read_exact(&mut pcm_data)
-        .map_err(|e| UtilError::ValidationError(format!("Failed to read PCM data: {}", e)))?;
-
-    // Convert to i16 samples
-    let mut samples = Vec::with_capacity(sample_count);
-    for chunk in pcm_data.chunks_exact(2) {
-        let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
-        samples.push(sample);
+    if samples.is_empty() {
+        return Err(UtilError::ValidationError("No audio data found in WAV file".to_string()));
     }
 
     Ok((samples, sample_rate, channels))

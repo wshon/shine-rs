@@ -20,6 +20,7 @@ shine-rs = { path = "crate" }
 env_logger = "0.10"
 log = "0.4"
 anyhow = "1.0"
+hound = "3.5"
 
 [dev-dependencies]
 proptest = "1.4"
@@ -27,6 +28,7 @@ sha2 = "0.10"
 env_logger = "0.10"
 serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
+hound = "3.5"
 
 [features]
 default = []

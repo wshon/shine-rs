@@ -23,6 +23,7 @@ serde = { version = "1.0", features = ["derive"], optional = true }
 serde_json = { version = "1.0", optional = true }
 chrono = { version = "0.4", features = ["serde"], optional = true }
 log = "0.4"
+hound = "3.5"
 
 [dev-dependencies]
 proptest = "1.4"

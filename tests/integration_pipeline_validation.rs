@@ -8,12 +8,11 @@
 
 use std::fs;
 use std::path::Path;
-use std::io::Read;
 use serde_json;
 use sha2::{Sha256, Digest};
 use chrono;
-use shine_rs::diagnostics_data::{TestDataSet, Encoder, EncodingConfig, TestDataCollector, TestCaseData, MdctData, QuantizationData, BitstreamData};
-use shine_rs_cli::util::read_wav_file;
+use hound;
+use shine_rs::diagnostics_data::{TestDataSet, Encoder, EncodingConfig, TestDataCollector, MdctData, QuantizationData, BitstreamData};
 use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
 
 /// Calculate SHA256 hash of data
@@ -23,121 +22,32 @@ fn calculate_sha256(data: &[u8]) -> String {
     format!("{:x}", hasher.finalize())
 }
 
-/// WAV file reader that extracts PCM data and metadata
-struct WavReader;
-
-impl WavReader {
-    /// Read WAV file and extract PCM data, sample rate, and channel count
-    fn read_wav_file(path: &str) -> Result<(Vec<i16>, u32, u16), Box<dyn std::error::Error>> {
-        let mut file = std::fs::File::open(path)?;
-        let mut buffer = Vec::new();
-        file.read_to_end(&mut buffer)?;
-        
-        if buffer.len() < 44 {
-            return Err("WAV file too small".into());
-        }
-        
-        // Validate RIFF header
-        if &buffer[0..4] != b"RIFF" {
-            return Err("Not a RIFF file".into());
-        }
-        
-        let file_size = u32::from_le_bytes([buffer[4], buffer[5], buffer[6], buffer[7]]);
-        if file_size as usize + 8 != buffer.len() {
-            return Err("Invalid RIFF file size".into());
-        }
-        
-        // Validate WAVE format
-        if &buffer[8..12] != b"WAVE" {
-            return Err("Not a WAVE file".into());
-        }
-        
-        let mut sample_rate = 0u32;
-        let mut channels = 0u16;
-        let mut pcm_data = Vec::new();
-        let mut fmt_found = false;
-        let mut data_found = false;
-        
-        // Parse chunks
-        let mut pos = 12;
-        while pos < buffer.len() - 8 {
-            if pos + 8 > buffer.len() {
-                break;
-            }
-            
-            let chunk_id = &buffer[pos..pos+4];
-            let chunk_size = u32::from_le_bytes([buffer[pos+4], buffer[pos+5], buffer[pos+6], buffer[pos+7]]);
-            let chunk_data_start = pos + 8;
-            let chunk_data_end = chunk_data_start + chunk_size as usize;
-            
-            if chunk_data_end > buffer.len() {
-                return Err("Invalid chunk size".into());
-            }
-            
-            match chunk_id {
-                b"fmt " => {
-                    if chunk_size < 16 {
-                        return Err("Invalid fmt chunk size".into());
-                    }
-                    
-                    let audio_format = u16::from_le_bytes([buffer[chunk_data_start], buffer[chunk_data_start+1]]);
-                    if audio_format != 1 {
-                        return Err("Only PCM format supported".into());
-                    }
-                    
-                    channels = u16::from_le_bytes([buffer[chunk_data_start+2], buffer[chunk_data_start+3]]);
-                    sample_rate = u32::from_le_bytes([
-                        buffer[chunk_data_start+4], buffer[chunk_data_start+5], 
-                        buffer[chunk_data_start+6], buffer[chunk_data_start+7]
-                    ]);
-                    let bits_per_sample = u16::from_le_bytes([buffer[chunk_data_start+14], buffer[chunk_data_start+15]]);
-                    
-                    if bits_per_sample != 16 {
-                        return Err("Only 16-bit samples supported".into());
-                    }
-                    
-                    fmt_found = true;
-                },
-                b"data" => {
-                    if !fmt_found {
-                        return Err("Data chunk found before fmt chunk".into());
-                    }
-                    
-                    // Convert bytes to i16 samples
-                    for i in (chunk_data_start..chunk_data_end).step_by(2) {
-                        if i + 1 < buffer.len() {
-                            let sample = i16::from_le_bytes([buffer[i], buffer[i+1]]);
-                            pcm_data.push(sample);
-                        }
-                    }
-                    data_found = true;
-                },
-                _ => {
-                    // Skip unknown chunks
-                }
-            }
-            
-            // Move to next chunk (ensure even alignment)
-            pos = chunk_data_end;
-            if chunk_size % 2 == 1 {
-                pos += 1; // WAV chunks are word-aligned
-            }
-        }
-        
-        if !fmt_found {
-            return Err("No fmt chunk found".into());
-        }
-        
-        if !data_found {
-            return Err("No data chunk found".into());
-        }
-        
-        if pcm_data.is_empty() {
-            return Err("No audio data found".into());
-        }
-        
-        Ok((pcm_data, sample_rate, channels))
+/// Read WAV file using hound library and return PCM data, sample rate, and channel count
+fn read_wav_file(path: &str) -> Result<(Vec<i16>, u32, u16), Box<dyn std::error::Error>> {
+    let mut reader = hound::WavReader::open(path)?;
+    let spec = reader.spec();
+    
+    // Validate format requirements
+    if spec.sample_format != hound::SampleFormat::Int {
+        return Err("Only integer PCM format is supported".into());
     }
+    
+    if spec.bits_per_sample != 16 {
+        return Err("Only 16-bit samples are supported".into());
+    }
+
+    let sample_rate = spec.sample_rate;
+    let channels = spec.channels;
+
+    // Read all samples
+    let samples: Result<Vec<i16>, _> = reader.samples::<i16>().collect();
+    let samples = samples?;
+
+    if samples.is_empty() {
+        return Err("No audio data found in WAV file".into());
+    }
+
+    Ok((samples, sample_rate, channels))
 }
 
 /// Perform end-to-end encoding validation including output hash verification
@@ -150,8 +60,8 @@ fn validate_complete_encoding_pipeline(file_path: &str) -> Result<(), Box<dyn st
         return Err(format!("Input file '{}' does not exist", test_case.metadata.input_file).into());
     }
     
-    // Read WAV file using integrated WAV reader
-    let (pcm_data, sample_rate, channels) = WavReader::read_wav_file(&test_case.metadata.input_file)?;
+    // Read WAV file using hound library
+    let (pcm_data, sample_rate, channels) = read_wav_file(&test_case.metadata.input_file)?;
     
     // Verify WAV file matches expected configuration
     if sample_rate as i32 != test_case.config.sample_rate {
@@ -295,9 +205,9 @@ fn validate_encoding_against_reference(file_path: &str) -> Result<(), Box<dyn st
     };
     
     // Verify audio file matches expected configuration
-    assert_eq!(sample_rate, config.sample_rate, 
+    assert_eq!(sample_rate as i32, config.sample_rate, 
               "Audio file sample rate doesn't match test data");
-    assert_eq!(channels, config.channels,
+    assert_eq!(channels as i32, config.channels,
               "Audio file channels don't match test data");
     
     // Initialize test data collector
