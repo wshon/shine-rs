@@ -175,8 +175,11 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
     let frame_num = crate::get_current_frame_number();
 
     let mut l3_xmin = ShinePsyXmin::default();
-    let mut max_bits: i32;
     let mut ix: *mut i32;
+    
+    // Store xrmax for the first channel and granule for test data collection
+    #[cfg(feature = "diagnostics")]
+    let mut saved_xrmax = 0i32;
 
     // Process each channel and granule
     for ch in (0..config.wave.channels).rev() {
@@ -210,9 +213,8 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
 
             // calculation of number of available bit( per granule )
             let pe_value = config.pe[ch as usize][gr as usize].clone();
-            max_bits = crate::reservoir::shine_max_reservoir_bits(&pe_value, &config);
+            let max_bits = crate::reservoir::shine_max_reservoir_bits(&pe_value, &config);
 
-            // Print key quantization parameters for verification (debug mode only)
             // Debug logging for algorithm verification
             #[cfg(any(debug_assertions, feature = "diagnostics"))]
             {
@@ -223,6 +225,11 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                     .unwrap_or(6);
                 if frame_num <= debug_frames && ch == 0 && gr == 0 {
                     debug!("[Frame {}] xrmax={}, max_bits={}", frame_num, config.l3loop.xrmax, max_bits);
+                    // Save xrmax for the first channel and granule
+                    #[cfg(feature = "diagnostics")]
+                    {
+                        saved_xrmax = config.l3loop.xrmax;
+                    }
                 }
             }
 
@@ -280,13 +287,21 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
 
             // Adjust reservoir and set global gain
             {
+                let quantizer_step_size = {
+                    let cod_info = &config.side_info.gr[gr as usize].ch[ch as usize].tt;
+                    cod_info.quantizer_step_size
+                };
+                
+                // Call reservoir adjust first (matches Shine order)
+                let cod_info_copy = config.side_info.gr[gr as usize].ch[ch as usize].tt.clone();
+                crate::reservoir::shine_resv_adjust(&cod_info_copy, config);
+                
+                // Set global gain AFTER reservoir adjustment (matches Shine)
                 let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
-                let quantizer_step_size = cod_info.quantizer_step_size;
-                let cod_info_copy = cod_info.clone(); // Clone for immutable reference
                 cod_info.global_gain = (quantizer_step_size + 210) as u32;
 
-                // Print key quantization results for verification (debug mode only)
-                #[cfg(any(debug_assertions, feature = "diagnostics"))]
+                // Debug output for verification (but don't record data here)
+                #[cfg(feature = "diagnostics")]
                 {
                     use log::debug;
                     let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
@@ -295,30 +310,46 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                         .unwrap_or(6);
                     if frame_num <= debug_frames && ch == 0 && gr == 0 {
                         debug!("[Frame {}] part2_3_length={}, quantizer_step_size={}, global_gain={}",
-                                 frame_num, part2_3_length, quantizer_step_size, cod_info.global_gain);
+                                 frame_num, cod_info.part2_3_length, quantizer_step_size, cod_info.global_gain);
+                        println!("[RUST DEBUG] Intermediate: xrmax={}, max_bits={}, part2_3_length={}, quantizer_step_size={}, global_gain={}",
+                                 config.l3loop.xrmax, max_bits, cod_info.part2_3_length, quantizer_step_size, cod_info.global_gain);
                     }
-                    // Record quantization data for test collection
-                    #[cfg(feature = "diagnostics")]
-                    crate::diagnostics_data::record_quant_data(
-                        config.l3loop.xrmax,
-                        max_bits,
-                        part2_3_length,
-                        quantizer_step_size,
-                        cod_info.global_gain
-                    );
                 }
 
                 // Suppress unused variable warning in release mode
                 #[cfg(not(any(debug_assertions, feature = "diagnostics")))]
                 let _ = part2_3_length;
-
-                // Call reservoir adjust with the copied data
-                crate::reservoir::shine_resv_adjust(&cod_info_copy, config);
             }
         } // for gr
     } // for ch
 
     crate::reservoir::shine_resv_frame_end(config);
+    
+    // Record quantization data AFTER shine_resv_frame_end (matches Shine final output)
+    #[cfg(feature = "diagnostics")]
+    {
+        let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
+            .unwrap_or_else(|_| "6".to_string())
+            .parse::<i32>()
+            .unwrap_or(6);
+        
+        if frame_num <= debug_frames {
+            // Record data for the first channel and granule (ch=0, gr=0) after all adjustments
+            let cod_info = &config.side_info.gr[0].ch[0].tt;
+            let max_bits = crate::reservoir::shine_max_reservoir_bits(&config.pe[0][0], &config);
+            
+            crate::diagnostics_data::record_quant_data(
+                saved_xrmax,  // Use the saved xrmax from ch=0, gr=0
+                max_bits,
+                cod_info.part2_3_length,  // Final value after all reservoir adjustments
+                cod_info.quantizer_step_size,
+                cod_info.global_gain
+            );
+            
+            println!("[RUST DEBUG] Final Recording: xrmax={}, max_bits={}, part2_3_length={}, quantizer_step_size={}, global_gain={}",
+                     saved_xrmax, max_bits, cod_info.part2_3_length, cod_info.quantizer_step_size, cod_info.global_gain);
+        }
+    }
 }
 /// Calculate scale factor selection information (scfsi)
 /// Corresponds to calc_scfsi() in l3loop.c

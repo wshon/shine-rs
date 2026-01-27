@@ -18,8 +18,29 @@ pub fn shine_max_reservoir_bits(pe: &f64, config: &ShineGlobalConfig) -> i32 {
     let over_bits: i32;
     let mut mean_bits = config.mean_bits;
 
+    // Debug output for reservoir calculation
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    {
+        let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
+            .unwrap_or_else(|_| "6".to_string())
+            .parse::<i32>()
+            .unwrap_or(6);
+        println!("[RUST DEBUG] Reservoir: mean_bits={}, channels={}, pe={}", 
+                 mean_bits, config.wave.channels, pe);
+    }
+
     mean_bits /= config.wave.channels;
     max_bits = mean_bits;
+
+    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    {
+        let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
+            .unwrap_or_else(|_| "6".to_string())
+            .parse::<i32>()
+            .unwrap_or(6);
+        println!("[RUST DEBUG] Reservoir: mean_bits after division={}, max_bits={}, resv_max={}", 
+                 mean_bits, max_bits, config.resv_max);
+    }
 
     if max_bits > 4095 {
         max_bits = 4095;

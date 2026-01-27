@@ -505,13 +505,26 @@ impl Encoder {
 
     /// Capture quantization parameters from the encoder state
     fn capture_quantization_data(&self) -> QuantizationData {
-        // Get data from the first granule and channel
+        // Try to get data from the global test data collector first
+        #[cfg(feature = "diagnostics")]
+        {
+            if let Some(frame_data) = TestDataCollector::get_current_frame_data() {
+                println!("[RUST DEBUG] Using TestDataCollector data: global_gain={}", frame_data.quantization.global_gain);
+                return frame_data.quantization;
+            } else {
+                println!("[RUST DEBUG] TestDataCollector has no current frame data, using fallback");
+            }
+        }
+        
+        // Fallback: get data from the first granule and channel
         let gr_info = &self.config.side_info.gr[0].ch[0].tt;
+        
+        println!("[RUST DEBUG] Using fallback data: global_gain={}", gr_info.global_gain);
 
         QuantizationData {
             global_gain: gr_info.global_gain,
             part2_3_length: gr_info.part2_3_length,
-            max_bits: self.config.mean_bits,
+            max_bits: self.config.mean_bits, // This is a fallback - should use collected data
             xrmax: self.config.l3loop.xrmax,
             quantizer_step_size: gr_info.quantizer_step_size,
         }

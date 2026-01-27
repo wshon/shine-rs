@@ -210,6 +210,11 @@ def parse_json_debug_output(debug_output):
                 if data.get('ch') == 0 and data.get('gr') == 0:
                     current_frame['quantization']['part2_3_length'] = data.get('part2_3_length', 0)
             
+            elif data['type'] == 'quantization_part2_3_length_final':
+                # Use the final part2_3_length after reservoir adjustment
+                if data.get('ch') == 0 and data.get('gr') == 0:
+                    current_frame['quantization']['part2_3_length'] = data.get('part2_3_length', 0)
+            
             elif data['type'] == 'quantization_global_gain':
                 if data.get('ch') == 0 and data.get('gr') == 0:
                     current_frame['quantization']['quantizer_step_size'] = data.get('quantizer_step_size', 0)
