@@ -188,6 +188,10 @@ fn validate_encoding_against_reference(file_path: &str) -> Result<(), Box<dyn st
     #[cfg(feature = "diagnostics")]
     {
         use shine_rs::diagnostics_data::{TestDataCollector, TestMetadata};
+        
+        // Reset global frame counter for consistent testing
+        shine_rs::reset_frame_counter();
+        
         let metadata = TestMetadata {
             name: format!("test_validation_{}", file_path),
             input_file: audio_path.clone(),
