@@ -4,9 +4,9 @@
     "input_file": "tests/audio/voice-recorder-testing-1-2-3-sound-file.wav",
     "expected_output_size": 1152,
     "expected_hash": "868B4DD8157EE0516EB79FDE8F6DE5F46CF4125990A288D55C2194FFF5D7F0D3",
-    "created_at": "2026-01-27T01:03:08.584847Z",
-    "description": "Voice recording at 128kbps, 3 frames",
-    "generated_by": "Shine reference implementation"
+    "created_at": "2026-01-27T09:32:32.479987Z",
+    "description": "Voice recording at 128kbps, 3 frames - real Shine data",
+    "generated_by": "Shine reference implementation with debug output"
   },
   "config": {
     "sample_rate": 48000,
@@ -20,78 +20,78 @@
       "frame_number": 1,
       "mdct_coefficients": {
         "coefficients": [
-          0,
-          0,
-          0
+          -6,
+          -8,
+          -1
         ],
         "l3_sb_sample": [
           0
         ]
       },
       "quantization": {
-        "xrmax": 0,
-        "max_bits": 0,
-        "part2_3_length": 0,
-        "quantizer_step_size": 0,
-        "global_gain": 0
+        "xrmax": 13,
+        "max_bits": 1452,
+        "part2_3_length": 1440,
+        "quantizer_step_size": -117,
+        "global_gain": 93
       },
       "bitstream": {
         "padding": 0,
-        "bits_per_frame": 0,
-        "written": 0,
-        "slot_lag": 0.0
+        "bits_per_frame": 3072,
+        "written": 384,
+        "slot_lag": -0.0
       }
     },
     {
       "frame_number": 2,
       "mdct_coefficients": {
         "coefficients": [
-          0,
-          0,
-          0
+          -1570,
+          -8200,
+          5922
         ],
         "l3_sb_sample": [
-          0
+          -58907
         ]
       },
       "quantization": {
-        "xrmax": 0,
-        "max_bits": 0,
-        "part2_3_length": 0,
-        "quantizer_step_size": 0,
-        "global_gain": 0
+        "xrmax": 352867,
+        "max_bits": 1452,
+        "part2_3_length": 1321,
+        "quantizer_step_size": -80,
+        "global_gain": 130
       },
       "bitstream": {
         "padding": 0,
-        "bits_per_frame": 0,
-        "written": 0,
-        "slot_lag": 0.0
+        "bits_per_frame": 3072,
+        "written": 384,
+        "slot_lag": -0.0
       }
     },
     {
       "frame_number": 3,
       "mdct_coefficients": {
         "coefficients": [
-          0,
-          0,
-          0
+          -661201,
+          -1409509,
+          -1038041
         ],
         "l3_sb_sample": [
-          0
+          392
         ]
       },
       "quantization": {
-        "xrmax": 0,
-        "max_bits": 0,
-        "part2_3_length": 0,
-        "quantizer_step_size": 0,
-        "global_gain": 0
+        "xrmax": 1923751,
+        "max_bits": 1452,
+        "part2_3_length": 1413,
+        "quantizer_step_size": -66,
+        "global_gain": 144
       },
       "bitstream": {
         "padding": 0,
-        "bits_per_frame": 0,
-        "written": 0,
-        "slot_lag": 0.0
+        "bits_per_frame": 3072,
+        "written": 384,
+        "slot_lag": -0.0
       }
     }
   ]

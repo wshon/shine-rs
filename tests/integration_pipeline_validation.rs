@@ -8,7 +8,7 @@
 
 use std::fs;
 use std::path::Path;
-use std::io::{Read, Write};
+use std::io::Read;
 use serde_json;
 use sha2::{Sha256, Digest};
 use shine_rs::diagnostics_data::{TestDataSet, Encoder, EncodingConfig, TestDataCollector, TestCaseData, MdctData, QuantizationData, BitstreamData};
@@ -357,7 +357,7 @@ fn validate_mdct_coefficients(
     for (i, (&actual_coeff, &ref_coeff)) in actual.coefficients.iter()
         .zip(reference.coefficients.iter()).enumerate() {
         
-        let diff = (actual_coeff - ref_coeff).abs() as i32;
+        let diff = (actual_coeff as i64 - ref_coeff as i64).abs() as i32;
         if diff > 1 { // Allow small integer differences
             return Err(format!(
                 "MDCT coefficient {} mismatch: actual={}, reference={}, diff={}",
@@ -377,7 +377,7 @@ fn validate_mdct_coefficients(
     for (i, (&actual_sample, &ref_sample)) in actual.l3_sb_sample.iter()
         .zip(reference.l3_sb_sample.iter()).enumerate() {
         
-        let diff = (actual_sample - ref_sample).abs() as i32;
+        let diff = (actual_sample as i64 - ref_sample as i64).abs() as i32;
         if diff > 1 { // Allow small integer differences
             return Err(format!(
                 "l3_sb_sample {} mismatch: actual={}, reference={}, diff={}",

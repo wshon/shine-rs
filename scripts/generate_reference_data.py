@@ -25,32 +25,32 @@ from pathlib import Path
 # 测试配置列表
 TEST_CONFIGS = [
     {
-        "name": "sample-3s_128k_3f_real",
+        "name": "sample-3s_128k_3f",
         "audio_file": "tests/audio/sample-3s.wav",
         "bitrate": 128,
         "frames": 3,
-        "description": "3秒音频样本，128kbps，3帧 - 真实Shine数据"
+        "description": "3-second sample at 128kbps, 3 frames - real Shine data"
     },
     {
-        "name": "voice_recorder_128k_3f_real", 
+        "name": "voice_recorder_128k_3f", 
         "audio_file": "tests/audio/voice-recorder-testing-1-2-3-sound-file.wav",
         "bitrate": 128,
         "frames": 3,
-        "description": "语音录音，128kbps，3帧 - 真实Shine数据"
+        "description": "Voice recording at 128kbps, 3 frames - real Shine data"
     },
     {
-        "name": "free_test_data_128k_3f_real",
+        "name": "free_test_data_128k_3f",
         "audio_file": "tests/audio/Free_Test_Data_500KB_WAV.wav", 
         "bitrate": 128,
         "frames": 3,
-        "description": "免费测试数据，128kbps，3帧 - 真实Shine数据"
+        "description": "Free test data at 128kbps, 3 frames - real Shine data"
     },
     {
-        "name": "sample-3s_192k_3f_real",
+        "name": "sample-3s_192k_3f",
         "audio_file": "tests/audio/sample-3s.wav",
         "bitrate": 192,
         "frames": 3,
-        "description": "3秒音频样本，192kbps，3帧 - 真实Shine数据"
+        "description": "3-second sample at 192kbps, 3 frames - real Shine data"
     }
 ]
 
@@ -359,7 +359,7 @@ def generate_test_data_structure(config, wav_metadata, mp3_file, frames):
             "expected_hash": file_hash,
             "created_at": datetime.now().isoformat() + "Z",
             "description": config["description"],
-            "generated_by": "Shine参考实现，带JSON调试输出"
+            "generated_by": "Shine reference implementation with debug output"
         },
         "config": {
             "sample_rate": wav_metadata["sample_rate"],
