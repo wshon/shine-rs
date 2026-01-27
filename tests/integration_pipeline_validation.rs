@@ -425,6 +425,9 @@ fn test_complete_encoding_pipeline() {
 /// Test that all discovered test data files pass encoding validation
 #[test]
 fn test_encoding_validation_all_files() {
+    // Reset global frame counter for consistent testing
+    shine_rs::reset_frame_counter();
+    
     let test_files = discover_test_data_files();
     
     assert!(!test_files.is_empty(), "Should find at least one test data file");
@@ -446,6 +449,9 @@ fn test_encoding_validation_all_files() {
 /// Test MDCT consistency by encoding and comparing coefficients
 #[test]
 fn test_mdct_encoding_consistency() {
+    // Reset global frame counter for consistent testing
+    shine_rs::reset_frame_counter();
+    
     let test_files = discover_test_data_files();
     
     for file_path in test_files {
@@ -475,6 +481,23 @@ fn test_mdct_encoding_consistency() {
             },
             mpeg_version: test_data.config.mpeg_version,
         };
+        
+        // Initialize test data collector
+        #[cfg(feature = "diagnostics")]
+        {
+            use shine_rs::diagnostics_data::{TestDataCollector, TestMetadata};
+            use chrono;
+            
+            let metadata = TestMetadata {
+                name: format!("test_mdct_consistency_{}", file_path),
+                input_file: audio_path.clone(),
+                expected_output_size: 0,
+                expected_hash: String::new(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+                description: "MDCT consistency test".to_string(),
+            };
+            TestDataCollector::initialize(metadata, config.clone());
+        }
         
         let mut encoder = Encoder::new(config).unwrap();
         
@@ -511,6 +534,9 @@ fn test_mdct_encoding_consistency() {
 /// Test quantization consistency by encoding and comparing parameters
 #[test]
 fn test_quantization_encoding_consistency() {
+    // Reset global frame counter for consistent testing
+    shine_rs::reset_frame_counter();
+    
     let test_files = discover_test_data_files();
     
     for file_path in test_files {
@@ -540,6 +566,23 @@ fn test_quantization_encoding_consistency() {
             },
             mpeg_version: test_data.config.mpeg_version,
         };
+        
+        // Initialize test data collector
+        #[cfg(feature = "diagnostics")]
+        {
+            use shine_rs::diagnostics_data::{TestDataCollector, TestMetadata};
+            use chrono;
+            
+            let metadata = TestMetadata {
+                name: format!("test_quantization_consistency_{}", file_path),
+                input_file: audio_path.clone(),
+                expected_output_size: 0,
+                expected_hash: String::new(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+                description: "Quantization consistency test".to_string(),
+            };
+            TestDataCollector::initialize(metadata, config.clone());
+        }
         
         let mut encoder = Encoder::new(config).unwrap();
         
@@ -576,6 +619,9 @@ fn test_quantization_encoding_consistency() {
 /// Test bitstream consistency by encoding and comparing output
 #[test]
 fn test_bitstream_encoding_consistency() {
+    // Reset global frame counter for consistent testing
+    shine_rs::reset_frame_counter();
+    
     let test_files = discover_test_data_files();
     
     for file_path in test_files {
@@ -605,6 +651,23 @@ fn test_bitstream_encoding_consistency() {
             },
             mpeg_version: test_data.config.mpeg_version,
         };
+        
+        // Initialize test data collector
+        #[cfg(feature = "diagnostics")]
+        {
+            use shine_rs::diagnostics_data::{TestDataCollector, TestMetadata};
+            use chrono;
+            
+            let metadata = TestMetadata {
+                name: format!("test_bitstream_consistency_{}", file_path),
+                input_file: audio_path.clone(),
+                expected_output_size: 0,
+                expected_hash: String::new(),
+                created_at: chrono::Utc::now().to_rfc3339(),
+                description: "Bitstream consistency test".to_string(),
+            };
+            TestDataCollector::initialize(metadata, config.clone());
+        }
         
         let mut encoder = Encoder::new(config).unwrap();
         
