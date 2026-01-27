@@ -35,9 +35,13 @@ pub struct FrameData {
 #[cfg(feature = "diagnostics")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MdctData {
-    /// Key MDCT coefficients [ch][gr][band][k] for verification
-    /// Only stores coefficients at positions [0][0][0][15], [0][0][0][16], [0][0][0][17]
-    pub coefficients: Vec<i32>,
+    /// MDCT coefficients before aliasing reduction [k=17, k=16, k=15]
+    /// These are the raw MDCT transform results
+    pub coefficients_before_aliasing: Vec<i32>,
+    
+    /// MDCT coefficients after aliasing reduction [k=17, k=16, k=15]
+    /// These are the final coefficients used in quantization
+    pub coefficients_after_aliasing: Vec<i32>,
     
     /// Saved l3_sb_sample values for verification
     pub l3_sb_sample: Vec<i32>,
@@ -181,7 +185,8 @@ impl TestDataCollector {
                 let frame_data = FrameData {
                     frame_number,
                     mdct_coefficients: MdctData {
-                        coefficients: Vec::new(),
+                        coefficients_before_aliasing: Vec::new(),
+                        coefficients_after_aliasing: Vec::new(),
                         l3_sb_sample: Vec::new(),
                     },
                     quantization: QuantizationData {
@@ -203,14 +208,27 @@ impl TestDataCollector {
         }
     }
     
-    /// Record MDCT coefficient
-    pub fn record_mdct_coefficient(k: usize, value: i32) {
+    /// Record MDCT coefficient before aliasing reduction
+    pub fn record_mdct_coefficient_before_aliasing(k: usize, value: i32) {
         let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
         if let Some(collector) = guard.as_mut() {
             if collector.current_frame <= 6 && k >= 15 && k <= 17 {
                 if let Some(frame) = collector.test_case.frames.iter_mut()
                     .find(|f| f.frame_number == collector.current_frame) {
-                    frame.mdct_coefficients.coefficients.push(value);
+                    frame.mdct_coefficients.coefficients_before_aliasing.push(value);
+                }
+            }
+        }
+    }
+    
+    /// Record MDCT coefficient after aliasing reduction
+    pub fn record_mdct_coefficient_after_aliasing(k: usize, value: i32) {
+        let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
+        if let Some(collector) = guard.as_mut() {
+            if collector.current_frame <= 6 && k >= 15 && k <= 17 {
+                if let Some(frame) = collector.test_case.frames.iter_mut()
+                    .find(|f| f.frame_number == collector.current_frame) {
+                    frame.mdct_coefficients.coefficients_after_aliasing.push(value);
                 }
             }
         }
@@ -283,6 +301,18 @@ impl TestDataCollector {
         Ok(test_case)
     }
     
+    /// Get current frame data from the collector
+    pub fn get_current_frame_data() -> Option<FrameData> {
+        let guard = TEST_DATA_COLLECTOR.lock().unwrap();
+        if let Some(collector) = guard.as_ref() {
+            if let Some(frame) = collector.test_case.frames.iter()
+                .find(|f| f.frame_number == collector.current_frame) {
+                return Some(frame.clone());
+            }
+        }
+        None
+    }
+    
     /// Check if collection is enabled (for performance)
     pub fn is_collecting() -> bool {
         let guard = TEST_DATA_COLLECTOR.lock().unwrap();
@@ -290,7 +320,11 @@ impl TestDataCollector {
     }
 }
 
-/// Convenience functions for recording data
+    /// Check if collection is enabled (for performance)
+    pub fn is_collecting() -> bool {
+        let guard = TEST_DATA_COLLECTOR.lock().unwrap();
+        guard.is_some()
+    }
 #[cfg(feature = "diagnostics")]
 pub fn start_frame_collection(frame_number: i32) {
     if TestDataCollector::is_collecting() {
@@ -299,9 +333,16 @@ pub fn start_frame_collection(frame_number: i32) {
 }
 
 #[cfg(feature = "diagnostics")]
-pub fn record_mdct_coeff(k: usize, value: i32) {
+pub fn record_mdct_coeff_before_aliasing(k: usize, value: i32) {
     if TestDataCollector::is_collecting() {
-        TestDataCollector::record_mdct_coefficient(k, value);
+        TestDataCollector::record_mdct_coefficient_before_aliasing(k, value);
+    }
+}
+
+#[cfg(feature = "diagnostics")]
+pub fn record_mdct_coeff_after_aliasing(k: usize, value: i32) {
+    if TestDataCollector::is_collecting() {
+        TestDataCollector::record_mdct_coefficient_after_aliasing(k, value);
     }
 }
 
@@ -384,6 +425,14 @@ impl Encoder {
 
     /// Encode a frame and capture intermediate data
     pub fn encode_frame(&mut self, samples: &[i16]) -> EncodingResult<EncodedFrame> {
+        // Start frame collection
+        #[cfg(feature = "diagnostics")]
+        {
+            static FRAME_COUNTER: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+            let frame_num = FRAME_COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            crate::diagnostics_data::start_frame_collection(frame_num);
+        }
+
         // Prepare sample data
         let sample_ptr = samples.as_ptr();
 
@@ -413,25 +462,16 @@ impl Encoder {
 
     /// Capture MDCT coefficients from the encoder state
     fn capture_mdct_data(&self) -> MdctData {
-        let mut coefficients = Vec::new();
-        let mut l3_sb_sample = Vec::new();
-
-        // Extract key MDCT coefficients (positions 17, 16, 15 from first channel/granule/band)
-        // MDCT coefficients are stored as mdct_freq[ch][gr][band*18 + k]
-        // We want band=0, k=17,16,15 from ch=0, gr=0 (in that order to match test data)
-        if self.config.mpeg.granules_per_frame > 0 {
-            for k in [17, 16, 15] {
-                let index = 0 * 18 + k; // band=0, k=17,16,15
-                if index < self.config.mdct_freq[0][0].len() {
-                    let coeff = self.config.mdct_freq[0][0][index];
-                    coefficients.push(coeff);
-                    #[cfg(any(debug_assertions, feature = "diagnostics"))]
-                    println!("[RUST DEBUG] Captured MDCT coeff k={}: {}", k, coeff);
-                }
+        // Try to get data from the global test data collector first
+        #[cfg(feature = "diagnostics")]
+        {
+            if let Some(frame_data) = TestDataCollector::get_current_frame_data() {
+                return frame_data.mdct_coefficients;
             }
         }
-
-        // Extract l3_sb_sample data from first channel
+        
+        // Fallback: extract l3_sb_sample data from encoder state
+        let mut l3_sb_sample = Vec::new();
         for gr in 0..std::cmp::min(self.config.mpeg.granules_per_frame as usize, 1) {
             for sb in 0..std::cmp::min(18, 3) { // Limit to first few subbands
                 for i in 0..std::cmp::min(crate::types::SBLIMIT, 8) { // Limit samples
@@ -441,7 +481,8 @@ impl Encoder {
         }
 
         MdctData {
-            coefficients,
+            coefficients_before_aliasing: Vec::new(),
+            coefficients_after_aliasing: Vec::new(),
             l3_sb_sample,
         }
     }

@@ -148,7 +148,8 @@ def parse_json_debug_output(debug_output):
                 frames[frame_num] = {
                     'frame_number': frame_num,
                     'mdct_coefficients': {
-                        'coefficients': [0, 0, 0],  # k=17, k=16, k=15
+                        'coefficients_before_aliasing': [0, 0, 0],  # k=17, k=16, k=15 (before aliasing)
+                        'coefficients_after_aliasing': [0, 0, 0],   # k=17, k=16, k=15 (after aliasing)
                         'l3_sb_sample': [0]
                     },
                     'quantization': {
@@ -172,12 +173,24 @@ def parse_json_debug_output(debug_output):
             if data['type'] == 'mdct_coeff':
                 k = data.get('k')
                 value = data.get('value')
+                # 这些是混叠减少前的系数
                 if k == 17:
-                    current_frame['mdct_coefficients']['coefficients'][0] = value
+                    current_frame['mdct_coefficients']['coefficients_before_aliasing'][0] = value
                 elif k == 16:
-                    current_frame['mdct_coefficients']['coefficients'][1] = value
+                    current_frame['mdct_coefficients']['coefficients_before_aliasing'][1] = value
                 elif k == 15:
-                    current_frame['mdct_coefficients']['coefficients'][2] = value
+                    current_frame['mdct_coefficients']['coefficients_before_aliasing'][2] = value
+            
+            elif data['type'] == 'mdct_coeff_after_aliasing':
+                k = data.get('k')
+                value = data.get('value')
+                # 这些是混叠减少后的系数
+                if k == 17:
+                    current_frame['mdct_coefficients']['coefficients_after_aliasing'][0] = value
+                elif k == 16:
+                    current_frame['mdct_coefficients']['coefficients_after_aliasing'][1] = value
+                elif k == 15:
+                    current_frame['mdct_coefficients']['coefficients_after_aliasing'][2] = value
             
             elif data['type'] == 'l3_sb_sample':
                 samples = data.get('samples', [])
@@ -439,7 +452,8 @@ def main():
         if frames:
             frame1 = frames[0]
             print(f"  第1帧样本数据:")
-            print(f"    MDCT系数: {frame1['mdct_coefficients']['coefficients']}")
+            print(f"    MDCT系数(混叠前): {frame1['mdct_coefficients']['coefficients_before_aliasing']}")
+            print(f"    MDCT系数(混叠后): {frame1['mdct_coefficients']['coefficients_after_aliasing']}")
             print(f"    l3_sb_sample: {frame1['mdct_coefficients']['l3_sb_sample']}")
             print(f"    xrmax: {frame1['quantization']['xrmax']}")
             print(f"    global_gain: {frame1['quantization']['global_gain']}")

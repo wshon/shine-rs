@@ -11,6 +11,7 @@ use std::path::Path;
 use std::io::Read;
 use serde_json;
 use sha2::{Sha256, Digest};
+use chrono;
 use shine_rs::diagnostics_data::{TestDataSet, Encoder, EncodingConfig, TestDataCollector, TestCaseData, MdctData, QuantizationData, BitstreamData};
 use shine_rs_cli::util::read_wav_file;
 use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
@@ -299,6 +300,21 @@ fn validate_encoding_against_reference(file_path: &str) -> Result<(), Box<dyn st
     assert_eq!(channels, config.channels,
               "Audio file channels don't match test data");
     
+    // Initialize test data collector
+    #[cfg(feature = "diagnostics")]
+    {
+        use shine_rs::diagnostics_data::{TestDataCollector, TestMetadata};
+        let metadata = TestMetadata {
+            name: format!("test_validation_{}", file_path),
+            input_file: audio_path.clone(),
+            expected_output_size: 0,
+            expected_hash: String::new(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            description: "Validation test".to_string(),
+        };
+        TestDataCollector::initialize(metadata, config.clone());
+    }
+    
     // Initialize encoder
     let mut encoder = Encoder::new(config)?;
     
@@ -345,22 +361,41 @@ fn validate_mdct_coefficients(
     reference: &MdctData
 ) -> Result<(), Box<dyn std::error::Error>> {
     
-    // Check coefficient count
-    if actual.coefficients.len() != reference.coefficients.len() {
+    // Check coefficients before aliasing reduction
+    if actual.coefficients_before_aliasing.len() != reference.coefficients_before_aliasing.len() {
         return Err(format!(
-            "MDCT coefficient count mismatch: actual={}, reference={}",
-            actual.coefficients.len(), reference.coefficients.len()
+            "MDCT coefficients_before_aliasing count mismatch: actual={}, reference={}",
+            actual.coefficients_before_aliasing.len(), reference.coefficients_before_aliasing.len()
         ).into());
     }
     
-    // Compare coefficients with tolerance for integer values
-    for (i, (&actual_coeff, &ref_coeff)) in actual.coefficients.iter()
-        .zip(reference.coefficients.iter()).enumerate() {
+    for (i, (&actual_coeff, &ref_coeff)) in actual.coefficients_before_aliasing.iter()
+        .zip(reference.coefficients_before_aliasing.iter()).enumerate() {
         
         let diff = (actual_coeff as i64 - ref_coeff as i64).abs() as i32;
         if diff > 1 { // Allow small integer differences
             return Err(format!(
-                "MDCT coefficient {} mismatch: actual={}, reference={}, diff={}",
+                "MDCT coefficient_before_aliasing {} mismatch: actual={}, reference={}, diff={}",
+                i, actual_coeff, ref_coeff, diff
+            ).into());
+        }
+    }
+    
+    // Check coefficients after aliasing reduction
+    if actual.coefficients_after_aliasing.len() != reference.coefficients_after_aliasing.len() {
+        return Err(format!(
+            "MDCT coefficients_after_aliasing count mismatch: actual={}, reference={}",
+            actual.coefficients_after_aliasing.len(), reference.coefficients_after_aliasing.len()
+        ).into());
+    }
+    
+    for (i, (&actual_coeff, &ref_coeff)) in actual.coefficients_after_aliasing.iter()
+        .zip(reference.coefficients_after_aliasing.iter()).enumerate() {
+        
+        let diff = (actual_coeff as i64 - ref_coeff as i64).abs() as i32;
+        if diff > 1 { // Allow small integer differences
+            return Err(format!(
+                "MDCT coefficient_after_aliasing {} mismatch: actual={}, reference={}, diff={}",
                 i, actual_coeff, ref_coeff, diff
             ).into());
         }

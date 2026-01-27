@@ -4,7 +4,7 @@
     "input_file": "tests/audio/sample-3s.wav",
     "expected_output_size": 1252,
     "expected_hash": "2D9ACB93B5B57E16DC2BCC4B59BAA8A223EA10F079B1F76F8919E3D83156549F",
-    "created_at": "2026-01-27T09:32:32.459612Z",
+    "created_at": "2026-01-27T10:00:38.003379Z",
     "description": "3-second sample at 128kbps, 3 frames - real Shine data",
     "generated_by": "Shine reference implementation with debug output"
   },
@@ -19,10 +19,15 @@
     {
       "frame_number": 1,
       "mdct_coefficients": {
-        "coefficients": [
+        "coefficients_before_aliasing": [
           808302,
           3145162,
           6527797
+        ],
+        "coefficients_after_aliasing": [
+          4832453,
+          4736624,
+          6019291
         ],
         "l3_sb_sample": [
           1490
@@ -45,10 +50,15 @@
     {
       "frame_number": 2,
       "mdct_coefficients": {
-        "coefficients": [
+        "coefficients_before_aliasing": [
           -17369047,
           13912238,
           31910201
+        ],
+        "coefficients_after_aliasing": [
+          -1689246,
+          9846189,
+          16240767
         ],
         "l3_sb_sample": [
           -162322074
@@ -71,10 +81,15 @@
     {
       "frame_number": 3,
       "mdct_coefficients": {
-        "coefficients": [
+        "coefficients_before_aliasing": [
           -20877153,
           -19736998,
           -24380058
+        ],
+        "coefficients_after_aliasing": [
+          -13299714,
+          -34681371,
+          -1480282
         ],
         "l3_sb_sample": [
           -79764579
