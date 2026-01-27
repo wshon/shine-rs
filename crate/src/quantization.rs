@@ -266,7 +266,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             }
 
             // all spectral values zero ?
-            let part2_3_length = if config.l3loop.xrmax != 0 {
+            let _part2_3_length = if config.l3loop.xrmax != 0 {
                 let ix_slice = unsafe { std::slice::from_raw_parts_mut(ix, GRANULE_SIZE) };
                 let length = shine_outer_loop(
                     max_bits,

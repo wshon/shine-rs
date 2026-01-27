@@ -182,10 +182,8 @@ impl TestDataCollector {
             
             // Initialize frame data if this is a new frame within our collection range
             let frame_exists = collector.test_case.frames.iter().any(|f| f.frame_number == frame_number);
-            println!("[RUST DEBUG] start_frame: frame_number={}, frame_exists={}", frame_number, frame_exists);
             
             if frame_number <= 6 && !frame_exists {
-                println!("[RUST DEBUG] start_frame: Creating new frame data for frame {}", frame_number);
                 let frame_data = FrameData {
                     frame_number,
                     mdct_coefficients: MdctData {
@@ -208,8 +206,6 @@ impl TestDataCollector {
                     },
                 };
                 collector.test_case.frames.push(frame_data);
-            } else if frame_exists {
-                println!("[RUST DEBUG] start_frame: Frame {} already exists, not reinitializing", frame_number);
             }
         }
     }
@@ -239,7 +235,6 @@ impl TestDataCollector {
     pub fn record_mdct_coefficient_after_aliasing(k: usize, value: i32) {
         let mut guard = TEST_DATA_COLLECTOR.lock().unwrap();
         if let Some(collector) = guard.as_mut() {
-            println!("[RUST DEBUG] TestDataCollector: current_frame={}, k={}, value={}", collector.current_frame, k, value);
             if collector.current_frame <= 6 && k >= 15 && k <= 17 {
                 if let Some(frame) = collector.test_case.frames.iter_mut()
                     .find(|f| f.frame_number == collector.current_frame) {
@@ -251,17 +246,9 @@ impl TestDataCollector {
                     let index = 17 - k;
                     if index < 3 {
                         frame.mdct_coefficients.coefficients_after_aliasing[index] = value;
-                        println!("[RUST DEBUG] Stored after aliasing: frame={}, k={}, index={}, value={}", 
-                                 collector.current_frame, k, index, value);
                     }
-                } else {
-                    println!("[RUST DEBUG] No frame found for current_frame={}", collector.current_frame);
                 }
-            } else {
-                println!("[RUST DEBUG] Conditions not met: current_frame={}, k={}", collector.current_frame, k);
             }
-        } else {
-            println!("[RUST DEBUG] TestDataCollector not initialized");
         }
     }
     
@@ -359,7 +346,6 @@ impl TestDataCollector {
 #[cfg(feature = "diagnostics")]
 pub fn start_frame_collection(frame_number: i32) {
     if TestDataCollector::is_collecting() {
-        println!("[RUST DEBUG] start_frame_collection: frame_number={}", frame_number);
         TestDataCollector::start_frame(frame_number);
     }
 }
@@ -492,44 +478,8 @@ impl Encoder {
         // Try to get data from the global test data collector first
         #[cfg(feature = "diagnostics")]
         {
-            let guard = TEST_DATA_COLLECTOR.lock().unwrap();
-            if let Some(collector) = guard.as_ref() {
-                println!("[RUST DEBUG] capture_mdct_data: current_frame={}", collector.current_frame);
-                println!("[RUST DEBUG] Available frames: {:?}", 
-                         collector.test_case.frames.iter().map(|f| f.frame_number).collect::<Vec<_>>());
-                
-                // Debug: Print frame 3 data if it exists
-                if let Some(frame_3) = collector.test_case.frames.iter().find(|f| f.frame_number == 3) {
-                    println!("[RUST DEBUG] Frame 3 coefficients_after_aliasing.len()={}", 
-                             frame_3.mdct_coefficients.coefficients_after_aliasing.len());
-                }
-                
-                // First try to find the exact current frame
-                if let Some(frame_data) = collector.test_case.frames.iter()
-                    .find(|f| f.frame_number == collector.current_frame) {
-                    println!("[RUST DEBUG] capture_mdct_data: Found exact frame {}", collector.current_frame);
-                    println!("[RUST DEBUG] coefficients_before_aliasing.len()={}", frame_data.mdct_coefficients.coefficients_before_aliasing.len());
-                    println!("[RUST DEBUG] coefficients_after_aliasing.len()={}", frame_data.mdct_coefficients.coefficients_after_aliasing.len());
-                    return frame_data.mdct_coefficients.clone();
-                } else {
-                    println!("[RUST DEBUG] capture_mdct_data: Could not find exact frame {}", collector.current_frame);
-                }
-                
-                // If not found, try to find the most recent frame with data
-                if let Some(frame_data) = collector.test_case.frames.iter()
-                    .filter(|f| f.frame_number <= collector.current_frame)
-                    .filter(|f| !f.mdct_coefficients.coefficients_after_aliasing.is_empty())
-                    .max_by_key(|f| f.frame_number) {
-                    println!("[RUST DEBUG] capture_mdct_data: Using most recent frame {} for current_frame={}", 
-                             frame_data.frame_number, collector.current_frame);
-                    println!("[RUST DEBUG] coefficients_before_aliasing.len()={}", frame_data.mdct_coefficients.coefficients_before_aliasing.len());
-                    println!("[RUST DEBUG] coefficients_after_aliasing.len()={}", frame_data.mdct_coefficients.coefficients_after_aliasing.len());
-                    return frame_data.mdct_coefficients.clone();
-                }
-                
-                println!("[RUST DEBUG] capture_mdct_data: No frame found for current_frame={}", collector.current_frame);
-            } else {
-                println!("[RUST DEBUG] capture_mdct_data: No TestDataCollector");
+            if let Some(frame_data) = TestDataCollector::get_current_frame_data() {
+                return frame_data.mdct_coefficients;
             }
         }
         

@@ -21,7 +21,7 @@ pub fn shine_max_reservoir_bits(pe: &f64, config: &ShineGlobalConfig) -> i32 {
     // Debug output for reservoir calculation
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
     {
-        let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
+        let _debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
             .unwrap_or_else(|_| "6".to_string())
             .parse::<i32>()
             .unwrap_or(6);
@@ -34,7 +34,7 @@ pub fn shine_max_reservoir_bits(pe: &f64, config: &ShineGlobalConfig) -> i32 {
 
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
     {
-        let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
+        let _debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
             .unwrap_or_else(|_| "6".to_string())
             .parse::<i32>()
             .unwrap_or(6);
