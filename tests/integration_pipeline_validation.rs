@@ -250,7 +250,7 @@ fn validate_complete_encoding_pipeline(file_path: &str) -> Result<(), Box<dyn st
 
 /// Discover all JSON test data files in the fixtures directory
 fn discover_test_data_files() -> Vec<String> {
-    let data_dir = "tests/data";
+    let data_dir = "tests/pipeline_data";
     let mut files = Vec::new();
     
     if let Ok(entries) = fs::read_dir(data_dir) {
