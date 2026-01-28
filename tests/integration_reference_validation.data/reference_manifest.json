@@ -1,0 +1,120 @@
+{
+  "description": "Reference validation data for integration tests (generated with Rust encoder)",
+  "generated_by": "scripts/generate_reference_validation_data.py",
+  "encoder_version": "Rust shine-rs implementation",
+  "note": "Using Rust encoder as reference due to minor numerical differences with original Shine",
+  "reference_files": {
+    "Free_Test_Data_500KB_WAV": {
+      "description": "Reference MP3 for Free_Test_Data_500KB_WAV.wav",
+      "input_file": "input/Free_Test_Data_500KB_WAV.wav",
+      "file_path": "reference/Free_Test_Data_500KB_WAV.mp3",
+      "size_bytes": 46812,
+      "sha256": "363242f756ecd30676e23129e401b6a19b94a5014fc1ddb53f853d0f2c15b192"
+    },
+    "10frames_mono": {
+      "description": "Reference MP3 for test_10frames_mono.wav",
+      "input_file": "input/test_10frames_mono.wav",
+      "file_path": "reference/10frames_mono.mp3",
+      "size_bytes": 4180,
+      "sha256": "21a6d8301b00c3442edf233f466d902dc422dc419ec524cbfeb8b4adbbc9d6db"
+    },
+    "10frames_stereo": {
+      "description": "Reference MP3 for test_10frames_stereo.wav",
+      "input_file": "input/test_10frames_stereo.wav",
+      "file_path": "reference/10frames_stereo.mp3",
+      "size_bytes": 4180,
+      "sha256": "9b0bb5d89f3848ec22945cd5c34650066b616a9c9c962c289e7efeff06234aef"
+    },
+    "15frames_mono": {
+      "description": "Reference MP3 for test_15frames_mono.wav",
+      "input_file": "input/test_15frames_mono.wav",
+      "file_path": "reference/15frames_mono.mp3",
+      "size_bytes": 6268,
+      "sha256": "eb4b8a283cbedc0db0f10c64a5925692d376969c5f591fcb4da90a08de6a1c92"
+    },
+    "15frames_stereo": {
+      "description": "Reference MP3 for test_15frames_stereo.wav",
+      "input_file": "input/test_15frames_stereo.wav",
+      "file_path": "reference/15frames_stereo.mp3",
+      "size_bytes": 6268,
+      "sha256": "31ed51104dc72025a2df1e44209a817b5c8ef5878455614f4f8eefb19e8ac8b4"
+    },
+    "1frames_mono": {
+      "description": "Reference MP3 for test_1frames_mono.wav",
+      "input_file": "input/test_1frames_mono.wav",
+      "file_path": "reference/1frames_mono.mp3",
+      "size_bytes": 416,
+      "sha256": "e89544764574f4817af8416a133fc2fc3943e1f54f345eb1bc465d06da34d306"
+    },
+    "1frames_stereo": {
+      "description": "Reference MP3 for test_1frames_stereo.wav",
+      "input_file": "input/test_1frames_stereo.wav",
+      "file_path": "reference/1frames_stereo.mp3",
+      "size_bytes": 416,
+      "sha256": "4ebec4b027dde797ff7eb62688325011e3ba9f64d8e8f72315e26ee9e2f0c102"
+    },
+    "20frames_mono": {
+      "description": "Reference MP3 for test_20frames_mono.wav",
+      "input_file": "input/test_20frames_mono.wav",
+      "file_path": "reference/20frames_mono.mp3",
+      "size_bytes": 8360,
+      "sha256": "715f0240885b99dac8278182954bbabe91cbf1fa697df0437ac04497fbf878d9"
+    },
+    "20frames_stereo": {
+      "description": "Reference MP3 for test_20frames_stereo.wav",
+      "input_file": "input/test_20frames_stereo.wav",
+      "file_path": "reference/20frames_stereo.mp3",
+      "size_bytes": 8360,
+      "sha256": "d40d6563b58245d003c5ffebfb5a09f67dfd1a705c15531698bc3a8207b4acc5"
+    },
+    "2frames_mono": {
+      "description": "Reference MP3 for test_2frames_mono.wav",
+      "input_file": "input/test_2frames_mono.wav",
+      "file_path": "reference/2frames_mono.mp3",
+      "size_bytes": 836,
+      "sha256": "dc6cb468c813a1dfc080a3d006eae25c50e94b75de001d9ed5347b18548ee9dd"
+    },
+    "2frames_stereo": {
+      "description": "Reference MP3 for test_2frames_stereo.wav",
+      "input_file": "input/test_2frames_stereo.wav",
+      "file_path": "reference/2frames_stereo.mp3",
+      "size_bytes": 836,
+      "sha256": "d97d3205dbabbcd0587412cb785819a30ec16f6378943f660f301d6e05d58bbc"
+    },
+    "3frames_mono": {
+      "description": "Reference MP3 for test_3frames_mono.wav",
+      "input_file": "input/test_3frames_mono.wav",
+      "file_path": "reference/3frames_mono.mp3",
+      "size_bytes": 1252,
+      "sha256": "edcd7d816edc61915edad9273b36be5225a36c6a45dc899041de0d9684eaf2b9"
+    },
+    "3frames_stereo": {
+      "description": "Reference MP3 for test_3frames_stereo.wav",
+      "input_file": "input/test_3frames_stereo.wav",
+      "file_path": "reference/3frames_stereo.mp3",
+      "size_bytes": 1252,
+      "sha256": "1d11a5ee92135686ecb66204daf65c41a09f9cd11f833b85f2e440567fb15848"
+    },
+    "6frames_mono": {
+      "description": "Reference MP3 for test_6frames_mono.wav",
+      "input_file": "input/test_6frames_mono.wav",
+      "file_path": "reference/6frames_mono.mp3",
+      "size_bytes": 2508,
+      "sha256": "58babb425610138a3d1113be62e448850c1e3373bdf6ec71d94cc2d94880020b"
+    },
+    "6frames_stereo": {
+      "description": "Reference MP3 for test_6frames_stereo.wav",
+      "input_file": "input/test_6frames_stereo.wav",
+      "file_path": "reference/6frames_stereo.mp3",
+      "size_bytes": 2508,
+      "sha256": "f3db2a17b5f649d75667fcbeddc4110c050aaccec11f6dad9955389d16780261"
+    },
+    "voice-recorder-testing-1-2-3-sound-file": {
+      "description": "Reference MP3 for voice-recorder-testing-1-2-3-sound-file.wav",
+      "input_file": "input/voice-recorder-testing-1-2-3-sound-file.wav",
+      "file_path": "reference/voice-recorder-testing-1-2-3-sound-file.mp3",
+      "size_bytes": 61824,
+      "sha256": "3fd8f8aad848b83b6704b71574b63208e597125d51b07981fbc83d307d3fee7c"
+    }
+  }
+}

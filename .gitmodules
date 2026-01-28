@@ -1,0 +1,3 @@
+[submodule "ref/shine"]
+	path = ref/shine
+	url = https://github.com/wshon/shine.git
