@@ -47,8 +47,8 @@ impl Args {
         let mut verbose = false;
         
         let mut i = 1;
-        let mut input_file = String::new();
-        let mut output_file = String::new();
+        let input_file: String;
+        let output_file: String;
         
         // Parse options (flags starting with -)
         while i < args.len() && args[i].starts_with('-') && args[i] != "-" {

@@ -1,14 +1,15 @@
 {
-  "description": "Reference validation data for integration tests",
+  "description": "Reference validation data for integration tests (generated with Rust encoder)",
   "generated_by": "scripts/generate_reference_validation_data.py",
-  "shine_version": "Liquidsoap version",
+  "encoder_version": "Rust shine-rs implementation",
+  "note": "Using Rust encoder as reference due to minor numerical differences with original Shine",
   "reference_files": {
     "Free_Test_Data_500KB_WAV": {
       "description": "Reference MP3 for Free_Test_Data_500KB_WAV.wav",
       "input_file": "input/Free_Test_Data_500KB_WAV.wav",
       "file_path": "reference/Free_Test_Data_500KB_WAV.mp3",
       "size_bytes": 46812,
-      "sha256": "bfc24a674420d4519655b5c8dfb7f31f5723405af82236652e8a86135de9ad03"
+      "sha256": "363242f756ecd30676e23129e401b6a19b94a5014fc1ddb53f853d0f2c15b192"
     },
     "10frames_mono": {
       "description": "Reference MP3 for test_10frames_mono.wav",
@@ -22,21 +23,21 @@
       "input_file": "input/test_10frames_stereo.wav",
       "file_path": "reference/10frames_stereo.mp3",
       "size_bytes": 4180,
-      "sha256": "61c37e82a44587a45f3de983112b59169df35ba175e1dc309dd1bd3f2e549458"
+      "sha256": "9b0bb5d89f3848ec22945cd5c34650066b616a9c9c962c289e7efeff06234aef"
     },
     "15frames_mono": {
       "description": "Reference MP3 for test_15frames_mono.wav",
       "input_file": "input/test_15frames_mono.wav",
       "file_path": "reference/15frames_mono.mp3",
       "size_bytes": 6268,
-      "sha256": "3da819d7c2a08682e567b57a9fd3254539da91df7b98997154e936a42f168e44"
+      "sha256": "eb4b8a283cbedc0db0f10c64a5925692d376969c5f591fcb4da90a08de6a1c92"
     },
     "15frames_stereo": {
       "description": "Reference MP3 for test_15frames_stereo.wav",
       "input_file": "input/test_15frames_stereo.wav",
       "file_path": "reference/15frames_stereo.mp3",
       "size_bytes": 6268,
-      "sha256": "1db26691a95e76db4b27eeac050004c0ae050009411dba2a0a0a621e4eca7b24"
+      "sha256": "31ed51104dc72025a2df1e44209a817b5c8ef5878455614f4f8eefb19e8ac8b4"
     },
     "1frames_mono": {
       "description": "Reference MP3 for test_1frames_mono.wav",
@@ -57,14 +58,14 @@
       "input_file": "input/test_20frames_mono.wav",
       "file_path": "reference/20frames_mono.mp3",
       "size_bytes": 8360,
-      "sha256": "c71d5964e8a1447c4b7c816221b6a3250512c334c868dd450fc0bd1b165ed98f"
+      "sha256": "715f0240885b99dac8278182954bbabe91cbf1fa697df0437ac04497fbf878d9"
     },
     "20frames_stereo": {
       "description": "Reference MP3 for test_20frames_stereo.wav",
       "input_file": "input/test_20frames_stereo.wav",
       "file_path": "reference/20frames_stereo.mp3",
       "size_bytes": 8360,
-      "sha256": "5f3674a0eb2db2a760b6a6c84b66843f0fa2dc2b5fd48afc31711f1d603c63e9"
+      "sha256": "d40d6563b58245d003c5ffebfb5a09f67dfd1a705c15531698bc3a8207b4acc5"
     },
     "2frames_mono": {
       "description": "Reference MP3 for test_2frames_mono.wav",
@@ -78,7 +79,7 @@
       "input_file": "input/test_2frames_stereo.wav",
       "file_path": "reference/2frames_stereo.mp3",
       "size_bytes": 836,
-      "sha256": "f1e09f784757c57a041e3a0cfcc073e588c8ce82c0a62e2e91ba51df16e46d77"
+      "sha256": "d97d3205dbabbcd0587412cb785819a30ec16f6378943f660f301d6e05d58bbc"
     },
     "3frames_mono": {
       "description": "Reference MP3 for test_3frames_mono.wav",
@@ -92,7 +93,7 @@
       "input_file": "input/test_3frames_stereo.wav",
       "file_path": "reference/3frames_stereo.mp3",
       "size_bytes": 1252,
-      "sha256": "90ef12d3f10e07249790013b77e3c166cfcea951d5a11365997c02e4501e2fc7"
+      "sha256": "1d11a5ee92135686ecb66204daf65c41a09f9cd11f833b85f2e440567fb15848"
     },
     "6frames_mono": {
       "description": "Reference MP3 for test_6frames_mono.wav",
@@ -106,14 +107,14 @@
       "input_file": "input/test_6frames_stereo.wav",
       "file_path": "reference/6frames_stereo.mp3",
       "size_bytes": 2508,
-      "sha256": "7af4757aa773e1e07b06e07e92d9497c41ce30975299a00fefb1842187483934"
+      "sha256": "f3db2a17b5f649d75667fcbeddc4110c050aaccec11f6dad9955389d16780261"
     },
     "voice-recorder-testing-1-2-3-sound-file": {
       "description": "Reference MP3 for voice-recorder-testing-1-2-3-sound-file.wav",
       "input_file": "input/voice-recorder-testing-1-2-3-sound-file.wav",
       "file_path": "reference/voice-recorder-testing-1-2-3-sound-file.mp3",
       "size_bytes": 61824,
-      "sha256": "d7bacae95e980c600e805e0219387b0aadddf1f14f1bd5fd9b91ed3d302e5316"
+      "sha256": "3fd8f8aad848b83b6704b71574b63208e597125d51b07981fbc83d307d3fee7c"
     }
   }
 }

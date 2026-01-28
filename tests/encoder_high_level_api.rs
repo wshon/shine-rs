@@ -22,7 +22,7 @@ fn test_config_validation() {
     
     // Test invalid sample rate
     let invalid_config = Mp3EncoderConfig::new()
-        .sample_rate(22050) // Not in SUPPORTED_SAMPLE_RATES
+        .sample_rate(33333) // Not in SUPPORTED_SAMPLE_RATES
         .channels(2)
         .bitrate(128);
     
@@ -151,12 +151,12 @@ fn test_convenience_function() {
 #[test]
 fn test_different_configurations() {
     let test_configs = [
-        (44100, 1, 128, "44.1kHz mono 128kbps"),
-        (44100, 2, 128, "44.1kHz stereo 128kbps"),
-        (48000, 2, 192, "48kHz stereo 192kbps"),
+        (44100, 1, 128, StereoMode::Mono, "44.1kHz mono 128kbps"),
+        (44100, 2, 128, StereoMode::Stereo, "44.1kHz stereo 128kbps"),
+        (48000, 2, 192, StereoMode::Stereo, "48kHz stereo 192kbps"),
     ];
     
-    for (sample_rate, channels, bitrate, description) in &test_configs {
+    for (sample_rate, channels, bitrate, stereo_mode, description) in &test_configs {
         // Skip if not supported
         if !SUPPORTED_SAMPLE_RATES.contains(sample_rate) {
             println!("⚠️  Skipping {}: sample rate not supported", description);
@@ -171,7 +171,8 @@ fn test_different_configurations() {
         let config = Mp3EncoderConfig::new()
             .sample_rate(*sample_rate)
             .channels(*channels as u8)
-            .bitrate(*bitrate);
+            .bitrate(*bitrate)
+            .stereo_mode(*stereo_mode);
         
         match Mp3Encoder::new(config) {
             Ok(mut encoder) => {

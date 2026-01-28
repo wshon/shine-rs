@@ -18,6 +18,7 @@ use std::collections::HashMap;
 /// Reference configuration data
 #[derive(Debug)]
 struct ReferenceConfig {
+    #[allow(dead_code)]
     description: String,
     input_file: String,
     reference_file: String,

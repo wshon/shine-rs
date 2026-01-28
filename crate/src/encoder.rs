@@ -240,7 +240,7 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 /// (ref/shine/src/lib/layer3.c:136-158)
 fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
-    let frame_num = crate::get_next_frame_number();
+    let _frame_num = crate::get_next_frame_number();
     
     #[cfg(not(any(debug_assertions, feature = "diagnostics")))]
     let _frame_num = {

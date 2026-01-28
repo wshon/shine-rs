@@ -172,7 +172,7 @@ pub fn shine_outer_loop(
 /// Corresponds to shine_iteration_loop() in l3loop.c
 pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
     #[cfg(any(debug_assertions, feature = "diagnostics"))]
-    let frame_num = crate::get_current_frame_number();
+    let _frame_num = crate::get_current_frame_number();
 
     let mut l3_xmin = ShinePsyXmin::default();
     let mut ix: *mut i32;

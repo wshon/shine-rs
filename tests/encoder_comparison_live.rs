@@ -28,13 +28,15 @@ fn run_rust_encoder(input_file: &str, output_file: &str, bitrate: Option<u32>) -
     }
     
     let mut cmd = Command::new("cargo");
-    let mut args = vec!["run", "--", input_file, output_file];
+    let mut args = vec!["run", "--"];
     
     let bitrate_str;
     if let Some(br) = bitrate {
         bitrate_str = br.to_string();
-        args.push(&bitrate_str);
+        args.extend_from_slice(&["-b", &bitrate_str]);
     }
+    
+    args.extend_from_slice(&[input_file, output_file]);
     
     cmd.args(&args);
     
