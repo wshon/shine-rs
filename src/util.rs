@@ -4,7 +4,6 @@
 //! including PCM audio data processing utilities and error handling.
 
 use std::fmt;
-use hound;
 
 /// Error type for utility operations
 #[derive(Debug)]
@@ -36,24 +35,15 @@ impl From<std::io::Error> for UtilError {
 pub type UtilResult<T> = std::result::Result<T, UtilError>;
 
 /// Read WAV file and return PCM samples, sample rate, and channel count
+/// Uses hound library for WAV parsing
 pub fn read_wav_file(file_path: &str) -> UtilResult<(Vec<i16>, i32, i32)> {
     let mut reader = hound::WavReader::open(file_path)
         .map_err(|e| UtilError::ValidationError(format!("Failed to open WAV file: {}", e)))?;
 
     let spec = reader.spec();
-    
-    // Validate format requirements
-    if spec.sample_format != hound::SampleFormat::Int {
-        return Err(UtilError::ValidationError("Only integer PCM format is supported".to_string()));
-    }
-    
-    if spec.bits_per_sample != 16 {
-        return Err(UtilError::ValidationError("Only 16-bit samples are supported".to_string()));
-    }
-
     let sample_rate = spec.sample_rate as i32;
     let channels = spec.channels as i32;
-
+    
     // Read all samples
     let samples: Result<Vec<i16>, _> = reader.samples::<i16>().collect();
     let samples = samples
