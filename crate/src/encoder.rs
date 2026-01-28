@@ -260,20 +260,6 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
         config.mpeg.slot_lag
     );
 
-    // Stop after specified frames for debugging (debug mode only)
-    #[cfg(any(debug_assertions, feature = "diagnostics"))]
-    {
-        // Check for frame limit from environment variable or default to unlimited
-        if let Ok(max_frames_str) = std::env::var("RUST_MP3_MAX_FRAMES") {
-            if let Ok(max_frames) = max_frames_str.parse::<i32>() {
-                if frame_num > max_frames {
-                    // Return a special error to indicate we should stop encoding but still write the file
-                    return Err(EncodingError::StopAfterFrames);
-                }
-            }
-        }
-    }
-
     Ok((&config.bs.data[..written], written))
 }
 

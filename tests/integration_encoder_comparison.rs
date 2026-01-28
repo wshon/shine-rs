@@ -73,7 +73,7 @@ fn get_file_size(file_path: &str) -> Result<u64, String> {
 }
 
 /// Run Rust encoder with specified parameters
-fn run_rust_encoder(input_file: &str, output_file: &str, bitrate: u32, frame_limit: Option<u32>) -> Result<(), String> {
+fn run_rust_encoder(input_file: &str, output_file: &str, bitrate: u32, _frame_limit: Option<u32>) -> Result<(), String> {
     if !Path::new(input_file).exists() {
         return Err(format!("Input file not found: {}", input_file));
     }
@@ -81,9 +81,7 @@ fn run_rust_encoder(input_file: &str, output_file: &str, bitrate: u32, frame_lim
     let mut cmd = Command::new("cargo");
     cmd.args(&["run", "--features", "diagnostics", "--", input_file, output_file, &bitrate.to_string()]);
     
-    if let Some(limit) = frame_limit {
-        cmd.env("RUST_MP3_MAX_FRAMES", limit.to_string());
-    }
+    // Frame limit is no longer supported - we use pre-generated WAV files instead
     
     let result = cmd.output()
         .map_err(|e| format!("Failed to run Rust encoder: {}", e))?;

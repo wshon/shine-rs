@@ -121,10 +121,6 @@ fn validate_complete_encoding_pipeline(file_path: &str) -> Result<(), Box<dyn st
                         mp3_data.extend_from_slice(&frame_data[..written]);
                     }
                 },
-                #[cfg(debug_assertions)]
-                Err(shine_rs::error::EncodingError::StopAfterFrames) => {
-                    break;
-                },
                 Err(e) => return Err(e.into()),
             }
             

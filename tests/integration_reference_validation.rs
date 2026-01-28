@@ -52,7 +52,8 @@ fn load_reference_manifest() -> HashMap<String, ReferenceConfig> {
         
         let config = ReferenceConfig {
             description: config_data["description"].as_str().unwrap().to_string(),
-            file_path: config_data["file_path"].as_str().unwrap().to_string(),
+            file_path: format!("tests/integration_reference_validation.data/{}", 
+                              config_data["file_path"].as_str().unwrap()),
             size_bytes: config_data["size_bytes"].as_u64().unwrap(),
             sha256: config_data["sha256"].as_str().unwrap().to_string(),
             input_file,
@@ -67,34 +68,35 @@ fn load_reference_manifest() -> HashMap<String, ReferenceConfig> {
 
 /// Extract input file name from config name
 fn get_input_file_from_config(config_name: &str) -> String {
+    // All input files are now in the integration_reference_validation.data/input directory
     if config_name.contains("voice") {
-        "tests/audio/voice-recorder-testing-1-2-3-sound-file.wav".to_string()
-    } else if config_name.contains("large") {
-        "tests/audio/Free_Test_Data_500KB_WAV.wav".to_string()
+        "tests/integration_reference_validation.data/input/voice-recorder-testing-1-2-3-sound-file.wav".to_string()
+    } else if config_name.contains("Free_Test_Data") {
+        "tests/integration_reference_validation.data/input/Free_Test_Data_500KB_WAV.wav".to_string()
+    } else if config_name.contains("1frame") {
+        "tests/integration_reference_validation.data/input/test_1frames_stereo.wav".to_string()
+    } else if config_name.contains("2frames") {
+        "tests/integration_reference_validation.data/input/test_2frames_stereo.wav".to_string()
+    } else if config_name.contains("3frames") {
+        "tests/integration_reference_validation.data/input/test_3frames_stereo.wav".to_string()
+    } else if config_name.contains("6frames") {
+        "tests/integration_reference_validation.data/input/test_6frames_stereo.wav".to_string()
+    } else if config_name.contains("10frames") {
+        "tests/integration_reference_validation.data/input/test_10frames_stereo.wav".to_string()
+    } else if config_name.contains("15frames") {
+        "tests/integration_reference_validation.data/input/test_15frames_stereo.wav".to_string()
+    } else if config_name.contains("20frames") {
+        "tests/integration_reference_validation.data/input/test_20frames_stereo.wav".to_string()
     } else {
-        "tests/audio/sample-3s.wav".to_string()
+        // Default fallback
+        "tests/integration_reference_validation.data/input/test_3frames_stereo.wav".to_string()
     }
 }
 
-/// Extract frame limit from config name
+/// Extract frame limit from config name - now returns None since we use pre-generated files
 fn get_frame_limit_from_config(config_name: &str) -> Option<u32> {
-    if config_name.contains("1frame") {
-        Some(1)
-    } else if config_name.contains("2frames") {
-        Some(2)
-    } else if config_name.contains("3frames") {
-        Some(3)
-    } else if config_name.contains("6frames") {
-        Some(6)
-    } else if config_name.contains("10frames") {
-        Some(10)
-    } else if config_name.contains("15frames") {
-        Some(15)
-    } else if config_name.contains("20frames") {
-        Some(20)
-    } else {
-        None
-    }
+    // Frame limits are no longer used - we use pre-generated WAV files with exact frame counts
+    None
 }
 
 /// Calculate SHA256 hash of a file
@@ -106,7 +108,7 @@ fn calculate_sha256(file_path: &str) -> String {
 }
 
 /// Run Rust encoder with specified parameters
-fn run_rust_encoder(input_file: &str, output_file: &str, frame_limit: Option<u32>) -> Result<(), String> {
+fn run_rust_encoder(input_file: &str, output_file: &str, _frame_limit: Option<u32>) -> Result<(), String> {
     if !Path::new(input_file).exists() {
         return Err(format!("Input file not found: {}", input_file));
     }
@@ -114,9 +116,7 @@ fn run_rust_encoder(input_file: &str, output_file: &str, frame_limit: Option<u32
     let mut cmd = Command::new("cargo");
     cmd.args(&["run", "--features", "diagnostics", "--", input_file, output_file]);
     
-    if let Some(limit) = frame_limit {
-        cmd.env("RUST_MP3_MAX_FRAMES", limit.to_string());
-    }
+    // Frame limit is no longer supported - we use pre-generated WAV files instead
     
     let result = cmd.output()
         .map_err(|e| format!("Failed to run Rust encoder: {}", e))?;
@@ -185,8 +185,8 @@ fn test_sample_file_configurations() {
     let configs = load_reference_manifest();
     
     let sample_configs = [
-        "1frame", "2frames", "3frames", "6frames", 
-        "10frames", "15frames", "20frames"
+        "1frames_stereo", "2frames_stereo", "3frames_stereo", "6frames_stereo", 
+        "10frames_stereo", "15frames_stereo", "20frames_stereo"
     ];
     
     let mut passed = 0;
@@ -225,7 +225,7 @@ fn test_sample_file_configurations() {
 fn test_large_file_configurations() {
     let configs = load_reference_manifest();
     
-    let large_configs = ["large_3frames", "large_6frames"];
+    let large_configs = ["Free_Test_Data_500KB_WAV"];
     
     let mut passed = 0;
     let mut failed = 0;
@@ -263,7 +263,7 @@ fn test_large_file_configurations() {
 fn test_voice_file_configurations() {
     let configs = load_reference_manifest();
     
-    let voice_configs = ["voice_3frames", "voice_6frames"];
+    let voice_configs = ["voice-recorder-testing-1-2-3-sound-file"];
     
     let mut passed = 0;
     let mut failed = 0;
@@ -305,10 +305,12 @@ fn test_all_passing_configurations() {
     
     // These configurations are known to pass
     let passing_configs = [
-        "1frame", "2frames", "3frames", "6frames", 
-        "10frames", "15frames", "20frames",
-        "large_3frames", "large_6frames",
-        "voice_3frames", "voice_6frames"
+        "1frames_stereo", "2frames_stereo", "3frames_stereo", "6frames_stereo", 
+        "10frames_stereo", "15frames_stereo", "20frames_stereo",
+        "1frames_mono", "2frames_mono", "3frames_mono", "6frames_mono", 
+        "10frames_mono", "15frames_mono", "20frames_mono",
+        "Free_Test_Data_500KB_WAV",
+        "voice-recorder-testing-1-2-3-sound-file"
     ];
     
     let mut results = Vec::new();
@@ -358,43 +360,35 @@ fn test_all_passing_configurations() {
     println!("🎉 All expected configurations passed validation!");
 }
 
-/// Test frame limit environment variable functionality
+/// Test frame limit environment variable functionality - now tests pre-generated files
 #[test]
 fn test_frame_limit_functionality() {
-    let test_input = "tests/audio/sample-3s.wav";
-    
-    if !Path::new(test_input).exists() {
-        println!("Skipping frame limit test - input file not found: {}", test_input);
-        return;
-    }
-    
     let test_cases = [
-        (1, 416),   // 1 frame
-        (2, 836),   // 2 frames  
-        (3, 1252),  // 3 frames
-        (6, 2508),  // 6 frames
+        ("tests/integration_reference_validation.data/input/test_1frames_stereo.wav", 1),
+        ("tests/integration_reference_validation.data/input/test_2frames_stereo.wav", 2),
+        ("tests/integration_reference_validation.data/input/test_3frames_stereo.wav", 3),
+        ("tests/integration_reference_validation.data/input/test_6frames_stereo.wav", 6),
     ];
     
-    for (frame_limit, expected_size) in &test_cases {
-        let output_file = format!("test_frame_limit_{}.mp3", frame_limit);
+    for (test_input, expected_frames) in &test_cases {
+        if !Path::new(test_input).exists() {
+            println!("Skipping frame test - input file not found: {}", test_input);
+            continue;
+        }
         
-        match run_rust_encoder(test_input, &output_file, Some(*frame_limit)) {
+        let output_file = format!("test_frame_limit_{}.mp3", expected_frames);
+        
+        match run_rust_encoder(test_input, &output_file, None) {
             Ok(()) => {
                 if let Ok(metadata) = fs::metadata(&output_file) {
                     let actual_size = metadata.len();
-                    println!("Frame limit {}: {} bytes (expected {})", 
-                            frame_limit, actual_size, expected_size);
-                    
-                    // Allow some tolerance for different encoding scenarios
-                    if actual_size != *expected_size {
-                        println!("⚠️  Size mismatch for {} frames: got {}, expected {}", 
-                                frame_limit, actual_size, expected_size);
-                    }
+                    println!("Frame test {}: {} bytes from {}", 
+                            expected_frames, actual_size, test_input);
                 }
                 let _ = fs::remove_file(&output_file);
             }
             Err(e) => {
-                println!("❌ Frame limit {} failed: {}", frame_limit, e);
+                println!("❌ Frame test {} failed: {}", expected_frames, e);
             }
         }
     }
@@ -457,34 +451,37 @@ fn test_reference_file_integrity() {
 fn test_encoding_performance() {
     use std::time::Instant;
     
-    let test_input = "tests/audio/sample-3s.wav";
-    
-    if !Path::new(test_input).exists() {
-        println!("Skipping performance test - input file not found: {}", test_input);
-        return;
-    }
-    
-    let test_cases = [3, 6, 10, 20];
+    let test_cases = [
+        ("tests/integration_reference_validation.data/input/test_3frames_stereo.wav", 3),
+        ("tests/integration_reference_validation.data/input/test_6frames_stereo.wav", 6),
+        ("tests/integration_reference_validation.data/input/test_10frames_stereo.wav", 10),
+        ("tests/integration_reference_validation.data/input/test_20frames_stereo.wav", 20),
+    ];
     
     println!("🚀 Encoding Performance Benchmark:");
     println!("{:-<50}", "");
     
-    for frame_limit in &test_cases {
-        let output_file = format!("perf_test_{}_frames.mp3", frame_limit);
+    for (test_input, frame_count) in &test_cases {
+        if !Path::new(test_input).exists() {
+            println!("{:2} frames: SKIPPED - file not found", frame_count);
+            continue;
+        }
+        
+        let output_file = format!("perf_test_{}_frames.mp3", frame_count);
         
         let start = Instant::now();
-        match run_rust_encoder(test_input, &output_file, Some(*frame_limit)) {
+        match run_rust_encoder(test_input, &output_file, None) {
             Ok(()) => {
                 let duration = start.elapsed();
-                let fps = *frame_limit as f64 / duration.as_secs_f64();
+                let fps = *frame_count as f64 / duration.as_secs_f64();
                 
                 println!("{:2} frames: {:6.3}s ({:6.1} fps)", 
-                        frame_limit, duration.as_secs_f64(), fps);
+                        frame_count, duration.as_secs_f64(), fps);
                 
                 let _ = fs::remove_file(&output_file);
             }
             Err(e) => {
-                println!("{:2} frames: FAILED - {}", frame_limit, e);
+                println!("{:2} frames: FAILED - {}", frame_count, e);
             }
         }
     }
@@ -508,21 +505,28 @@ mod property_tests {
         
         #[test]
         fn test_frame_limit_bounds(frame_limit in 1u32..100) {
-            // Test that frame limits are handled correctly
-            let test_input = "tests/audio/sample-3s.wav";
+            // Test that different frame count files are handled correctly
+            let test_files = [
+                "tests/integration_reference_validation.data/input/test_1frames_stereo.wav",
+                "tests/integration_reference_validation.data/input/test_3frames_stereo.wav", 
+                "tests/integration_reference_validation.data/input/test_6frames_stereo.wav",
+            ];
             
-            if Path::new(test_input).exists() {
-                let output_file = format!("prop_test_{}.mp3", frame_limit);
-                
-                // Should not panic or crash for any reasonable frame limit
-                let result = run_rust_encoder(test_input, &output_file, Some(frame_limit));
-                
-                // Clean up if file was created
-                let _ = fs::remove_file(&output_file);
-                
-                // The encoder should either succeed or fail gracefully
-                prop_assert!(result.is_ok() || result.is_err(), 
-                           "Encoder should return a result");
+            for test_input in &test_files {
+                if Path::new(test_input).exists() {
+                    let output_file = format!("prop_test_{}_{}.mp3", frame_limit, 
+                                            Path::new(test_input).file_stem().unwrap().to_string_lossy());
+                    
+                    // Should not panic or crash for any input file
+                    let result = run_rust_encoder(test_input, &output_file, None);
+                    
+                    // Clean up if file was created
+                    let _ = fs::remove_file(&output_file);
+                    
+                    // The encoder should either succeed or fail gracefully
+                    prop_assert!(result.is_ok() || result.is_err(), 
+                               "Encoder should return a result");
+                }
             }
         }
         

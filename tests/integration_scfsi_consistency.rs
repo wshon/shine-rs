@@ -19,8 +19,8 @@ const EXPECTED_SHINE_HASH: &str = "4385b617a86cb3891ce3c99dabe6b47c2ac9182b32c46
 /// Expected file size for 6-frame MP3 output (in bytes)
 const EXPECTED_FILE_SIZE: u64 = 2508;
 
-/// Number of frames to encode for consistency testing
-const TEST_FRAME_COUNT: &str = "6";
+/// Number of frames in the test audio file
+const TEST_FRAME_COUNT: u32 = 6;
 
 /// Test that Rust encoder generates identical output to Shine reference implementation
 /// This test uses a pre-saved reference file for maximum reliability and reproducibility
@@ -44,10 +44,16 @@ fn test_scfsi_consistency_with_shine() {
                "Reference file size mismatch - expected {} bytes, got {}", 
                EXPECTED_FILE_SIZE, reference_size);
     
-    // Run Rust encoder with frame limit to match Shine's debug behavior
+    // Use pre-generated 6-frame audio file instead of frame limit
+    let test_input = "tests/audio/test_6frames_stereo.wav";
+    
+    if !Path::new(test_input).exists() {
+        panic!("Test input file not found: {}. Run 'python scripts/generate_test_wav.py' to generate it.", test_input);
+    }
+    
+    // Run Rust encoder with 6-frame input file
     let rust_result = Command::new("cargo")
         .args(&["run", "--", test_input, rust_output])
-        .env("RUST_MP3_MAX_FRAMES", TEST_FRAME_COUNT)
         .output()
         .expect("Failed to run Rust encoder");
     
@@ -134,16 +140,23 @@ fn test_frame_limit_configuration() {
         return;
     }
     
-    // Test different frame limits
-    let frame_limits = ["3", "6", "10"];
-    let expected_sizes = [1252, 2508, 4180]; // Expected file sizes for different frame counts
+    // Test different pre-generated frame count files
+    let test_cases = [
+        ("tests/audio/test_3frames_stereo.wav", 3, 1252),
+        ("tests/audio/test_6frames_stereo.wav", 6, 2508), 
+        ("tests/audio/test_10frames_stereo.wav", 10, 4180),
+    ];
     
-    for (limit, &expected_size) in frame_limits.iter().zip(expected_sizes.iter()) {
-        let output_file = format!("test_frames_{}.mp3", limit);
+    for (test_input, frame_count, expected_size) in &test_cases {
+        if !Path::new(test_input).exists() {
+            println!("Skipping test - input file not found: {}", test_input);
+            continue;
+        }
+        
+        let output_file = format!("test_frames_{}.mp3", frame_count);
         
         let result = Command::new("cargo")
             .args(&["run", "--", test_input, &output_file])
-            .env("RUST_MP3_MAX_FRAMES", limit)
             .output()
             .expect("Failed to run Rust encoder");
         
@@ -151,9 +164,9 @@ fn test_frame_limit_configuration() {
             let file_size = fs::metadata(&output_file).unwrap().len();
             
             // For debugging: print actual vs expected sizes
-            if file_size != expected_size {
-                println!("Frame limit {}: expected {} bytes, got {} bytes", 
-                        limit, expected_size, file_size);
+            if file_size != *expected_size {
+                println!("Frame count {}: expected {} bytes, got {} bytes", 
+                        frame_count, expected_size, file_size);
             }
             
             // Clean up

@@ -68,13 +68,22 @@ def generate_test_wav(filename, sample_rate=44100, channels=2, duration_frames=3
     print(f"Generated {filename} successfully!")
 
 if __name__ == "__main__":
-    # Generate test files
-    generate_test_wav("tests/audio/test_3frames_stereo.wav", channels=2, duration_frames=3)
-    generate_test_wav("tests/audio/test_3frames_mono.wav", channels=1, duration_frames=3)
+    # Generate test files for different frame counts
+    frame_counts = [1, 2, 3, 6, 10, 15, 20]
     
-    # Also generate 6 frame versions for more testing
-    generate_test_wav("tests/audio/test_6frames_stereo.wav", channels=2, duration_frames=6)
-    generate_test_wav("tests/audio/test_6frames_mono.wav", channels=1, duration_frames=6)
-
-    """
-    """
+    print("Generating test WAV files for frame limit replacement...")
+    print("=" * 60)
+    
+    for frames in frame_counts:
+        # Generate stereo versions
+        generate_test_wav(f"tests/audio/test_{frames}frames_stereo.wav", 
+                         channels=2, duration_frames=frames)
+        
+        # Generate mono versions  
+        generate_test_wav(f"tests/audio/test_{frames}frames_mono.wav", 
+                         channels=1, duration_frames=frames)
+        
+        print()  # Add spacing between different frame counts
+    
+    print("All test WAV files generated successfully!")
+    print("These files can be used to replace frame limit functionality in tests.")
