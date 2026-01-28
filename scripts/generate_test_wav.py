@@ -77,6 +77,4 @@ if __name__ == "__main__":
     generate_test_wav("tests/audio/test_6frames_mono.wav", channels=1, duration_frames=6)
 
     """
-    cargo run --release -- tests/audio/test_3frames_stereo.wav test_3frames_mono_rust.mp3 128 stereo --verbose
-    .\\ref\\shine\\shineenc.exe -v -b 128 -m tests/audio/test_3frames_mono.wav test_3frames_mono_shine.mp3
     """

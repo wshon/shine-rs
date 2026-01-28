@@ -2,6 +2,7 @@
 //!
 //! This tool converts WAV files to MP3 format using the shine-rs library.
 //! It supports various sample rates, mono/stereo configurations, and bitrates.
+//! Command line interface matches the original shine encoder.
 
 use shine_rs::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
 use std::env;
@@ -12,10 +13,10 @@ use std::process;
 use shine_rs_cli::util::read_wav_file;
 
 /// Stereo mode constants (matches shine's stereo modes)
-const STEREO_MONO: i32 = 3;
-const STEREO_STEREO: i32 = 0;
-const STEREO_JOINT_STEREO: i32 = 1;
-const STEREO_DUAL_CHANNEL: i32 = 2;
+const STEREO: i32 = 0;           // stereo
+const JOINT_STEREO: i32 = 1;     // joint-stereo  
+const DUAL_CHANNEL: i32 = 2;     // dual-channel
+const MONO: i32 = 3;             // mono
 
 /// Command line arguments structure
 struct Args {
@@ -23,122 +24,148 @@ struct Args {
     output_file: String,
     bitrate: i32,
     stereo_mode: i32,
+    force_mono: bool,
+    copyright: bool,
+    quiet: bool,
     verbose: bool,
-    max_frames: Option<usize>,
 }
 
 impl Args {
-    /// Parse command line arguments
+    /// Parse command line arguments (matches shine's argument parsing)
     fn parse() -> Result<Self, String> {
         let args: Vec<String> = env::args().collect();
         
         if args.len() < 3 {
-            return Err(format!(
-                "Usage: {} <input.wav> <output.mp3> [bitrate] [stereo_mode] [--verbose] [--max-frames N]\n\
-                 \n\
-                 Arguments:\n\
-                   input.wav    - Input WAV file path\n\
-                   output.mp3   - Output MP3 file path\n\
-                   bitrate      - MP3 bitrate in kbps (default: 128)\n\
-                   stereo_mode  - Stereo mode: mono, stereo, joint_stereo, dual_channel (default: auto)\n\
-                   --verbose    - Enable verbose output with frame details\n\
-                   --max-frames N - Limit encoding to N frames (debug mode only)\n\
-                 \n\
-                 Examples:\n\
-                   {} input.wav output.mp3\n\
-                   {} input.wav output.mp3 192\n\
-                   {} input.wav output.mp3 128 joint_stereo\n\
-                   {} input.wav output.mp3 128 joint_stereo --verbose\n\
-                   {} input.wav output.mp3 128 stereo --max-frames 10",
-                args[0], args[0], args[0], args[0], args[0], args[0]
-            ));
+            return Err("".to_string()); // Empty error triggers usage display
         }
         
-        let input_file = args[1].clone();
-        let output_file = args[2].clone();
+        let mut bitrate = 128;  // Default bitrate
+        let mut stereo_mode = STEREO;  // Default stereo mode
+        let mut force_mono = false;
+        let mut copyright = false;
+        let mut quiet = false;
+        let mut verbose = false;
         
-        // Check for verbose flag
-        let verbose = args.iter().any(|arg| arg == "--verbose" || arg == "-v");
+        let mut i = 1;
+        let mut input_file = String::new();
+        let mut output_file = String::new();
         
-        // Check for max-frames flag
-        let mut max_frames = None;
-        for i in 0..args.len() {
-            if args[i] == "--max-frames" && i + 1 < args.len() {
-                if let Ok(frames) = args[i + 1].parse::<usize>() {
-                    max_frames = Some(frames);
+        // Parse options (flags starting with -)
+        while i < args.len() && args[i].starts_with('-') && args[i] != "-" {
+            let arg = &args[i];
+            
+            if arg.len() < 2 {
+                return Err(format!("Invalid option: {}", arg));
+            }
+            
+            match arg.chars().nth(1).unwrap() {
+                'b' => {
+                    // Bitrate option
+                    i += 1;
+                    if i >= args.len() {
+                        return Err("Option -b requires a bitrate value".to_string());
+                    }
+                    bitrate = args[i].parse::<i32>()
+                        .map_err(|_| format!("Invalid bitrate: {}", args[i]))?;
+                },
+                'm' => {
+                    // Force mono
+                    force_mono = true;
+                },
+                'j' => {
+                    // Joint stereo
+                    stereo_mode = JOINT_STEREO;
+                },
+                'd' => {
+                    // Dual channel
+                    stereo_mode = DUAL_CHANNEL;
+                },
+                'c' => {
+                    // Copyright flag
+                    copyright = true;
+                },
+                'q' => {
+                    // Quiet mode
+                    quiet = true;
+                    verbose = false;
+                },
+                'v' => {
+                    // Verbose mode
+                    verbose = true;
+                    quiet = false;
+                },
+                'h' => {
+                    // Help
+                    return Err("".to_string()); // Empty error triggers usage display
+                },
+                _ => {
+                    return Err(format!("Unknown option: {}", arg));
                 }
             }
+            i += 1;
         }
         
-        // Also check environment variable
-        if max_frames.is_none() {
-            if let Ok(env_frames) = std::env::var("RUST_MP3_MAX_FRAMES") {
-                if let Ok(frames) = env_frames.parse::<usize>() {
-                    max_frames = Some(frames);
-                }
-            }
+        // Parse input and output files
+        if i + 1 >= args.len() {
+            return Err("".to_string()); // Empty error triggers usage display
         }
         
-        // Filter out verbose and max-frames flags for other parsing
-        let filtered_args: Vec<String> = args.iter()
-            .enumerate()
-            .filter(|(i, arg)| {
-                *arg != "--verbose" && *arg != "-v" && *arg != "--max-frames" &&
-                (*i == 0 || args[*i - 1] != "--max-frames")
-            })
-            .map(|(_, arg)| arg.clone())
-            .collect();
+        input_file = args[i].clone();
+        output_file = args[i + 1].clone();
         
-        // Parse bitrate (default: 128)
-        let bitrate = if filtered_args.len() > 3 {
-            filtered_args[3].parse::<i32>()
-                .map_err(|_| format!("Invalid bitrate: {}", filtered_args[3]))?
-        } else {
-            128
-        };
-        
-        // Validate bitrate
-        if ![32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320].contains(&bitrate) {
-            return Err(format!("Unsupported bitrate: {}. Supported: 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320", bitrate));
+        // Validate bitrate (matches shine's supported bitrates)
+        if ![8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320].contains(&bitrate) {
+            return Err(format!("Unsupported bitrate: {}. Supported: 8-320 kbps", bitrate));
         }
-        
-        // Parse stereo mode (default: auto-detect based on channels)
-        let stereo_mode = if filtered_args.len() > 4 {
-            match filtered_args[4].to_lowercase().as_str() {
-                "mono" => STEREO_MONO,
-                "stereo" => STEREO_STEREO,
-                "joint_stereo" => STEREO_JOINT_STEREO,
-                "dual_channel" => STEREO_DUAL_CHANNEL,
-                _ => return Err(format!("Invalid stereo mode: {}. Supported: mono, stereo, joint_stereo, dual_channel", filtered_args[4])),
-            }
-        } else {
-            STEREO_STEREO // Default to stereo mode (matches shine default)
-        };
         
         Ok(Args {
             input_file,
             output_file,
             bitrate,
             stereo_mode,
+            force_mono,
+            copyright,
+            quiet,
             verbose,
-            max_frames,
         })
     }
 }
 
+/// Print usage information (matches shine's usage format)
+fn print_usage() {
+    println!("Usage: shineenc [options] <infile> <outfile>");
+    println!();
+    println!("Use \"-\" for standard input or output.");
+    println!();
+    println!("Options:");
+    println!(" -h            this help message");
+    println!(" -b <bitrate>  set the bitrate [8-320], default 128kbit");
+    println!(" -m            force encoder to operate in mono");
+    println!(" -c            set copyright flag, default off");
+    println!(" -j            encode in joint stereo (stereo data only)");
+    println!(" -d            encode in dual-channel (stereo data only)");
+    println!(" -q            quiet mode");
+    println!(" -v            verbose mode");
+}
+
+/// Print program name (matches shine's output)
+fn print_name() {
+    println!("shineenc (Rust version)");
+}
+
 /// Convert WAV file to MP3
 fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
-    // Print header (matches shine output)
-    println!("shineenc (Rust version)");
+    // Determine if we should use quiet mode
+    let quiet = args.quiet || args.output_file == "-";
     
-    // Set max frames environment variable if specified
-    if let Some(max_frames) = args.max_frames {
-        std::env::set_var("RUST_MP3_MAX_FRAMES", max_frames.to_string());
+    // Print header (matches shine output)
+    if !quiet {
+        print_name();
     }
     
     // Read WAV file
     let (pcm_data, sample_rate_i32, channels_i32) = read_wav_file(&args.input_file)
-        .map_err(|e| format!("Failed to read WAV file: {}", e))?;
+        .map_err(|e| format!("Could not open WAVE file: {}", e))?;
     
     let sample_rate = sample_rate_i32 as u32;
     let channels = channels_i32 as u16;
@@ -147,34 +174,16 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     let data_chunk_length = pcm_data.len() * 2; // Convert samples to bytes (16-bit = 2 bytes per sample)
     let byte_rate = sample_rate * channels as u32 * 2; // fmt_chunk.byte_rate
     let duration = data_chunk_length as f64 / byte_rate as f64; // High precision calculation
-    let duration_minutes = (duration / 60.0) as u32;
-    let duration_seconds = (duration % 60.0) as u32;
     
     // Print WAV info (matches shine format - this happens in wave_open)
-    let channel_str = if channels == 1 { "mono" } else { "stereo" };
-    println!("WAVE PCM Data, {} {}Hz 16bit, duration: {:02}:{:02}:{:02}", 
-             channel_str, sample_rate, duration_minutes / 60, duration_minutes % 60, duration_seconds);
-    
-    // Adjust stereo mode based on input channels
-    let stereo_mode = if channels == 1 {
-        STEREO_MONO
-    } else {
-        args.stereo_mode
-    };
-    
-    // Print MPEG info (matches shine format - this happens in check_config)
-    let mpeg_mode_str = match stereo_mode {
-        STEREO_MONO => "mono",
-        STEREO_STEREO => "stereo",
-        STEREO_JOINT_STEREO => "joint stereo",
-        STEREO_DUAL_CHANNEL => "dual channel",
-        _ => "stereo",
-    };
-    println!("MPEG-I layer III, {}  Psychoacoustic Model: Shine", mpeg_mode_str);
-    println!("Bitrate: {} kbps  De-emphasis: none   Original", args.bitrate);
-    println!("Encoding \"{}\" to \"{}\"", args.input_file, args.output_file);
-    
-    let start_time = std::time::Instant::now();
+    if !quiet {
+        let channel_str = if channels == 1 { "mono" } else { "stereo" };
+        println!("WAVE PCM Data, {} {}Hz 16bit, duration: {:02}:{:02}:{:02}", 
+                 channel_str, sample_rate, 
+                 (duration as u32) / 3600, 
+                 ((duration as u32) % 3600) / 60, 
+                 (duration as u32) % 60);
+    }
     
     // Create encoder configuration
     let mut config = ShineConfig {
@@ -183,10 +192,10 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
             samplerate: sample_rate as i32,
         },
         mpeg: ShineMpeg {
-            mode: stereo_mode,
+            mode: args.stereo_mode,
             bitr: args.bitrate,
             emph: 0,
-            copyright: 0,
+            copyright: if args.copyright { 1 } else { 0 },
             original: 1,
         },
     };
@@ -194,19 +203,55 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     // Set default MPEG values
     shine_set_config_mpeg_defaults(&mut config.mpeg);
     config.mpeg.bitr = args.bitrate; // Override default bitrate
-    config.mpeg.mode = stereo_mode;  // Override default mode
+    
+    // Force mono if requested
+    if args.force_mono {
+        config.wave.channels = 1;
+    }
+    
+    // Set stereo mode based on channels (matches shine logic)
+    if config.wave.channels > 1 {
+        config.mpeg.mode = args.stereo_mode;
+    } else {
+        config.mpeg.mode = MONO;
+    }
     
     let mut encoder = shine_initialise(&config)?;
+    
+    // Print some info about the file about to be created (matches shine's check_config)
+    if !quiet {
+        let version_names = ["2.5", "reserved", "II", "I"];
+        let mode_names = ["stereo", "joint-stereo", "dual-channel", "mono"];
+        let demp_names = ["none", "50/15us", "", "CITT"];
+        
+        // For now, assume MPEG-I (version 3 in array)
+        println!("MPEG-{} layer III, {}  Psychoacoustic Model: Shine",
+                 version_names[3], mode_names[config.mpeg.mode as usize]);
+        println!("Bitrate: {} kbps  De-emphasis: {}   {} {}", 
+                 config.mpeg.bitr,
+                 demp_names[config.mpeg.emph as usize],
+                 if config.mpeg.original != 0 { "Original" } else { "" },
+                 if config.mpeg.copyright != 0 { "(C)" } else { "" });
+        println!("Encoding \"{}\" to \"{}\"", args.input_file, args.output_file);
+    }
+    
+    let start_time = std::time::Instant::now();
+    
+    // Open output file (matches shine's file handling)
+    let mut output_file: Box<dyn Write> = if args.output_file == "-" {
+        Box::new(std::io::stdout())
+    } else {
+        Box::new(File::create(&args.output_file)?)
+    };
     
     // Calculate samples per frame
     let samples_per_frame = 1152; // MPEG Layer III frame size
     let frame_size = samples_per_frame * channels as usize;
     let mut mp3_data = Vec::new();
     
-    let _total_frames = pcm_data.len() / frame_size;
-    
     if args.verbose {
-        println!("\n=== Verbose Mode: Frame-by-Frame Encoding Details ===");
+        println!();
+        println!("=== Verbose Mode: Frame-by-Frame Encoding Details ===");
         println!("Format: [Frame #] PCM samples, MP3 bytes @ hex offset, CRC32 checksum");
         println!("-------------------------------------------------------------------------------");
     }
@@ -249,6 +294,7 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                                  frame_checksum);
                     }
                     
+                    output_file.write_all(&frame_data[..written])?;
                     mp3_data.extend_from_slice(&frame_data[..written]);
                     mp3_offset += written;
                 } else if args.verbose {
@@ -260,14 +306,6 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                 
                 frame_count += 1;
                 processed_samples += current_frame_size;
-            },
-            #[cfg(debug_assertions)]
-            Err(shine_rs::error::EncodingError::StopAfterFrames) => {
-                // This is expected when we stop after a certain number of frames in debug mode
-                if args.verbose {
-                    println!("Stopped encoding after {} frames as requested", frame_count);
-                }
-                break;
             },
             Err(e) => return Err(e.into()),
         }
@@ -288,15 +326,12 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
                      mp3_offset + final_written - 1,
                      final_checksum);
         }
+        output_file.write_all(&final_data[..final_written])?;
         mp3_data.extend_from_slice(&final_data[..final_written]);
     }
     
     // Close encoder
     shine_close(encoder);
-    
-    // Write MP3 file
-    let mut output_file = File::create(&args.output_file)?;
-    output_file.write_all(&mp3_data)?;
     
     let elapsed = start_time.elapsed();
     let realtime_factor = if elapsed.as_secs_f64() > 0.0 {
@@ -306,21 +341,24 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
     };
     
     // Print completion message (matches shine format)
-    if realtime_factor.is_infinite() {
-        println!("Finished in {:02}:{:02}:{:02} (infx realtime)", 
-                 elapsed.as_secs() / 3600, 
-                 (elapsed.as_secs() % 3600) / 60, 
-                 elapsed.as_secs() % 60);
-    } else {
-        println!("Finished in {:02}:{:02}:{:02} ({:.1}x realtime)", 
-                 elapsed.as_secs() / 3600, 
-                 (elapsed.as_secs() % 3600) / 60, 
-                 elapsed.as_secs() % 60,
-                 realtime_factor);
+    if !quiet {
+        if realtime_factor.is_infinite() {
+            println!("Finished in {:02}:{:02}:{:02} (infx realtime)", 
+                     elapsed.as_secs() / 3600, 
+                     (elapsed.as_secs() % 3600) / 60, 
+                     elapsed.as_secs() % 60);
+        } else {
+            println!("Finished in {:02}:{:02}:{:02} ({:.1}x realtime)", 
+                     elapsed.as_secs() / 3600, 
+                     (elapsed.as_secs() % 3600) / 60, 
+                     elapsed.as_secs() % 60,
+                     realtime_factor);
+        }
     }
     
     if args.verbose {
-        println!("\n=== Additional Statistics ===");
+        println!();
+        println!("=== Additional Statistics ===");
         println!("Total frames encoded: {}", frame_count);
         println!("Total MP3 bytes: {} (hex: 0x{:04X})", mp3_data.len(), mp3_data.len());
         println!("Average bytes per frame: {:.1}", mp3_data.len() as f64 / frame_count as f64);
@@ -357,20 +395,25 @@ fn main() {
     let args = match Args::parse() {
         Ok(args) => args,
         Err(err) => {
-            eprintln!("Error: {}", err);
+            if err.is_empty() {
+                // Empty error means show usage
+                print_usage();
+            } else {
+                eprintln!("Error: {}", err);
+            }
             process::exit(1);
         }
     };
     
-    // Check if input file exists
-    if !Path::new(&args.input_file).exists() {
-        eprintln!("Input file '{}' does not exist", args.input_file);
+    // Check if input file exists (unless it's stdin)
+    if args.input_file != "-" && !Path::new(&args.input_file).exists() {
+        eprintln!("Could not open WAVE file");
         process::exit(1);
     }
     
     // Perform conversion
     if let Err(err) = convert_wav_to_mp3(args) {
-        eprintln!("Conversion failed: {}", err);
+        eprintln!("Error: {}", err);
         process::exit(1);
     }
 }
