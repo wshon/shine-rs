@@ -45,6 +45,15 @@ pub struct ShineWave {
     pub samplerate: i32,
 }
 
+impl Default for ShineWave {
+    fn default() -> Self {
+        Self {
+            channels: 2,
+            samplerate: 44100,
+        }
+    }
+}
+
 /// Public MPEG configuration (matches shine_mpeg_t)
 /// (ref/shine/src/lib/layer3.h:21-34)
 #[repr(C)]
@@ -57,6 +66,20 @@ pub struct ShineMpeg {
     pub original: i32,
 }
 
+impl Default for ShineMpeg {
+    fn default() -> Self {
+        let mut mpeg = Self {
+            mode: 0,
+            bitr: 128,
+            emph: NONE,
+            copyright: 0,
+            original: 1,
+        };
+        shine_set_config_mpeg_defaults(&mut mpeg);
+        mpeg
+    }
+}
+
 /// Public configuration structure (matches shine_config_t)
 /// (ref/shine/src/lib/layer3.h:36-38)
 #[repr(C)]
@@ -64,6 +87,15 @@ pub struct ShineMpeg {
 pub struct ShineConfig {
     pub wave: ShineWave,
     pub mpeg: ShineMpeg,
+}
+
+impl Default for ShineConfig {
+    fn default() -> Self {
+        Self {
+            wave: ShineWave::default(),
+            mpeg: ShineMpeg::default(),
+        }
+    }
 }
 
 /// Set default values for important vars (matches shine_set_config_mpeg_defaults)
