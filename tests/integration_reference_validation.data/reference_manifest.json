@@ -5,67 +5,67 @@
   "reference_files": {
     "3frames": {
       "description": "3-frame reference for quick testing",
-      "file_path": "C:\\Users\\wshon\\ws\\shine-rs\\tests\\audio\\shine_reference_3frames.mp3",
+      "file_path": "tests/integration_reference_validation.data/shine_reference_3frames.mp3",
       "size_bytes": 1252,
       "sha256": "2d9acb93b5b57e16dc2bcc4b59baa8a223ea10f079b1f76f8919e3d83156549f"
     },
     "6frames": {
       "description": "6-frame reference for SCFSI consistency testing",
-      "file_path": "C:\\Users\\wshon\\ws\\shine-rs\\tests\\audio\\shine_reference_6frames.mp3",
+      "file_path": "tests/integration_reference_validation.data/shine_reference_6frames.mp3",
       "size_bytes": 2508,
       "sha256": "4385b617a86cb3891ce3c99dabe6b47c2ac9182b32c46cbc5ad167fb28b959c4"
     },
     "10frames": {
       "description": "10-frame reference for extended testing",
-      "file_path": "C:\\Users\\wshon\\ws\\shine-rs\\tests\\audio\\shine_reference_10frames.mp3",
+      "file_path": "tests/integration_reference_validation.data/shine_reference_10frames.mp3",
       "size_bytes": 4180,
       "sha256": "1c3b5132c6117023cea86dcdaf463f9e0a252cff708572b159a4f4be03845082"
     },
     "15frames": {
       "description": "15-frame reference for medium-length testing",
-      "file_path": "C:\\Users\\wshon\\ws\\shine-rs\\tests\\audio\\shine_reference_15frames.mp3",
+      "file_path": "tests/integration_reference_validation.data/shine_reference_15frames.mp3",
       "size_bytes": 6268,
       "sha256": "40d6d68c17b72c18394e84a5cfc52d190e5898f909f9f797775096ed85336bea"
     },
     "20frames": {
       "description": "20-frame reference for longer testing",
-      "file_path": "C:\\Users\\wshon\\ws\\shine-rs\\tests\\audio\\shine_reference_20frames.mp3",
+      "file_path": "tests/integration_reference_validation.data/shine_reference_20frames.mp3",
       "size_bytes": 8360,
       "sha256": "6773b2796f115675beee5d41f7d6b383212cd531da7edeac7bf8e57f23216720"
     },
     "voice_3frames": {
       "description": "3-frame reference using voice recording",
-      "file_path": "C:\\Users\\wshon\\ws\\shine-rs\\tests\\audio\\shine_reference_voice_3frames.mp3",
+      "file_path": "tests/integration_reference_validation.data/shine_reference_voice_3frames.mp3",
       "size_bytes": 1152,
       "sha256": "868b4dd8157ee0516eb79fde8f6de5f46cf4125990a288d55c2194fff5d7f0d3"
     },
     "voice_6frames": {
       "description": "6-frame reference using voice recording",
-      "file_path": "C:\\Users\\wshon\\ws\\shine-rs\\tests\\audio\\shine_reference_voice_6frames.mp3",
+      "file_path": "tests/integration_reference_validation.data/shine_reference_voice_6frames.mp3",
       "size_bytes": 2304,
       "sha256": "e8f63701a16b47c1c1075ac8757234b2736a9eee045f94adde6621170612b0b6"
     },
     "large_3frames": {
       "description": "3-frame reference using large test file",
-      "file_path": "C:\\Users\\wshon\\ws\\shine-rs\\tests\\audio\\shine_reference_large_3frames.mp3",
+      "file_path": "tests/integration_reference_validation.data/shine_reference_large_3frames.mp3",
       "size_bytes": 1252,
       "sha256": "96832e3f9dd0626ded0bf92454e1c4c49ecdb50c6a477d205e55f3b77b1a779b"
     },
     "large_6frames": {
       "description": "6-frame reference using large test file",
-      "file_path": "C:\\Users\\wshon\\ws\\shine-rs\\tests\\audio\\shine_reference_large_6frames.mp3",
+      "file_path": "tests/integration_reference_validation.data/shine_reference_large_6frames.mp3",
       "size_bytes": 2508,
       "sha256": "be0bb8c4f3e6893c2c3d9b970c1f07badc5a61c794cb2434b5b1d1aa8933b55e"
     },
     "1frame": {
       "description": "Single frame reference for minimal testing",
-      "file_path": "C:\\Users\\wshon\\ws\\shine-rs\\tests\\audio\\shine_reference_1frame.mp3",
+      "file_path": "tests/integration_reference_validation.data/shine_reference_1frame.mp3",
       "size_bytes": 416,
       "sha256": "08a3ddc03dfd3079a52906adb2d625f03eb49897eae69618247b0bd3aa36de87"
     },
     "2frames": {
       "description": "2-frame reference for minimal pair testing",
-      "file_path": "C:\\Users\\wshon\\ws\\shine-rs\\tests\\audio\\shine_reference_2frames.mp3",
+      "file_path": "tests/integration_reference_validation.data/shine_reference_2frames.mp3",
       "size_bytes": 836,
       "sha256": "d6445191f54e23fcb1e48538b23991402616cd66acdd6dc662ed1af7b79ec7f6"
     }

@@ -29,7 +29,7 @@ struct ReferenceConfig {
 
 /// Load reference configurations from the manifest file
 fn load_reference_manifest() -> HashMap<String, ReferenceConfig> {
-    let manifest_path = "tests/audio/reference_manifest.json";
+    let manifest_path = "tests/integration_reference_validation.data/reference_manifest.json";
     
     if !Path::new(manifest_path).exists() {
         panic!("Reference manifest not found: {}. Run 'python scripts/generate_reference_files.py' first.", manifest_path);
