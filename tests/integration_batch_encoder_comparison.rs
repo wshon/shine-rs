@@ -138,12 +138,19 @@ fn compare_file_encoding(
 ) -> ComparisonResult {
     let input_size = get_file_size(input_file);
     
-    // 生成输出文件名
+    // 生成输出文件名，包含编码选项以避免冲突
     let base_name = input_file.file_stem().unwrap().to_string_lossy();
     let output_dir = input_file.parent().unwrap();
     
-    let rust_output = output_dir.join(format!("{}_rust.mp3", base_name));
-    let shine_output = output_dir.join(format!("{}_shine.mp3", base_name));
+    // 根据选项生成唯一的文件名后缀
+    let options_suffix = if options.is_empty() {
+        "default".to_string()
+    } else {
+        options.join("_").replace("-", "")
+    };
+    
+    let rust_output = output_dir.join(format!("{}_rust_{}.mp3", base_name, options_suffix));
+    let shine_output = output_dir.join(format!("{}_shine_{}.mp3", base_name, options_suffix));
     
     // 清理可能存在的旧文件
     let _ = fs::remove_file(&rust_output);
