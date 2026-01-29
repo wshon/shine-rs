@@ -114,7 +114,7 @@ pub fn shine_mdct_initialise(config: &mut ShineGlobalConfig) {
 /// 2. MDCT transformation of subband samples to frequency domain
 /// 3. Aliasing reduction butterfly operations
 pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
-    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    #[cfg(feature = "diagnostics")]
     let frame_num = crate::get_current_frame_number();
 
     let mut mdct_in = [0i32; 36];
@@ -330,7 +330,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
         }
 
         // Debug: Print saved data for verification (debug mode only)
-        #[cfg(any(debug_assertions, feature = "diagnostics"))]
+        #[cfg(feature = "diagnostics")]
         {
             let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
                 .unwrap_or_else(|_| "6".to_string())

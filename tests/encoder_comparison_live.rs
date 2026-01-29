@@ -7,9 +7,9 @@
 //! Run manually with: `cargo test --test encoder_comparison_live -- --ignored`
 //!
 //! Test files:
-//! - Default: tests/audio/sample-3s.wav (stereo 44.1kHz)
-//! - Voice: tests/audio/voice-recorder-testing-1-2-3-sound-file.wav (mono 48kHz)  
-//! - Large: tests/audio/Free_Test_Data_500KB_WAV.wav (stereo 44.1kHz, larger file)
+//! - Default: tests/audio/inputs/basic/sample-3s.wav (stereo 44.1kHz)
+//! - Voice: tests/audio/inputs/basic/voice-recorder-testing-1-2-3-sound-file.wav (mono 48kHz)  
+//! - Large: tests/audio/inputs/basic/Free_Test_Data_500KB_WAV.wav (stereo 44.1kHz, larger file)
 
 use std::process::Command;
 use std::fs;
@@ -140,7 +140,7 @@ fn compare_encoders(input_file: &str, bitrate: Option<u32>) -> Result<(), String
 #[test]
 #[ignore = "Live comparison test - run manually with 'cargo test test_default_file_comparison -- --ignored'"]
 fn test_default_file_comparison() {
-    let input_file = "tests/audio/sample-3s.wav";
+    let input_file = "tests/audio/inputs/basic/sample-3s.wav";
     
     if !Path::new(input_file).exists() {
         println!("Skipping test - input file not found: {}", input_file);
@@ -158,7 +158,7 @@ fn test_default_file_comparison() {
 #[test]
 #[ignore = "Live comparison test - run manually with 'cargo test test_voice_file_comparison -- --ignored'"]
 fn test_voice_file_comparison() {
-    let input_file = "tests/audio/voice-recorder-testing-1-2-3-sound-file.wav";
+    let input_file = "tests/audio/inputs/basic/voice-recorder-testing-1-2-3-sound-file.wav";
     
     if !Path::new(input_file).exists() {
         println!("Skipping test - input file not found: {}", input_file);
@@ -176,7 +176,7 @@ fn test_voice_file_comparison() {
 #[test]
 #[ignore = "Live comparison test - run manually with 'cargo test test_large_file_comparison -- --ignored'"]
 fn test_large_file_comparison() {
-    let input_file = "tests/audio/Free_Test_Data_500KB_WAV.wav";
+    let input_file = "tests/audio/inputs/basic/Free_Test_Data_500KB_WAV.wav";
     
     if !Path::new(input_file).exists() {
         println!("Skipping test - input file not found: {}", input_file);
@@ -194,7 +194,7 @@ fn test_large_file_comparison() {
 #[test]
 #[ignore = "Live comparison test - run manually with 'cargo test test_different_bitrates -- --ignored'"]
 fn test_different_bitrates() {
-    let input_file = "tests/audio/sample-3s.wav";
+    let input_file = "tests/audio/inputs/basic/sample-3s.wav";
     
     if !Path::new(input_file).exists() {
         println!("Skipping test - input file not found: {}", input_file);

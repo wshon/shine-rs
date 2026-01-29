@@ -239,18 +239,9 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 /// Internal encoding function (matches shine_encode_buffer_internal)
 /// (ref/shine/src/lib/layer3.c:136-158)
 fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
-    #[cfg(any(debug_assertions, feature = "diagnostics"))]
-    let _frame_num = crate::get_next_frame_number();
+    #[cfg(feature = "diagnostics")]
+    let frame_num = crate::get_next_frame_number();
     
-    #[cfg(not(any(debug_assertions, feature = "diagnostics")))]
-    let _frame_num = {
-        static mut FRAME_COUNTER: i32 = 0;
-        unsafe {
-            FRAME_COUNTER += 1;
-            FRAME_COUNTER
-        }
-    };
-
     // Start frame data collection
     #[cfg(feature = "diagnostics")]
     crate::diagnostics::start_frame_collection(frame_num);
@@ -278,7 +269,7 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     config.bs.data_position = 0;
 
     // Print key parameters for verification (debug mode only)
-    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    #[cfg(feature = "diagnostics")]
     {
         // Silent - no debug output
     }

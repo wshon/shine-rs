@@ -25,7 +25,7 @@ class ReferenceFileValidator:
     def __init__(self, workspace_root: str = "."):
         self.workspace_root = Path(workspace_root).resolve()
         self.audio_dir = self.workspace_root / "tests" / "audio"
-        self.manifest_file = self.audio_dir / "reference_manifest.json"
+        self.manifest_file = self.audio_dir / "inputs" / "reference_manifest.json"
         
     def load_manifest(self) -> Dict:
         """Load the reference file manifest."""
@@ -73,7 +73,7 @@ class ReferenceFileValidator:
     def run_rust_encoder(self, input_file: str, output_file: str, 
                         frame_limit: Optional[int] = None) -> Tuple[bool, str]:
         """Run the Rust encoder with specified parameters."""
-        input_path = self.audio_dir / input_file
+        input_path = self.audio_dir / "inputs" / input_file
         
         if not input_path.exists():
             return False, f"Input file not found: {input_path}"
@@ -111,9 +111,9 @@ class ReferenceFileValidator:
         print(f"   Description: {reference_info['description']}")
         
         # Extract configuration details
-        input_file = self.get_input_file_from_config(config_name)
+        input_file = reference_info['input_file']  # Use the input_file from manifest
         frame_limit = self.get_frame_limit_from_config(config_name)
-        reference_path = Path(reference_info['file_path'])
+        reference_path = self.audio_dir / "inputs" / reference_info['file_path']
         
         if not reference_path.exists():
             return {

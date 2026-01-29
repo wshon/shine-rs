@@ -28,13 +28,20 @@ Thumbs.db
 *.dll
 *.exe
 
-# Audio test files (keep test audio files but ignore generated ones)
+# Audio test files (organized structure)
+# Ignore all MP3 files (generated outputs)
+*.mp3
+
+# Ignore temporary audio outputs
 /output/
 /test_output/
-*.mp3
-*.wav
-!testing/fixtures/audio/*.mp3
-!testing/fixtures/audio/*.wav
+tests/audio/outputs/
+
+# Keep input WAV files for testing
+!tests/audio/inputs/**/*.wav
+
+# Keep reference MP3 files for validation
+!tests/audio/inputs/reference/*.mp3
 
 # Logs
 *.log

@@ -1,229 +1,295 @@
-# Rust MP3 编码器
+# shine-rs 库
 
-一个基于 Shine 库的纯 Rust MP3 编码器实现。该项目严格遵循 Shine C 语言参考实现，提供完整的 MP3 Layer III 编码功能，支持各种采样率、比特率和声道配置。
+这是 shine-rs MP3 编码器的核心库实现。该库提供了完整的 MP3 Layer III 编码功能，严格遵循 Shine C 语言参考实现。
 
-**项目地址**: https://github.com/wshon/shine-rs
+## 库架构
 
-[![License: LGPL-2.0](https://img.shields.io/badge/License-LGPL%202.0-blue.svg)](LICENSE)
-[![Rust](https://img.shields.io/badge/rust-1.70+-orange.svg)](https://www.rust-lang.org)
+### 核心模块
 
-## 特性
+- **`encoder`** - 主编码器模块，提供底层 Shine 兼容接口
+- **`mp3_encoder`** - 高级编码器接口，提供更友好的 Rust API
+- **`config`** - 编码配置管理
+- **`error`** - 错误类型定义
 
-- 🦀 **纯 Rust 实现** - 利用 Rust 的内存安全和性能优势
-- 🎯 **严格遵循 Shine** - 算法与 Shine C 实现完全一致，确保输出质量
-- 🎵 **完整的 MP3 Layer III 支持** - 实现完整的 MP3 编码流水线
-- ⚡ **高性能** - 优化的算法实现，保持与 Shine 相同的性能特征
-- 🔧 **灵活配置** - 支持多种采样率、比特率和声道模式
-- 📊 **标准兼容** - 符合 ISO/IEC 11172-3 标准
-- 🧪 **全面测试** - 包含单元测试、集成测试和与 Shine 的对比验证
-- 🛠️ **实用工具** - 提供 WAV 转 MP3 命令行工具和测试数据收集工具
-- 📋 **调试支持** - 可选的调试日志和帧数限制功能
+### 算法模块
 
-## 支持的格式
+- **`subband`** - 32频带子带分析滤波器
+- **`mdct`** - 修正离散余弦变换 (Modified Discrete Cosine Transform)
+- **`quantization`** - 量化循环和比特率控制
+- **`huffman`** - Huffman 编码器
+- **`bitstream`** - MP3 比特流写入器
+- **`reservoir`** - 比特池管理
 
-### 采样率
-- **MPEG-1**: 32000, 44100, 48000 Hz
-- **MPEG-2**: 16000, 22050, 24000 Hz  
-- **MPEG-2.5**: 8000, 11025, 12000 Hz
+### 数据和查找表
 
-### 比特率
-- **MPEG-1**: 32-320 kbps
-- **MPEG-2**: 8-160 kbps
-- **MPEG-2.5**: 8-64 kbps
+- **`tables`** - 所有 MP3 编码所需的查找表
+- **`psychoacoustic`** - 心理声学模型（简化版）
 
-### 声道模式
-- 单声道 (Mono)
-- 立体声 (Stereo)
-- 联合立体声 (Joint Stereo)
-- 双声道 (Dual Channel)
+## API 使用
 
-## 快速开始
-
-### 使用命令行工具
-
-```bash
-# 基本用法：WAV 转 MP3
-cd tools && cargo run --bin wav2mp3 ..\testing\fixtures\audio\sample-3s.wav ..\testing\fixtures\output\wav2mp3_output.mp3
-
-# 指定比特率和立体声模式
-cd tools && cargo run --bin wav2mp3 input.wav output.mp3 128 stereo
-
-# 调试模式：限制编码帧数
-cd tools && cargo run --bin wav2mp3 input.wav output.mp3 --max-frames 10
-```
-
-### 作为库使用
-
-```toml
-[dependencies]
-shine-rs = { git = "https://github.com/wshon/shine-rs" }
-```
+### 高级接口 (推荐)
 
 ```rust
 use shine_rs::{Mp3Encoder, Mp3EncoderConfig, StereoMode};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // 创建编码器配置
-    let config = Mp3EncoderConfig::new()
-        .sample_rate(44100)
-        .bitrate(128)
-        .channels(2)
-        .stereo_mode(StereoMode::Stereo);
-    
-    // 创建编码器
-    let mut encoder = Mp3Encoder::new(config)?;
-    
-    // 编码 PCM 数据
-    let pcm_data = vec![0i16; encoder.samples_per_frame()];
-    let mp3_frames = encoder.encode_interleaved(&pcm_data)?;
-    
-    // 完成编码
-    let final_data = encoder.finish()?;
-    
-    println!("编码完成，生成 {} 字节 MP3 数据", final_data.len());
-    Ok(())
+// 创建配置
+let config = Mp3EncoderConfig::new()
+    .sample_rate(44100)
+    .bitrate(128)
+    .channels(2)
+    .stereo_mode(StereoMode::Stereo);
+
+// 创建编码器
+let mut encoder = Mp3Encoder::new(config)?;
+
+// 编码音频数据 (交错格式)
+let pcm_samples = vec![0i16; encoder.samples_per_frame()];
+let mp3_data = encoder.encode_interleaved(&pcm_samples)?;
+
+// 完成编码
+let final_data = encoder.finish()?;
+```
+
+### 底层接口 (Shine 兼容)
+
+```rust
+use shine_rs::{
+    ShineConfig, ShineWave, ShineMpeg,
+    shine_initialise, shine_encode_buffer_interleaved, 
+    shine_flush, shine_close
+};
+
+// 初始化配置
+let mut config = ShineConfig::default();
+config.wave.samplerate = 44100;
+config.wave.channels = 2;
+config.mpeg.bitr = 128;
+
+// 初始化编码器
+shine_initialise(&mut config);
+
+// 编码数据
+let pcm_data = vec![0i16; config.samples_per_pass()];
+let mp3_data = shine_encode_buffer_interleaved(&mut config, &pcm_data);
+
+// 完成编码
+let final_data = shine_flush(&mut config);
+shine_close(&mut config);
+```
+
+## 配置选项
+
+### Mp3EncoderConfig
+
+```rust
+pub struct Mp3EncoderConfig {
+    sample_rate: u32,      // 采样率 (8000-48000 Hz)
+    bitrate: u32,          // 比特率 (8-320 kbps)
+    channels: u16,         // 声道数 (1-2)
+    stereo_mode: StereoMode, // 立体声模式
+    copyright: bool,       // 版权标志
+    original: bool,        // 原创标志
+    emphasis: Emphasis,    // 预加重
 }
 ```
 
-> 💡 **提示**: 项目还提供了底层接口，直接对应 Shine C 实现。详见 [高级 API 使用指南](docs/HIGH_LEVEL_API.md)。
+### 立体声模式
 
-## 项目结构
-
-```
-shine-rs/
-├── src/                        # Rust 源代码
-│   ├── bitstream.rs           # 比特流处理
-│   ├── encoder.rs             # 主编码器（底层接口）
-│   ├── mp3_encoder.rs         # 高级编码器接口
-│   ├── huffman.rs             # Huffman 编码
-│   ├── mdct.rs                # MDCT 变换
-│   ├── quantization.rs        # 量化算法
-│   ├── subband.rs             # 子带分析
-│   ├── tables.rs              # 查找表
-│   └── ...                    # 其他模块
-├── tools/                     # 命令行工具
-│   └── wav2mp3/               # WAV 转 MP3 工具
-├── ref/shine/                 # Shine C 参考实现
-├── testing/                   # 测试相关文件
-│   ├── fixtures/              # 测试数据和音频文件
-│   ├── integration/           # 集成测试
-│   └── regression/            # 回归测试数据
-├── docs/                      # 项目文档
-└── scripts/                   # 辅助脚本
+```rust
+pub enum StereoMode {
+    Stereo,      // 立体声
+    JointStereo, // 联合立体声
+    DualChannel, // 双声道
+    Mono,        // 单声道
+}
 ```
 
-### 核心算法流程
+### 支持的采样率和比特率组合
 
+| MPEG版本 | 采样率 (Hz) | 比特率范围 (kbps) |
+|----------|-------------|-------------------|
+| MPEG-1   | 32000, 44100, 48000 | 32-320 |
+| MPEG-2   | 16000, 22050, 24000 | 8-160  |
+| MPEG-2.5 | 8000, 11025, 12000  | 8-64   |
+
+## 错误处理
+
+```rust
+use shine_rs::EncodingError;
+
+match encoder.encode_interleaved(&pcm_data) {
+    Ok(mp3_data) => {
+        // 处理编码数据
+    }
+    Err(EncodingError::InvalidSampleRate(rate)) => {
+        eprintln!("不支持的采样率: {}", rate);
+    }
+    Err(EncodingError::InvalidBitrate(bitrate)) => {
+        eprintln!("不支持的比特率: {}", bitrate);
+    }
+    Err(EncodingError::InvalidChannelCount(channels)) => {
+        eprintln!("不支持的声道数: {}", channels);
+    }
+    Err(e) => {
+        eprintln!("编码错误: {}", e);
+    }
+}
 ```
-PCM 输入 → 子带滤波 → MDCT 变换 → 量化循环 → Huffman 编码 → 比特流输出
+
+## 内存管理
+
+### 缓冲区大小
+
+```rust
+// 获取每帧所需的 PCM 样本数
+let samples_per_frame = encoder.samples_per_frame(); // 通常是 1152
+
+// 获取最大 MP3 帧大小
+let max_mp3_frame_size = encoder.max_mp3_frame_size(); // 取决于比特率
+
+// 预分配缓冲区
+let mut pcm_buffer = vec![0i16; samples_per_frame];
+let mut mp3_buffer = Vec::with_capacity(max_mp3_frame_size);
 ```
 
-每个步骤都严格按照 Shine C 实现，确保算法的正确性和输出的一致性。
+### 批量处理
 
-## 开发状态
+```rust
+// 处理大量音频数据
+let chunk_size = encoder.samples_per_frame();
+for chunk in pcm_data.chunks(chunk_size) {
+    if chunk.len() == chunk_size {
+        let mp3_frame = encoder.encode_interleaved(chunk)?;
+        output.extend_from_slice(&mp3_frame);
+    } else {
+        // 处理最后一个不完整的块
+        let mut padded_chunk = vec![0i16; chunk_size];
+        padded_chunk[..chunk.len()].copy_from_slice(chunk);
+        let mp3_frame = encoder.encode_interleaved(&padded_chunk)?;
+        output.extend_from_slice(&mp3_frame);
+    }
+}
+```
 
-✅ **已完成** - 该项目已实现完整的 MP3 编码功能：
+## 调试功能
 
-- [x] 项目结构和基础设施
-- [x] 配置管理模块
-- [x] 查找表和常量
-- [x] 比特流写入器
-- [x] 子带滤波器（32 频带分析）
-- [x] MDCT 变换（修正离散余弦变换）
-- [x] 量化循环（比特率控制）
-- [x] Huffman 编码器
-- [x] 主编码器集成
-- [x] 与 Shine 输出完全一致验证
+### 启用诊断特性
 
-### 质量保证
+```toml
+[dependencies]
+shine-rs = { version = "0.1", features = ["diagnostics"] }
+```
 
-- **算法验证**: 所有核心算法都与 Shine C 实现逐行对比验证
-- **输出一致性**: 生成的 MP3 文件与 Shine 输出完全相同（SHA256 哈希匹配）
-- **全面测试**: 包含单元测试、集成测试、属性测试和回归测试
-- **标准符合**: 严格遵循 ISO/IEC 11172-3 MP3 标准
+```rust
+#[cfg(feature = "diagnostics")]
+{
+    // 访问内部诊断数据
+    let diagnostics = encoder.get_diagnostics();
+    println!("MDCT 系数: {:?}", diagnostics.mdct_coefficients);
+    println!("量化参数: {:?}", diagnostics.quantization_params);
+}
+```
 
-## 构建和测试
+### 日志输出
+
+```rust
+use log::{info, debug};
+
+// 启用日志
+env_logger::init();
+
+// 编码时会输出详细日志
+debug!("开始编码帧 {}", frame_number);
+info!("编码完成，输出 {} 字节", mp3_data.len());
+```
+
+## 性能优化
+
+### 预分配缓冲区
+
+```rust
+// 避免重复分配
+let mut encoder = Mp3Encoder::new(config)?;
+let mut pcm_buffer = vec![0i16; encoder.samples_per_frame()];
+let mut mp3_output = Vec::new();
+
+loop {
+    // 重用缓冲区
+    if let Some(samples) = read_audio_samples(&mut pcm_buffer) {
+        let mp3_frame = encoder.encode_interleaved(&pcm_buffer[..samples])?;
+        mp3_output.extend_from_slice(&mp3_frame);
+    } else {
+        break;
+    }
+}
+```
+
+### 批量处理
+
+```rust
+// 处理多个帧以减少函数调用开销
+const BATCH_SIZE: usize = 10;
+let frame_size = encoder.samples_per_frame();
+let batch_size = frame_size * BATCH_SIZE;
+
+for batch in pcm_data.chunks(batch_size) {
+    for frame in batch.chunks(frame_size) {
+        let mp3_frame = encoder.encode_interleaved(frame)?;
+        output.extend_from_slice(&mp3_frame);
+    }
+}
+```
+
+## 线程安全
+
+该库不是线程安全的。如需在多线程环境中使用，请为每个线程创建独立的编码器实例：
+
+```rust
+use std::thread;
+use std::sync::mpsc;
+
+// 为每个线程创建独立的编码器
+let handles: Vec<_> = (0..num_threads).map(|_| {
+    let config = config.clone();
+    thread::spawn(move || {
+        let mut encoder = Mp3Encoder::new(config).unwrap();
+        // 处理音频数据...
+    })
+}).collect();
+```
+
+## 与 Shine C 实现的对应关系
+
+| Rust 函数 | Shine C 函数 | 说明 |
+|-----------|--------------|------|
+| `Mp3Encoder::new()` | `shine_initialise()` | 初始化编码器 |
+| `encode_interleaved()` | `shine_encode_buffer_interleaved()` | 编码交错音频数据 |
+| `finish()` | `shine_flush()` + `shine_close()` | 完成编码并清理 |
+| `samples_per_frame()` | `shine_samples_per_pass()` | 每帧样本数 |
+
+## 测试和验证
 
 ```bash
-# 构建项目
-cargo build
-
-# 运行所有测试
+# 运行单元测试
 cargo test
 
 # 运行集成测试
-cargo test --test integration_full_pipeline_validation
+cargo test --test integration_*
 
-# 使用测试数据验证实现
-cargo run --bin validate_test_data testing/fixtures/data/sample-3s_128k_6f.json
+# 启用诊断特性测试
+cargo test --features diagnostics
 
-# 运行命令行工具
-cd tools && cargo run --bin wav2mp3 testing/fixtures/audio/sample-3s.wav output.mp3
+# 性能基准测试
+cargo bench
 ```
 
-### 调试和开发
+## 构建特性
 
-```bash
-# 启用调试日志
-cd tools && RUST_LOG=debug cargo run --bin wav2mp3 input.wav output.mp3
+- `default` - 标准功能
+- `diagnostics` - 启用内部诊断数据访问
+- `logging` - 启用详细日志输出
 
-# 限制编码帧数（调试用）
-cd tools && cargo run --bin wav2mp3 input.wav output.mp3 --max-frames 5
-
-# 收集测试数据（需要相应的工具）
-cargo run --bin collect_test_data input.wav test_data.json 128
+```toml
+[dependencies]
+shine-rs = { version = "0.1", features = ["diagnostics", "logging"] }
 ```
-
-## 性能和兼容性
-
-### 性能特征
-
-- **算法优化**: 基于 Shine 的高效 C 实现移植
-- **内存安全**: Rust 的零成本抽象和内存安全保证
-- **编码速度**: 与 Shine C 实现相当的编码性能
-- **资源使用**: 优化的内存布局和缓存友好的数据访问
-
-### 兼容性
-
-生成的 MP3 文件与以下解码器完全兼容：
-
-- FFmpeg/libmp3lame
-- Windows Media Player
-- VLC Media Player
-- 各种移动设备播放器
-- 所有符合 MP3 标准的播放器
-
-### 质量保证
-
-- **位级精确**: 与 Shine 生成完全相同的 MP3 比特流
-- **标准符合**: 严格遵循 ISO/IEC 11172-3 标准
-- **回归测试**: 防止算法修改引入的问题
-- **持续验证**: 每次修改都与 Shine 输出对比验证
-
-## 文档
-
-- [项目结构说明](docs/PROJECT_STRUCTURE.md) - 详细的项目组织结构
-- [测试数据框架](docs/TEST_DATA_FRAMEWORK.md) - 测试数据收集和验证系统
-- [帧数限制功能](docs/FRAME_LIMIT_FEATURE.md) - 调试和测试的帧数限制功能
-- [帧数限制快速参考](docs/FRAME_LIMIT_QUICK_REFERENCE.md) - 帧数限制功能的快速使用指南
-- [高级 API 使用指南](docs/HIGH_LEVEL_API.md) - 高级接口的使用方法
-- [日志系统使用指南](docs/LOGGING_SYSTEM.md) - 调试日志的配置和使用
-- [音频文件标准化](docs/AUDIO_FILES_STANDARDIZATION.md) - 测试音频文件的组织规范
-- [验证记录](docs/VERIFICATION_RECORD.md) - 与 Shine 实现的验证记录
-
-## 许可证
-
-本项目采用 GNU Library General Public License v2.0 (LGPL-2.0) 发布。详见 [LICENSE](LICENSE) 文件。
-
-## 贡献
-
-欢迎贡献！在提交代码前，请确保：
-
-1. 遵循项目的编码规范（严格按照 Shine 实现）
-2. 所有测试通过，包括与 Shine 的对比验证
-3. 代码通过 `cargo clippy` 检查，无警告
-4. 为新功能添加相应的测试用例
-
-## 致谢
-
-本项目基于 [Shine](https://github.com/toots/shine) MP3 编码器库，感谢原作者 Savonet 团队的优秀工作。该项目严格遵循 Shine 的算法实现，确保了 MP3 编码的质量和标准符合性。

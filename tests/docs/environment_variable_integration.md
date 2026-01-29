@@ -12,7 +12,7 @@
 **位置**: `crate/src/encoder.rs`
 **实现**:
 ```rust
-#[cfg(any(debug_assertions, feature = "diagnostics"))]
+#[cfg(feature = "diagnostics")]
 {
     if let Ok(max_frames_str) = std::env::var("RUST_MP3_MAX_FRAMES") {
         if let Ok(max_frames) = max_frames_str.parse::<i32>() {

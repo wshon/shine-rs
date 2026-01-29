@@ -164,8 +164,8 @@ cargo test
 # 运行集成测试
 cargo test --test integration_full_pipeline_validation
 
-# 使用测试数据验证实现
-cargo run --bin validate_test_data testing/fixtures/data/sample-3s_128k_6f.json
+# 使用新的参考验证系统
+cargo test encoder_validation_cicd
 
 # 运行命令行工具
 cargo run testing/fixtures/audio/sample-3s.wav output.mp3

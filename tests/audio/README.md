@@ -1,62 +1,99 @@
-# Test Audio Files
+# 测试音频文件组织结构
 
-This directory contains audio files and reference outputs used for testing the MP3 encoder.
+## 目录结构
 
-## Files
+```
+tests/audio/
+├── README.md                    # 本文档
+├── inputs/                      # 输入音频文件（源WAV文件）
+│   ├── basic/                   # 基础测试文件
+│   │   ├── sample-3s.wav        # 3秒立体声样本 (44.1kHz)
+│   │   ├── voice-recorder-testing-1-2-3-sound-file.wav  # 语音测试文件 (48kHz mono)
+│   │   └── Free_Test_Data_500KB_WAV.wav  # 大文件测试 (44.1kHz stereo)
+│   └── frame-specific/          # 特定帧数测试文件
+│       ├── test_1frames_mono.wav
+│       ├── test_1frames_stereo.wav
+│       ├── test_2frames_mono.wav
+│       ├── test_2frames_stereo.wav
+│       ├── test_3frames_mono.wav
+│       ├── test_3frames_stereo.wav
+│       ├── test_6frames_mono.wav
+│       ├── test_6frames_stereo.wav
+│       ├── test_10frames_mono.wav
+│       ├── test_10frames_stereo.wav
+│       ├── test_15frames_mono.wav
+│       ├── test_15frames_stereo.wav
+│       ├── test_20frames_mono.wav
+│       └── test_20frames_stereo.wav
+└── outputs/                     # 输出文件（测试生成的MP3文件）
+    ├── comparison/              # 实时比较测试输出
+    │   ├── *_rust_*.mp3         # Rust编码器输出
+    │   └── *_shine_*.mp3        # Shine编码器输出
+    └── temp/                    # 临时测试输出文件
+        └── test_*.mp3           # 各种测试生成的临时文件
+```
 
-### Input Files
-- `sample-3s.wav` - 3-second stereo WAV file used for consistency testing
-- `Free_Test_Data_500KB_WAV.wav` - Larger test file for comprehensive testing
-- `voice-recorder-testing-1-2-3-sound-file.wav` - Voice recording test file
+## 文件用途说明
 
-### Reference Files
-- `shine_reference_6frames.mp3` - Reference output from Shine encoder (6 frames only)
+### 基础输入文件
+- **sample-3s.wav**: 默认测试文件，3秒立体声，44.1kHz采样率
+- **voice-recorder-testing-1-2-3-sound-file.wav**: 语音测试文件，单声道，48kHz采样率
+- **Free_Test_Data_500KB_WAV.wav**: 大文件测试，立体声，44.1kHz采样率
 
-## Reference File Generation
+### 帧数特定文件
+这些文件用于测试特定帧数的编码，每个文件包含精确的帧数：
+- **1-3帧**: 用于基础功能测试
+- **6帧**: 用于标准测试
+- **10-20帧**: 用于扩展测试
 
-The reference file `shine_reference_6frames.mp3` was generated using the following process:
+### 输出文件
+- **comparison/**: 实时比较测试的输出，包含Rust和Shine编码器的对比结果
+- **temp/**: 临时测试文件，可以安全删除
 
-1. **Shine Version**: Liquidsoap version with debug modifications
-2. **Command**: `./shineenc.exe sample-3s.wav shine_reference_6frames.mp3`
-3. **Frame Limit**: 6 frames (hardcoded in Shine for debugging)
-4. **Settings**: Default Shine settings (128kbps, 44.1kHz, stereo)
+## 测试文件使用
 
-## Verification Data
+### 基础功能测试
+```rust
+// 使用默认测试文件
+let input_file = "tests/audio/inputs/basic/sample-3s.wav";
+```
 
-### shine_reference_6frames.mp3
-- **File Size**: 2508 bytes
-- **SHA256**: `4385b617a86cb3891ce3c99dabe6b47c2ac9182b32c46cbc5ad167fb28b959c4`
-- **Frame Count**: 6 frames
-- **Generated**: 2026-01-26
-- **Verified Against**: Shine reference implementation with SCFSI debugging enabled
+### 实时比较测试
+```rust
+// 比较不同类型的音频文件
+let test_files = [
+    "tests/audio/inputs/basic/sample-3s.wav",
+    "tests/audio/inputs/basic/voice-recorder-testing-1-2-3-sound-file.wav",
+    "tests/audio/inputs/basic/Free_Test_Data_500KB_WAV.wav",
+];
+```
 
-## Test Reliability
+### CI/CD验证测试
+使用 `tests/integration_reference_validation.data/` 中的预生成参考数据。
 
-The reference files are used to ensure:
-1. **Reproducibility**: Tests don't depend on external tools at runtime
-2. **Consistency**: Same reference data across different environments
-3. **Stability**: No variation due to Shine version differences
-4. **Verification**: Known-good outputs for algorithm validation
+## 文件管理
 
-## Regenerating Reference Files
+### 清理临时文件
+```bash
+# 清理临时输出文件
+rm -rf tests/audio/outputs/temp/*
 
-If reference files need to be regenerated:
+# 清理比较输出文件
+rm -rf tests/audio/outputs/comparison/*
+```
 
-1. Ensure Shine encoder is available in `ref/shine/shineenc.exe`
-2. Run: `cd ref/shine && ./shineenc.exe ../../tests/audio/sample-3s.wav new_reference.mp3`
-3. Verify the output matches expected characteristics
-4. Update the SHA256 hash in the test constants
-5. Copy to `tests/audio/` directory
+### 重新生成测试文件
+```bash
+# 重新生成帧数特定的WAV文件
+python scripts/generate_test_wav.py
 
-## SCFSI Test Data
+# 重新生成参考验证数据
+python scripts/generate_reference_validation_data.py
+```
 
-The 6-frame reference file contains the following SCFSI patterns (verified through debugging):
+## 注意事项
 
-- **Frame 1**: SCFSI = [0,1,0,1] for both channels
-- **Frame 2**: SCFSI = [1,1,1,1] for both channels  
-- **Frame 3**: SCFSI = [0,1,1,1] for both channels
-- **Frame 4**: SCFSI = [1,1,1,0] for both channels
-- **Frame 5**: SCFSI = [1,1,1,1] for both channels
-- **Frame 6**: SCFSI = [1,1,1,1] for both channels
-
-These patterns validate the SCFSI calculation algorithm across different audio characteristics.
+1. **不要提交输出文件**: `outputs/` 目录中的文件不应该提交到版本控制
+2. **保持输入文件稳定**: `inputs/` 目录中的WAV文件是测试的基础，不应随意修改
+3. **定期清理**: 定期清理临时输出文件以节省磁盘空间
+4. **文件命名规范**: 新增测试文件应遵循现有的命名规范

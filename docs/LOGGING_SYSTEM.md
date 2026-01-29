@@ -101,7 +101,7 @@ tools/target/debug/wav2mp3.exe input.wav output.mp3 --verbose
 
 ### DEBUG 级别输出（核心库）
 
-**注意**: 核心库的 debug 日志目前使用 `#[cfg(any(debug_assertions, feature = "diagnostics"))]` 条件编译，这意味着：
+**注意**: 核心库的 debug 日志目前使用 `#[cfg(feature = "diagnostics")]` 条件编译，这意味着：
 - 可以通过启用 `diagnostics` feature 在任何构建模式下使用
 - 也可以在 debug 构建中自动启用
 - 需要设置 `RUST_LOG=debug` 环境变量才能看到

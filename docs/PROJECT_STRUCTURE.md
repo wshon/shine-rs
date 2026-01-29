@@ -40,7 +40,6 @@ shine-rs/
 src/
 ├── bin/                        # 可执行程序
 │   ├── collect_test_data.rs    # 测试数据收集工具
-│   ├── validate_test_data.rs   # 测试数据验证工具
 │   └── wav2mp3.rs             # WAV到MP3转换工具
 ├── bitstream.rs               # 比特流处理模块
 ├── encoder.rs                 # 主编码器模块
@@ -184,7 +183,7 @@ docs/
 
 ### 测试工作流
 1. **添加测试音频**: 放入 `testing/fixtures/audio/` 目录
-2. **收集测试数据**: 使用 `scripts/run_test_suite.ps1` 或手动运行工具，数据保存到 `testing/fixtures/data/`
+2. **参考验证**: 使用 `cargo test encoder_validation_cicd` 验证编码器输出，数据保存到 `tests/audio/inputs/reference/`
 3. **验证实现**: 运行集成测试和单元测试
 4. **查看结果**: 检查 `debug_outputs/` 和 `testing/fixtures/output/` 中的输出文件
 

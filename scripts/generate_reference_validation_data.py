@@ -12,6 +12,7 @@ import os
 import json
 import hashlib
 import subprocess
+import time
 from pathlib import Path
 
 def calculate_sha256(file_path):
@@ -41,8 +42,8 @@ def run_shine_encoder(input_file, output_file):
 def generate_reference_data():
     """Generate all reference data."""
     workspace_root = Path.cwd()
-    input_dir = workspace_root / "tests/integration_reference_validation.data/input"
-    reference_dir = workspace_root / "tests/integration_reference_validation.data/reference"
+    input_dir = workspace_root / "tests/audio/inputs/basic"
+    reference_dir = workspace_root / "tests/audio/inputs/reference"
     
     if not input_dir.exists():
         raise FileNotFoundError(f"Input directory not found: {input_dir}")
@@ -87,10 +88,20 @@ def generate_reference_data():
             # Store reference data
             reference_files[config_name] = {
                 "description": f"Reference MP3 for {wav_file.name}",
-                "input_file": f"input/{wav_file.name}",
+                "input_file": f"basic/{wav_file.name}",
                 "file_path": f"reference/{mp3_file.name}",
                 "size_bytes": file_size,
-                "sha256": sha256_hash
+                "sha256": sha256_hash,
+                "encoding_parameters": {
+                    "encoder": "Rust shine-rs",
+                    "bitrate": 128,  # Default bitrate
+                    "sample_rate": "auto",  # Determined from input file
+                    "channels": "auto",  # Determined from input file
+                    "stereo_mode": "stereo",  # Default stereo mode
+                    "copyright": False,
+                    "original": True,
+                    "emphasis": "none"
+                }
             }
             
         except Exception as e:
@@ -101,12 +112,22 @@ def generate_reference_data():
     manifest = {
         "description": "Reference validation data for integration tests (generated with Rust encoder)",
         "generated_by": "scripts/generate_reference_validation_data.py",
+        "generation_date": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
         "encoder_version": "Rust shine-rs implementation",
         "note": "Using Rust encoder as reference due to minor numerical differences with original Shine",
+        "default_encoding_parameters": {
+            "encoder": "Rust shine-rs",
+            "bitrate": 128,
+            "stereo_mode": "stereo",
+            "copyright": False,
+            "original": True,
+            "emphasis": "none",
+            "psychoacoustic_model": "Shine"
+        },
         "reference_files": reference_files
     }
     
-    manifest_file = workspace_root / "tests/integration_reference_validation.data/reference_manifest.json"
+    manifest_file = workspace_root / "tests/audio/inputs/reference_manifest.json"
     with open(manifest_file, 'w') as f:
         json.dump(manifest, f, indent=2)
     

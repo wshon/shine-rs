@@ -24,20 +24,20 @@ cargo run --bin collect_test_data -- input.wav output.json [--max-frames N] [--b
 - SCFSI值
 - 比特流参数（写入字节数、slot lag等）
 
-### 2. 测试数据验证 (`validate_test_data`)
+### 2. 参考验证系统
 
-**功能**: 使用收集的测试数据验证编码器实现
-**位置**: `src/bin/validate_test_data.rs`
-**输入**: JSON格式的测试数据文件
+**功能**: 使用预生成的参考文件验证编码器输出
+**位置**: `tests/encoder_validation_cicd.rs`
+**数据**: `tests/audio/inputs/reference_manifest.json`
 
 **使用方法**:
 ```bash
-cargo run --bin validate_test_data -- test_data.json [--max-frames N]
+cargo test encoder_validation_cicd
 ```
 
 **验证内容**:
-- MDCT系数精确匹配
-- 量化参数一致性
+- 最终MP3文件完整性
+- 文件大小和SHA256哈希匹配
 - SCFSI计算正确性
 - 比特流参数准确性
 
@@ -57,7 +57,7 @@ cargo run --bin validate_test_data -- test_data.json [--max-frames N]
 
 所有测试数据文件位于 `testing/fixtures/data/` 目录：
 
-1. **sample-3s_128k_6f.json** - 主要测试文件
+1. **sample-3s_128k_3f.json** - 主要测试文件
    - 音频: sample-3s.wav (3秒立体声)
    - 配置: 128kbps, 44100Hz, 立体声
    - 帧数: 6帧
@@ -154,8 +154,8 @@ cargo run --bin collect_test_data -- testing/fixtures/audio/new_audio.wav testin
 ### 2. 验证现有实现
 
 ```bash
-# 验证单个测试数据文件
-cargo run --bin validate_test_data -- testing/fixtures/data/sample-3s_128k_6f.json
+# 运行参考验证测试
+cargo test encoder_validation_cicd
 
 # 运行所有单元测试
 cargo test --lib

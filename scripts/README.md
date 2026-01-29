@@ -23,7 +23,7 @@ python scripts/generate_reference_data.py
 
 ## 生成的数据
 
-脚本会在 `tests/integration_pipeline_validation.data/` 目录下生成以下文件：
+脚本会在 `testing/fixtures/data/` 目录下生成以下文件：
 
 - `sample-3s_128k_3f_real.json` - 3秒样本，128kbps，3帧
 - `voice_recorder_128k_3f_real.json` - 语音录音，128kbps，3帧  

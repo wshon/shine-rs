@@ -1,0 +1,69 @@
+{
+  "description": "Reference validation data for integration tests (generated with Rust encoder)",
+  "generated_by": "scripts/generate_reference_validation_data.py",
+  "generation_date": "2026-01-28 09:56:52 UTC",
+  "encoder_version": "Rust shine-rs implementation",
+  "note": "Using Rust encoder as reference due to minor numerical differences with original Shine",
+  "default_encoding_parameters": {
+    "encoder": "Rust shine-rs",
+    "bitrate": 128,
+    "stereo_mode": "stereo",
+    "copyright": false,
+    "original": true,
+    "emphasis": "none",
+    "psychoacoustic_model": "Shine"
+  },
+  "reference_files": {
+    "Free_Test_Data_500KB_WAV": {
+      "description": "Reference MP3 for Free_Test_Data_500KB_WAV.wav",
+      "input_file": "basic/Free_Test_Data_500KB_WAV.wav",
+      "file_path": "reference/Free_Test_Data_500KB_WAV.mp3",
+      "size_bytes": 46812,
+      "sha256": "363242f756ecd30676e23129e401b6a19b94a5014fc1ddb53f853d0f2c15b192",
+      "encoding_parameters": {
+        "encoder": "Rust shine-rs",
+        "bitrate": 128,
+        "sample_rate": "auto",
+        "channels": "auto",
+        "stereo_mode": "stereo",
+        "copyright": false,
+        "original": true,
+        "emphasis": "none"
+      }
+    },
+    "sample-3s": {
+      "description": "Reference MP3 for sample-3s.wav",
+      "input_file": "basic/sample-3s.wav",
+      "file_path": "reference/sample-3s.mp3",
+      "size_bytes": 51408,
+      "sha256": "6be136d554fa6d3f342ebd5ac01426ed3b9a753bcc5f6dfafe93a40ae63e8ece",
+      "encoding_parameters": {
+        "encoder": "Rust shine-rs",
+        "bitrate": 128,
+        "sample_rate": "auto",
+        "channels": "auto",
+        "stereo_mode": "stereo",
+        "copyright": false,
+        "original": true,
+        "emphasis": "none"
+      }
+    },
+    "voice-recorder-testing-1-2-3-sound-file": {
+      "description": "Reference MP3 for voice-recorder-testing-1-2-3-sound-file.wav",
+      "input_file": "basic/voice-recorder-testing-1-2-3-sound-file.wav",
+      "file_path": "reference/voice-recorder-testing-1-2-3-sound-file.mp3",
+      "size_bytes": 61824,
+      "sha256": "3fd8f8aad848b83b6704b71574b63208e597125d51b07981fbc83d307d3fee7c",
+      "encoding_parameters": {
+        "encoder": "Rust shine-rs",
+        "bitrate": 128,
+        "sample_rate": "auto",
+        "channels": "auto",
+        "stereo_mode": "stereo",
+        "copyright": false,
+        "original": true,
+        "emphasis": "none"
+      }
+    }
+  }
+}

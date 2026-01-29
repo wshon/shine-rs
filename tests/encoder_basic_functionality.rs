@@ -73,7 +73,7 @@ fn validate_mp3_output(file_path: &str) -> Result<(), String> {
 
 #[test]
 fn test_basic_encoding() {
-    let input_file = "tests/audio/sample-3s.wav";
+    let input_file = "tests/audio/inputs/basic/sample-3s.wav";
     let output_file = "test_basic_encoding.mp3";
     
     if !Path::new(input_file).exists() {
@@ -104,9 +104,9 @@ fn test_basic_encoding() {
 #[test]
 fn test_different_input_formats() {
     let test_files = [
-        ("tests/audio/sample-3s.wav", "stereo 44.1kHz"),
-        ("tests/audio/voice-recorder-testing-1-2-3-sound-file.wav", "mono 48kHz"),
-        ("tests/audio/Free_Test_Data_500KB_WAV.wav", "stereo 44.1kHz large"),
+        ("tests/audio/inputs/basic/sample-3s.wav", "stereo 44.1kHz"),
+        ("tests/audio/inputs/basic/voice-recorder-testing-1-2-3-sound-file.wav", "mono 48kHz"),
+        ("tests/audio/inputs/basic/Free_Test_Data_500KB_WAV.wav", "stereo 44.1kHz large"),
     ];
     
     for (input_file, description) in &test_files {

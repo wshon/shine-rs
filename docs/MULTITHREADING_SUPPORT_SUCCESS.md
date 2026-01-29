@@ -67,7 +67,7 @@ impl TestDataCollector {
 **解决方案**：将数据收集逻辑与调试输出分离
 ```rust
 // 调试输出（依赖环境变量）
-#[cfg(any(debug_assertions, feature = "diagnostics"))]
+#[cfg(feature = "diagnostics")]
 {
     let debug_frames = std::env::var("RUST_MP3_DEBUG_FRAMES")
         .unwrap_or_else(|_| "6".to_string())

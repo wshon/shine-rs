@@ -28,7 +28,7 @@ struct ReferenceConfig {
 
 /// Load reference manifest
 fn load_reference_manifest() -> HashMap<String, ReferenceConfig> {
-    let manifest_path = "tests/integration_reference_validation.data/reference_manifest.json";
+    let manifest_path = "tests/audio/inputs/reference_manifest.json";
     
     if !Path::new(manifest_path).exists() {
         panic!("Reference manifest not found: {}. Run 'python scripts/generate_reference_validation_data.py' first.", manifest_path);
@@ -48,9 +48,9 @@ fn load_reference_manifest() -> HashMap<String, ReferenceConfig> {
     for (config_name, config_data) in reference_files {
         let config = ReferenceConfig {
             description: config_data["description"].as_str().unwrap().to_string(),
-            input_file: format!("tests/integration_reference_validation.data/{}", 
+            input_file: format!("tests/audio/inputs/{}", 
                               config_data["input_file"].as_str().unwrap()),
-            reference_file: format!("tests/integration_reference_validation.data/{}", 
+            reference_file: format!("tests/audio/inputs/{}", 
                                   config_data["file_path"].as_str().unwrap()),
             expected_size: config_data["size_bytes"].as_u64().unwrap(),
             expected_hash: config_data["sha256"].as_str().unwrap().to_string(),
@@ -143,6 +143,7 @@ fn test_standard_configurations() {
     // Test only standard configurations (not frame-specific ones)
     let standard_configs = [
         "Free_Test_Data_500KB_WAV",
+        "sample-3s",
         "voice-recorder-testing-1-2-3-sound-file",
     ];
     
