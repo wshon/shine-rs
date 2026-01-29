@@ -106,7 +106,7 @@ jobs:
     - name: Run essential tests only
       run: |
         echo "🚀 Running essential tests for quick feedback..."
-        cargo test --lib --all-features
+        cargo test --all-features
         echo "✅ Essential tests passed!"
 
   required-checks:
