@@ -16,11 +16,13 @@ const PI36: f64 = PI / 36.0;
 /// These are table B.9 coefficients for aliasing reduction from the ISO standard
 ///
 /// MDCT_CA macro: coef / sqrt(1.0 + (coef * coef)) * 0x7fffffff
+#[inline]
 fn mdct_ca(coef: f64) -> i32 {
     (coef / (1.0 + coef * coef).sqrt() * 0x7fffffff as f64) as i32
 }
 
 /// MDCT_CS macro: 1.0 / sqrt(1.0 + (coef * coef)) * 0x7fffffff
+#[inline]
 fn mdct_cs(coef: f64) -> i32 {
     (1.0 / (1.0 + coef * coef).sqrt() * 0x7fffffff as f64) as i32
 }
@@ -93,8 +95,8 @@ fn cmuls(are: i32, aim: i32, bre: i32, bim: i32) -> (i32, i32) {
 /// into a single table, scaled and converted to fixed point.
 pub fn shine_mdct_initialise(config: &mut ShineGlobalConfig) {
     // Prepare the MDCT coefficients (matches shine implementation exactly)
-    for m in (0..18).rev() {  // m from 17 down to 0 (matches shine: for (m = 18; m--;))
-        for k in (0..36).rev() {  // k from 35 down to 0 (matches shine: for (k = 36; k--;))
+    (0..18).rev().for_each(|m| {  // m from 17 down to 0 (matches shine: for (m = 18; m--;))
+        (0..36).rev().for_each(|k| {  // k from 35 down to 0 (matches shine: for (k = 36; k--;))
             // Combine window and MDCT coefficients into a single table
             // Scale and convert to fixed point before storing
             // (matches shine formula exactly)
@@ -103,8 +105,8 @@ pub fn shine_mdct_initialise(config: &mut ShineGlobalConfig) {
                 ((PI / 72.0) * (2 * k + 19) as f64 * (2 * m + 1) as f64).cos() *
                 0x7fffffff as f64
             ) as i32;
-        }
-    }
+        });
+    });
 }
 /// MDCT subband analysis
 /// Corresponds to shine_mdct_sub() in l3mdct.c
@@ -322,12 +324,12 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
 
         // Save latest granule's subband samples to be used in the next mdct call
         // (matches shine: memcpy(config->l3_sb_sample[ch][0], config->l3_sb_sample[ch][config->mpeg.granules_per_frame], sizeof(config->l3_sb_sample[0][0])))
-        for k in 0..18 {
-            for band in 0..SBLIMIT {
+        (0..18).for_each(|k| {
+            (0..SBLIMIT).for_each(|band| {
                 config.l3_sb_sample[ch_idx][0][k][band] =
                     config.l3_sb_sample[ch_idx][config.mpeg.granules_per_frame as usize][k][band];
-            }
-        }
+            });
+        });
 
         // Debug: Print saved data for verification (debug mode only)
         #[cfg(feature = "diagnostics")]

@@ -53,16 +53,14 @@ fn mulz(value: i32) -> i32 {
 /// document. The coefficients are stored in the fl array.
 pub fn shine_subband_initialise(subband: &mut Subband) {
     // Initialize channel offsets and sample buffers (matches shine implementation)
-    for i in 0..MAX_CHANNELS {
+    (0..MAX_CHANNELS).for_each(|i| {
         subband.off[i] = 0;
-        for j in 0..HAN_SIZE {
-            subband.x[i][j] = 0;
-        }
-    }
+        subband.x[i].fill(0);
+    });
 
     // Calculate filterbank coefficients (matches shine implementation exactly)
-    for i in (0..SBLIMIT).rev() {  // matches shine: for (i = SBLIMIT; i--;)
-        for j in (0..64).rev() {   // matches shine: for (j = 64; j--;)
+    (0..SBLIMIT).rev().for_each(|i| {  // matches shine: for (i = SBLIMIT; i--;)
+        (0..64).rev().for_each(|j| {   // matches shine: for (j = 64; j--;)
             // Calculate filter coefficient using the same formula as shine
             // filter = 1e9 * cos((double)((2 * i + 1) * (16 - j) * PI64))
             let angle = (2 * i + 1) as f64 * (16 - j as i32) as f64 * (PI / 64.0);
@@ -78,8 +76,8 @@ pub fn shine_subband_initialise(subband: &mut Subband) {
             // Scale and convert to fixed point before storing
             // (matches shine: filter * (0x7fffffff * 1e-9))
             subband.fl[i][j] = (filter * (0x7fffffff as f64 * 1e-9)) as i32;
-        }
-    }
+        });
+    });
 }
 
 /// Windowed subband analysis filterbank

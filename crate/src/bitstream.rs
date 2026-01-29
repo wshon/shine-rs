@@ -140,9 +140,8 @@ impl BitstreamWriter {
 
             // Write the cache bytes in big-endian format (matches shine's SWAB32)
             let cache_bytes = self.cache.to_be_bytes();
-            for i in 0..bytes_to_write {
-                self.data[self.data_position as usize + i as usize] = cache_bytes[i as usize];
-            }
+            self.data[self.data_position as usize..self.data_position as usize + bytes_to_write as usize]
+                .copy_from_slice(&cache_bytes[..bytes_to_write as usize]);
             self.data_position += bytes_to_write;
             
             // Clear the cache
@@ -201,18 +200,21 @@ impl Default for BitstreamWriter {
 /// It will write the encoded audio to the bitstream.
 pub fn format_bitstream(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     // Apply sign correction to quantized values (matches shine exactly)
-    for ch in 0..config.wave.channels as usize {
-        for gr in 0..config.mpeg.granules_per_frame as usize {
+    (0..config.wave.channels as usize).for_each(|ch| {
+        (0..config.mpeg.granules_per_frame as usize).for_each(|gr| {
             let pi = &mut config.l3_enc[ch][gr];
             let pr = &config.mdct_freq[ch][gr];
             
-            for i in 0..GRANULE_SIZE {
-                if pr[i] < 0 && pi[i] > 0 {
-                    pi[i] *= -1;
-                }
-            }
-        }
-    }
+            pi.iter_mut()
+                .zip(pr.iter())
+                .take(GRANULE_SIZE)
+                .for_each(|(pi_val, &pr_val)| {
+                    if pr_val < 0 && *pi_val > 0 {
+                        *pi_val *= -1;
+                    }
+                });
+        });
+    });
 
     encode_side_info(config)?;
     encode_main_data(config)?;
@@ -233,28 +235,28 @@ fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
             
             // Write scale factors
             if gr == 0 || scfsi[0] == 0 {
-                for sfb in 0..6 {
+                (0..6).try_for_each(|sfb| {
                     let sf_val = config.scalefactor.l[gr][ch][sfb];
-                    config.bs.put_bits(sf_val as u32, slen1)?;
-                }
+                    config.bs.put_bits(sf_val as u32, slen1)
+                })?;
             }
             if gr == 0 || scfsi[1] == 0 {
-                for sfb in 6..11 {
+                (6..11).try_for_each(|sfb| {
                     let sf_val = config.scalefactor.l[gr][ch][sfb];
-                    config.bs.put_bits(sf_val as u32, slen1)?;
-                }
+                    config.bs.put_bits(sf_val as u32, slen1)
+                })?;
             }
             if gr == 0 || scfsi[2] == 0 {
-                for sfb in 11..16 {
+                (11..16).try_for_each(|sfb| {
                     let sf_val = config.scalefactor.l[gr][ch][sfb];
-                    config.bs.put_bits(sf_val as u32, slen2)?;
-                }
+                    config.bs.put_bits(sf_val as u32, slen2)
+                })?;
             }
             if gr == 0 || scfsi[3] == 0 {
-                for sfb in 16..21 {
+                (16..21).try_for_each(|sfb| {
                     let sf_val = config.scalefactor.l[gr][ch][sfb];
-                    config.bs.put_bits(sf_val as u32, slen2)?;
-                }
+                    config.bs.put_bits(sf_val as u32, slen2)
+                })?;
             }
 
             // Copy the granule info to avoid borrowing conflicts
@@ -306,11 +308,11 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
 
     // Write SCFSI (only for MPEG-I)
     if config.mpeg.version == 3 {
-        for ch in 0..config.wave.channels as usize {
-            for scfsi_band in 0..4 {
-                config.bs.put_bits(si.scfsi[ch][scfsi_band], 1)?;
-            }
-        }
+        (0..config.wave.channels as usize).try_for_each(|ch| {
+            (0..4).try_for_each(|scfsi_band| {
+                config.bs.put_bits(si.scfsi[ch][scfsi_band], 1)
+            })
+        })?;
     }
 
     // Write granule information
@@ -330,9 +332,9 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
             
             config.bs.put_bits(0, 1)?; // Window switching flag (always 0 for long blocks)
 
-            for region in 0..3 {
-                config.bs.put_bits(gi.table_select[region], 5)?;
-            }
+            (0..3).try_for_each(|region| {
+                config.bs.put_bits(gi.table_select[region], 5)
+            })?;
 
             config.bs.put_bits(gi.region0_count, 4)?;
             config.bs.put_bits(gi.region1_count, 3)?;

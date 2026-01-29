@@ -186,15 +186,15 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             config.l3loop.xr = config.mdct_freq[ch as usize][gr as usize].as_ptr() as *mut i32;
 
             // Precalculate the square, abs, and maximum, for use later on.
-            config.l3loop.xrmax = 0;
-            for i in (0..GRANULE_SIZE).rev() {
-                let xr_val = unsafe { *config.l3loop.xr.add(i) };
-                config.l3loop.xrsq[i] = mulsr(xr_val, xr_val);
-                config.l3loop.xrabs[i] = labs(xr_val);
-                if config.l3loop.xrabs[i] > config.l3loop.xrmax {
-                    config.l3loop.xrmax = config.l3loop.xrabs[i];
-                }
-            }
+            config.l3loop.xrmax = (0..GRANULE_SIZE).rev()
+                .map(|i| {
+                    let xr_val = unsafe { *config.l3loop.xr.add(i) };
+                    config.l3loop.xrsq[i] = mulsr(xr_val, xr_val);
+                    config.l3loop.xrabs[i] = labs(xr_val);
+                    config.l3loop.xrabs[i]
+                })
+                .max()
+                .unwrap_or(0);
 
             // Set sfb_lmax and calculate xmin
             {
@@ -226,21 +226,15 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             }
 
             // reset of iteration variables
-            for i in 0..config.scalefactor.l[gr as usize][ch as usize].len() {
-                config.scalefactor.l[gr as usize][ch as usize][i] = 0;
-            }
-            for i in 0..config.scalefactor.s[gr as usize][ch as usize].len() {
-                for j in 0..config.scalefactor.s[gr as usize][ch as usize][i].len() {
-                    config.scalefactor.s[gr as usize][ch as usize][i][j] = 0;
-                }
-            }
+            config.scalefactor.l[gr as usize][ch as usize].fill(0);
+            config.scalefactor.s[gr as usize][ch as usize]
+                .iter_mut()
+                .for_each(|row| row.fill(0));
 
             // Reset cod_info values
             {
                 let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
-                for i in 0..4 {
-                    cod_info.slen[i] = 0;
-                }
+                cod_info.slen = [0; 4];
 
                 cod_info.part2_3_length = 0;
                 cod_info.big_values = 0;
@@ -349,7 +343,7 @@ fn calc_scfsi(
     const SCFSI_BAND_LONG: [i32; 5] = [0, 6, 11, 16, 21];
 
     let mut condition = 0;
-    let mut temp: i32;
+    let mut _temp: i32;
 
     let samplerate_index = match config.wave.samplerate {
         44100 => 0, 48000 => 1, 32000 => 2, 22050 => 3, 24000 => 4,
@@ -361,16 +355,14 @@ fn calc_scfsi(
     config.l3loop.xrmaxl[gr as usize] = config.l3loop.xrmax;
 
     // the total energy of the granule
-    temp = 0;
-    for i in (0..GRANULE_SIZE).rev() {
-        temp += config.l3loop.xrsq[i] >> 10; // a bit of scaling to avoid overflow
-    }
-    if temp != 0 {
-        config.l3loop.en_tot[gr as usize] =
-            ((temp as f64 * 4.768371584e-7).ln() / LN_2) as i32; // 1024 / 0x7fffffff
+    let temp = (0..GRANULE_SIZE).rev()
+        .fold(0, |acc, i| acc + (config.l3loop.xrsq[i] >> 10));
+    
+    config.l3loop.en_tot[gr as usize] = if temp != 0 {
+        ((temp as f64 * 4.768371584e-7).ln() / LN_2) as i32 // 1024 / 0x7fffffff
     } else {
-        config.l3loop.en_tot[gr as usize] = 0;
-    }
+        0
+    };
 
     // the energy of each scalefactor band, en
     // the allowed distortion of each scalefactor band, xm
@@ -378,18 +370,15 @@ fn calc_scfsi(
         let start = scalefac_band_long[sfb] as usize;
         let end = scalefac_band_long[sfb + 1] as usize;
 
-        temp = 0;
-        for i in start..end {
-            if i < GRANULE_SIZE {
-                temp += config.l3loop.xrsq[i] >> 10;
-            }
-        }
-        if temp != 0 {
-            config.l3loop.en[gr as usize][sfb] =
-                ((temp as f64 * 4.768371584e-7).ln() / LN_2) as i32;
+        let temp = (start..end)
+            .filter(|&i| i < GRANULE_SIZE)
+            .fold(0, |acc, i| acc + (config.l3loop.xrsq[i] >> 10));
+        
+        config.l3loop.en[gr as usize][sfb] = if temp != 0 {
+            ((temp as f64 * 4.768371584e-7).ln() / LN_2) as i32
         } else {
-            config.l3loop.en[gr as usize][sfb] = 0;
-        }
+            0
+        };
 
         if l3_xmin.l[gr as usize][ch as usize][sfb] != 0.0 {
             config.l3loop.xm[gr as usize][sfb] =
@@ -494,23 +483,23 @@ pub fn shine_loop_initialise(config: &mut ShineGlobalConfig) {
     // The table is inverted (negative power) from the equation given
     // in the spec because it is quicker to do x*y than x/y.
     // The 0.5 is for rounding.
-    for i in (0..128).rev() {
+    (0..128).rev().for_each(|i| {
         config.l3loop.steptab[i] = (2.0_f64).powf((127 - i as i32) as f64 / 4.0);
-        if (config.l3loop.steptab[i] * 2.0) > 0x7fffffff as f64 {
-            config.l3loop.steptabi[i] = 0x7fffffff;
+        config.l3loop.steptabi[i] = if (config.l3loop.steptab[i] * 2.0) > 0x7fffffff as f64 {
+            0x7fffffff
         } else {
             // The table is multiplied by 2 to give an extra bit of accuracy.
             // In quantize, the long multiply does not shift its result left one
             // bit to compensate.
-            config.l3loop.steptabi[i] = (config.l3loop.steptab[i] * 2.0 + 0.5) as i32;
-        }
-    }
+            (config.l3loop.steptab[i] * 2.0 + 0.5) as i32
+        };
+    });
 
     // quantize: vector conversion, three quarter power table.
     // The 0.5 is for rounding, the .0946 comes from the spec.
-    for i in (0..10000).rev() {
+    (0..10000).rev().for_each(|i| {
         config.l3loop.int2idx[i] = ((i as f64).sqrt().sqrt() * (i as f64).sqrt() - 0.0946 + 0.5) as i32;
-    }
+    });
 }
 /// Quantize MDCT coefficients
 /// Corresponds to quantize() in l3loop.c
@@ -554,6 +543,7 @@ pub fn quantize(ix: &mut [i32], stepsize: i32, config: &mut ShineGlobalConfig) -
 }
 
 /// Calculate maximum value in range
+#[inline]
 pub fn ix_max(ix: &[i32], begin: u32, end: u32) -> i32 {
     let start = begin as usize;
     let end = (end as usize).min(GRANULE_SIZE);
@@ -765,14 +755,12 @@ fn new_choose_table(ix: &[i32], begin: u32, end: u32) -> u32 {
 
     if max < 15 {
         // try tables with no linbits
-        for i in (0..14).rev() {
-            if let Some(table) = SHINE_HUFFMAN_TABLE.get(i) {
-                if table.xlen > max as u32 {
-                    choice[0] = i as u32;
-                    break;
-                }
-            }
-        }
+        choice[0] = (0..14).rev()
+            .find(|&i| {
+                SHINE_HUFFMAN_TABLE.get(i)
+                    .is_some_and(|table| table.xlen > max as u32)
+            })
+            .unwrap_or(0) as u32;
 
         sum[0] = count_bit(ix, begin, end, choice[0]);
 
@@ -823,23 +811,19 @@ fn new_choose_table(ix: &[i32], begin: u32, end: u32) -> u32 {
         // try tables with linbits
         let max_linbits = max - 15;
 
-        for i in 15..24 {
-            if let Some(table) = SHINE_HUFFMAN_TABLE.get(i) {
-                if table.linmax >= max_linbits as u32 {
-                    choice[0] = i as u32;
-                    break;
-                }
-            }
-        }
+        choice[0] = (15..24)
+            .find(|&i| {
+                SHINE_HUFFMAN_TABLE.get(i)
+                    .is_some_and(|table| table.linmax >= max_linbits as u32)
+            })
+            .unwrap_or(15) as u32;
 
-        for i in 24..32 {
-            if let Some(table) = SHINE_HUFFMAN_TABLE.get(i) {
-                if table.linmax >= max_linbits as u32 {
-                    choice[1] = i as u32;
-                    break;
-                }
-            }
-        }
+        choice[1] = (24..32)
+            .find(|&i| {
+                SHINE_HUFFMAN_TABLE.get(i)
+                    .is_some_and(|table| table.linmax >= max_linbits as u32)
+            })
+            .unwrap_or(24) as u32;
 
         sum[0] = count_bit(ix, begin, end, choice[0]);
         sum[1] = count_bit(ix, begin, end, choice[1]);
@@ -871,6 +855,7 @@ fn bigv_bitcount(ix: &[i32], gi: &GrInfo) -> i32 {
 
 /// Count the number of bits necessary to code the subregion
 /// Corresponds to count_bit() in l3loop.c
+#[inline]
 pub fn count_bit(ix: &[i32], start: u32, end: u32, table: u32) -> i32 {
     if table == 0 {
         return 0;
