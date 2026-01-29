@@ -4,10 +4,10 @@
 //! in shine's bitstream.c and l3bitstream.c. It provides functions to write
 //! MP3 frame headers, side information, and main data to the output bitstream.
 
-use crate::error::{EncodingResult, EncodingError};
+use crate::error::{EncodingError, EncodingResult};
 use crate::huffman::{HuffCodeTab, SHINE_HUFFMAN_TABLE};
-use crate::types::{ShineGlobalConfig, GrInfo, GRANULE_SIZE};
-use crate::tables::{SHINE_SLEN1_TAB, SHINE_SLEN2_TAB, SHINE_SCALE_FACT_BAND_INDEX};
+use crate::tables::{SHINE_SCALE_FACT_BAND_INDEX, SHINE_SLEN1_TAB, SHINE_SLEN2_TAB};
+use crate::types::{GrInfo, ShineGlobalConfig, GRANULE_SIZE};
 
 /// Bitstream writer structure (matches shine's bitstream_t exactly)
 /// (ref/shine/src/lib/bitstream.h:4-10)
@@ -48,13 +48,22 @@ impl BitstreamWriter {
         #[cfg(debug_assertions)]
         {
             if n > 32 {
-                return Err(EncodingError::BitstreamError("Cannot write more than 32 bits at a time".to_string()));
+                return Err(EncodingError::BitstreamError(
+                    "Cannot write more than 32 bits at a time".to_string(),
+                ));
             }
             if n < 0 {
-                return Err(EncodingError::BitstreamError("Cannot write negative number of bits".to_string()));
+                return Err(EncodingError::BitstreamError(
+                    "Cannot write negative number of bits".to_string(),
+                ));
             }
             if n < 32 && (val >> n) != 0 {
-                return Err(EncodingError::BitstreamError(format!("Upper bits are not all zeros: val=0x{:X}, n={}, val>>n=0x{:X}", val, n, val >> n)));
+                return Err(EncodingError::BitstreamError(format!(
+                    "Upper bits are not all zeros: val=0x{:X}, n={}, val>>n=0x{:X}",
+                    val,
+                    n,
+                    val >> n
+                )));
             }
         }
 
@@ -62,17 +71,20 @@ impl BitstreamWriter {
         if n == 0 {
             return Ok(());
         }
-        
+
         if self.cache_bits > n {
             // Cache has enough space for the new bits
             self.cache_bits -= n;
-            
+
             // Add safety check to prevent overflow
             if self.cache_bits >= 0 && self.cache_bits < 32 {
                 let shifted_val = val << self.cache_bits;
                 self.cache |= shifted_val;
             } else {
-                return Err(EncodingError::BitstreamError(format!("Invalid cache_bits: {}", self.cache_bits)));
+                return Err(EncodingError::BitstreamError(format!(
+                    "Invalid cache_bits: {}",
+                    self.cache_bits
+                )));
             }
         } else {
             // Cache doesn't have enough space, need to flush and write to buffer
@@ -80,7 +92,8 @@ impl BitstreamWriter {
             if self.data_position + 4 >= self.data_size {
                 let new_size = self.data_size + (self.data_size / 2);
                 let mut new_buffer = vec![0u8; new_size as usize];
-                new_buffer[..self.data_position as usize].copy_from_slice(&self.data[..self.data_position as usize]);
+                new_buffer[..self.data_position as usize]
+                    .copy_from_slice(&self.data[..self.data_position as usize]);
                 self.data = new_buffer.into_boxed_slice();
                 self.data_size = new_size;
             }
@@ -91,7 +104,8 @@ impl BitstreamWriter {
 
             // Write cache to buffer using SWAB32 equivalent (byte swap on little-endian)
             let cache_bytes = self.cache.to_be_bytes();
-            self.data[self.data_position as usize..self.data_position as usize + 4].copy_from_slice(&cache_bytes);
+            self.data[self.data_position as usize..self.data_position as usize + 4]
+                .copy_from_slice(&cache_bytes);
 
             self.data_position += 4;
             self.cache_bits = 32 - remaining_n;
@@ -128,22 +142,24 @@ impl BitstreamWriter {
             // Calculate how many bytes we need to write
             let bits_in_cache = 32 - self.cache_bits;
             let bytes_to_write = (bits_in_cache + 7) / 8; // Round up to nearest byte
-            
+
             // Ensure we have enough space
             if self.data_position + bytes_to_write >= self.data_size {
                 let new_size = self.data_size + (self.data_size / 2);
                 let mut new_buffer = vec![0u8; new_size as usize];
-                new_buffer[..self.data_position as usize].copy_from_slice(&self.data[..self.data_position as usize]);
+                new_buffer[..self.data_position as usize]
+                    .copy_from_slice(&self.data[..self.data_position as usize]);
                 self.data = new_buffer.into_boxed_slice();
                 self.data_size = new_size;
             }
 
             // Write the cache bytes in big-endian format (matches shine's SWAB32)
             let cache_bytes = self.cache.to_be_bytes();
-            self.data[self.data_position as usize..self.data_position as usize + bytes_to_write as usize]
+            self.data[self.data_position as usize
+                ..self.data_position as usize + bytes_to_write as usize]
                 .copy_from_slice(&cache_bytes[..bytes_to_write as usize]);
             self.data_position += bytes_to_write;
-            
+
             // Clear the cache
             self.cache = 0;
             self.cache_bits = 32;
@@ -158,26 +174,28 @@ impl BitstreamWriter {
         if bits_in_cache > 0 {
             let bytes_to_flush = (bits_in_cache + 7) / 8;
             let bits_to_flush = bytes_to_flush * 8;
-            
+
             if bits_to_flush > bits_in_cache {
                 // Need to add padding bits to reach byte boundary
                 let padding_bits = bits_to_flush - bits_in_cache;
                 self.put_bits(0, padding_bits)?;
             }
-            
+
             // Now flush the cache to align to byte boundary
             if self.cache_bits < 32 {
                 // Ensure we have enough space
                 if self.data_position + 4 >= self.data_size {
                     let new_size = self.data_size + (self.data_size / 2);
                     let mut new_buffer = vec![0u8; new_size as usize];
-                    new_buffer[..self.data_position as usize].copy_from_slice(&self.data[..self.data_position as usize]);
+                    new_buffer[..self.data_position as usize]
+                        .copy_from_slice(&self.data[..self.data_position as usize]);
                     self.data = new_buffer.into_boxed_slice();
                     self.data_size = new_size;
                 }
 
                 let cache_bytes = self.cache.to_be_bytes();
-                self.data[self.data_position as usize..self.data_position as usize + 4].copy_from_slice(&cache_bytes);
+                self.data[self.data_position as usize..self.data_position as usize + 4]
+                    .copy_from_slice(&cache_bytes);
                 self.data_position += 4;
                 self.cache = 0;
                 self.cache_bits = 32;
@@ -195,7 +213,7 @@ impl Default for BitstreamWriter {
 
 /// Format the bitstream for a complete frame (matches shine_format_bitstream exactly)
 /// (ref/shine/src/lib/l3bitstream.c:25-44)
-/// 
+///
 /// This is called after a frame of audio has been quantized and coded.
 /// It will write the encoded audio to the bitstream.
 pub fn format_bitstream(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
@@ -204,7 +222,7 @@ pub fn format_bitstream(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
         (0..config.mpeg.granules_per_frame as usize).for_each(|gr| {
             let pi = &mut config.l3_enc[ch][gr];
             let pr = &config.mdct_freq[ch][gr];
-            
+
             pi.iter_mut()
                 .zip(pr.iter())
                 .take(GRANULE_SIZE)
@@ -232,7 +250,7 @@ fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
             let scfsi = config.side_info.scfsi[ch];
             let slen1 = SHINE_SLEN1_TAB[scalefac_compress as usize];
             let slen2 = SHINE_SLEN2_TAB[scalefac_compress as usize];
-            
+
             // Write scale factors
             if gr == 0 || scfsi[0] == 0 {
                 (0..6).try_for_each(|sfb| {
@@ -265,7 +283,7 @@ fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
             huffman_code_bits(config, &ix, &gi)?;
         }
     }
-    
+
     Ok(())
 }
 
@@ -278,9 +296,13 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     config.bs.put_bits(0x7ff, 11)?; // Sync word
     config.bs.put_bits(config.mpeg.version as u32, 2)?;
     config.bs.put_bits(config.mpeg.layer as u32, 2)?;
-    config.bs.put_bits(if config.mpeg.crc == 0 { 1 } else { 0 }, 1)?;
+    config
+        .bs
+        .put_bits(if config.mpeg.crc == 0 { 1 } else { 0 }, 1)?;
     config.bs.put_bits(config.mpeg.bitrate_index as u32, 4)?;
-    config.bs.put_bits((config.mpeg.samplerate_index % 3) as u32, 2)?;
+    config
+        .bs
+        .put_bits((config.mpeg.samplerate_index % 3) as u32, 2)?;
     config.bs.put_bits(config.mpeg.padding as u32, 1)?;
     config.bs.put_bits(config.mpeg.ext as u32, 1)?;
     config.bs.put_bits(config.mpeg.mode as u32, 2)?;
@@ -290,7 +312,8 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     config.bs.put_bits(config.mpeg.emph as u32, 2)?;
 
     // Write side information
-    if config.mpeg.version == 3 { // MPEG_I = 3
+    if config.mpeg.version == 3 {
+        // MPEG_I = 3
         config.bs.put_bits(0, 9)?; // Main data begin
         if config.wave.channels == 2 {
             config.bs.put_bits(si.private_bits, 3)?;
@@ -309,9 +332,7 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     // Write SCFSI (only for MPEG-I)
     if config.mpeg.version == 3 {
         (0..config.wave.channels as usize).try_for_each(|ch| {
-            (0..4).try_for_each(|scfsi_band| {
-                config.bs.put_bits(si.scfsi[ch][scfsi_band], 1)
-            })
+            (0..4).try_for_each(|scfsi_band| config.bs.put_bits(si.scfsi[ch][scfsi_band], 1))
         })?;
     }
 
@@ -323,36 +344,40 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
             config.bs.put_bits(gi.part2_3_length, 12)?;
             config.bs.put_bits(gi.big_values, 9)?;
             config.bs.put_bits(gi.global_gain, 8)?;
-            
-            if config.mpeg.version == 3 { // MPEG_I = 3
+
+            if config.mpeg.version == 3 {
+                // MPEG_I = 3
                 config.bs.put_bits(gi.scalefac_compress, 4)?;
             } else {
                 config.bs.put_bits(gi.scalefac_compress, 9)?;
             }
-            
+
             config.bs.put_bits(0, 1)?; // Window switching flag (always 0 for long blocks)
 
-            (0..3).try_for_each(|region| {
-                config.bs.put_bits(gi.table_select[region], 5)
-            })?;
+            (0..3).try_for_each(|region| config.bs.put_bits(gi.table_select[region], 5))?;
 
             config.bs.put_bits(gi.region0_count, 4)?;
             config.bs.put_bits(gi.region1_count, 3)?;
 
-            if config.mpeg.version == 3 { // MPEG_I = 3
+            if config.mpeg.version == 3 {
+                // MPEG_I = 3
                 config.bs.put_bits(gi.preflag, 1)?;
             }
             config.bs.put_bits(gi.scalefac_scale, 1)?;
             config.bs.put_bits(gi.count1table_select, 1)?;
         }
     }
-    
+
     Ok(())
 }
 
 /// Huffman encode the quantized values (matches Huffmancodebits exactly)
 /// (ref/shine/src/lib/l3bitstream.c:123-165)
-fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32], gi: &GrInfo) -> EncodingResult<()> {
+fn huffman_code_bits(
+    config: &mut ShineGlobalConfig,
+    ix: &[i32],
+    gi: &GrInfo,
+) -> EncodingResult<()> {
     let scalefac = &SHINE_SCALE_FACT_BAND_INDEX[config.mpeg.samplerate_index as usize];
     let bits_start = config.bs.get_bits_count();
 
@@ -369,12 +394,12 @@ fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32], gi: &GrInfo) ->
         // Get table pointer
         let idx = if i >= region1_start { 1 } else { 0 } + if i >= region2_start { 1 } else { 0 };
         let table_index = gi.table_select[idx];
-        
+
         // Get huffman code
         if table_index != 0 {
             let x = ix[i];
             let y = ix[i + 1];
-            
+
             huffman_code(&mut config.bs, table_index as usize, x, y)?;
         }
         i += 2;
@@ -383,14 +408,14 @@ fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32], gi: &GrInfo) ->
     // 2: Write count1 area
     let h = &SHINE_HUFFMAN_TABLE[(gi.count1table_select + 32) as usize];
     let count1_end = bigvalues + ((gi.count1 << 2) as usize);
-    
+
     let mut i = bigvalues;
     while i < count1_end {
         let v = ix[i];
         let w = ix[i + 1];
         let x = ix[i + 2];
         let y = ix[i + 3];
-        
+
         huffman_coder_count1(&mut config.bs, h, v, w, x, y)?;
         i += 4;
     }
@@ -409,28 +434,37 @@ fn huffman_code_bits(config: &mut ShineGlobalConfig, ix: &[i32], gi: &GrInfo) ->
             config.bs.put_bits(0xffffffff, 32)?;
         }
         if remaining_bits > 0 {
-            config.bs.put_bits((1u32 << remaining_bits) - 1, remaining_bits)?;
+            config
+                .bs
+                .put_bits((1u32 << remaining_bits) - 1, remaining_bits)?;
         }
     }
-    
+
     Ok(())
 }
 
 /// Huffman encode count1 region (matches shine_huffman_coder_count1 exactly)
 /// (ref/shine/src/lib/l3bitstream.c:174-200)
-fn huffman_coder_count1(bs: &mut BitstreamWriter, h: &HuffCodeTab, v: i32, w: i32, x: i32, y: i32) -> EncodingResult<()> {
+fn huffman_coder_count1(
+    bs: &mut BitstreamWriter,
+    h: &HuffCodeTab,
+    v: i32,
+    w: i32,
+    x: i32,
+    y: i32,
+) -> EncodingResult<()> {
     let mut v = v;
     let mut w = w;
     let mut x = x;
     let mut y = y;
-    
+
     let signv = abs_and_sign(&mut v);
     let signw = abs_and_sign(&mut w);
     let signx = abs_and_sign(&mut x);
     let signy = abs_and_sign(&mut y);
 
     let p = v + (w << 1) + (x << 2) + (y << 3);
-    
+
     if let (Some(table), Some(hlen)) = (h.hb, h.hlen) {
         bs.put_bits(table[p as usize] as u32, hlen[p as usize] as i32)?;
 
@@ -458,16 +492,21 @@ fn huffman_coder_count1(bs: &mut BitstreamWriter, h: &HuffCodeTab, v: i32, w: i3
             bs.put_bits(code, cbits as i32)?;
         }
     }
-    
+
     Ok(())
 }
 
 /// Huffman encode a pair of values (matches shine_HuffmanCode exactly)
 /// (ref/shine/src/lib/l3bitstream.c:203-250)
-fn huffman_code(bs: &mut BitstreamWriter, table_select: usize, x: i32, y: i32) -> EncodingResult<()> {
+fn huffman_code(
+    bs: &mut BitstreamWriter,
+    table_select: usize,
+    x: i32,
+    y: i32,
+) -> EncodingResult<()> {
     let mut x = x;
     let mut y = y;
-    
+
     let signx = abs_and_sign(&mut x);
     let signy = abs_and_sign(&mut y);
 
@@ -475,7 +514,8 @@ fn huffman_code(bs: &mut BitstreamWriter, table_select: usize, x: i32, y: i32) -
     let ylen = h.ylen as usize;
 
     if let (Some(table), Some(hlen)) = (h.hb, h.hlen) {
-        if table_select > 15 { // ESC-table is used
+        if table_select > 15 {
+            // ESC-table is used
             let mut linbitsx = 0u32;
             let mut linbitsy = 0u32;
             let linbits = h.linbits;
@@ -492,10 +532,10 @@ fn huffman_code(bs: &mut BitstreamWriter, table_select: usize, x: i32, y: i32) -
             let idx = (x as usize * ylen) + y as usize;
             let code = table[idx] as u32;
             let cbits = hlen[idx] as u32;
-            
+
             let mut ext = 0u32;
             let mut xbits = 0u32;
-            
+
             if x > 14 {
                 ext |= linbitsx;
                 xbits += linbits;
@@ -520,11 +560,12 @@ fn huffman_code(bs: &mut BitstreamWriter, table_select: usize, x: i32, y: i32) -
             if xbits > 0 {
                 bs.put_bits(ext, xbits as i32)?;
             }
-        } else { // No ESC-words
+        } else {
+            // No ESC-words
             let idx = (x as usize * ylen) + y as usize;
             let mut code = table[idx] as u32;
             let mut cbits = hlen[idx] as u32;
-            
+
             if x != 0 {
                 code <<= 1;
                 code |= signx;
@@ -539,7 +580,7 @@ fn huffman_code(bs: &mut BitstreamWriter, table_select: usize, x: i32, y: i32) -
             bs.put_bits(code, cbits as i32)?;
         }
     }
-    
+
     Ok(())
 }
 /// Get absolute value and sign bit (matches shine_abs_and_sign exactly)
@@ -553,4 +594,3 @@ pub fn abs_and_sign(x: &mut i32) -> u32 {
         1
     }
 }
-

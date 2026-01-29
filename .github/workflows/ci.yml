@@ -188,4 +188,4 @@ jobs:
         toolchain: 1.70.0  # Adjust based on your MSRV
 
     - name: Check build with minimum Rust version
-      run: cargo che
+      run: cargo check --all-features

@@ -22,27 +22,32 @@ pub mod diagnostics;
 
 // Re-export diagnostics functions for backward compatibility
 #[cfg(feature = "diagnostics")]
-pub use diagnostics::{reset_frame_counter, get_next_frame_number, get_current_frame_number};
+pub use diagnostics::{get_current_frame_number, get_next_frame_number, reset_frame_counter};
 
 // Stub functions when diagnostics feature is not enabled
 #[cfg(not(feature = "diagnostics"))]
 pub fn reset_frame_counter() {}
 
 #[cfg(not(feature = "diagnostics"))]
-pub fn get_next_frame_number() -> i32 { 1 }
+pub fn get_next_frame_number() -> i32 {
+    1
+}
 
 #[cfg(not(feature = "diagnostics"))]
-pub fn get_current_frame_number() -> i32 { 1 }
-
-
+pub fn get_current_frame_number() -> i32 {
+    1
+}
 
 // Re-export high-level interface (recommended for most users)
 pub use mp3_encoder::{
-    Mp3Encoder, Mp3EncoderConfig, StereoMode, encode_pcm_to_mp3,
-    SUPPORTED_SAMPLE_RATES, SUPPORTED_BITRATES
+    encode_pcm_to_mp3, Mp3Encoder, Mp3EncoderConfig, StereoMode, SUPPORTED_BITRATES,
+    SUPPORTED_SAMPLE_RATES,
 };
 
 // Re-export low-level interface (for advanced users)
-pub use encoder::{ShineConfig, ShineWave, ShineMpeg, shine_initialise, shine_encode_buffer_interleaved, shine_flush, shine_close, shine_set_config_mpeg_defaults};
-pub use error::{EncoderError, ConfigError, InputDataError, EncodingError, EncodingResult};
+pub use encoder::{
+    shine_close, shine_encode_buffer_interleaved, shine_flush, shine_initialise,
+    shine_set_config_mpeg_defaults, ShineConfig, ShineMpeg, ShineWave,
+};
+pub use error::{ConfigError, EncoderError, EncodingError, EncodingResult, InputDataError};
 pub use types::ShineGlobalConfig;

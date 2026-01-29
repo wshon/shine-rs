@@ -47,17 +47,17 @@ pub struct PrivShineMpeg {
     pub version: i32,
     pub layer: i32,
     pub granules_per_frame: i32,
-    pub mode: i32,                    // Stereo mode
-    pub bitr: i32,                    // Must conform to known bitrate
-    pub emph: i32,                    // De-emphasis
+    pub mode: i32, // Stereo mode
+    pub bitr: i32, // Must conform to known bitrate
+    pub emph: i32, // De-emphasis
     pub padding: i32,
     pub bits_per_frame: i32,
     pub bits_per_slot: i32,
     pub frac_slots_per_frame: f64,
     pub slot_lag: f64,
     pub whole_slots_per_frame: i32,
-    pub bitrate_index: i32,           // See Main.c and Layer3.c
-    pub samplerate_index: i32,        // See Main.c and Layer3.c
+    pub bitrate_index: i32,    // See Main.c and Layer3.c
+    pub samplerate_index: i32, // See Main.c and Layer3.c
     pub crc: i32,
     pub ext: i32,
     pub mode_ext: i32,
@@ -72,9 +72,9 @@ pub struct L3Loop {
     /// Magnitudes of the spectral values
     pub xr: *mut i32,
     /// xr squared
-    pub xrsq: Box<[i32; GRANULE_SIZE]>,  // Move to heap
+    pub xrsq: Box<[i32; GRANULE_SIZE]>, // Move to heap
     /// xr absolute
-    pub xrabs: Box<[i32; GRANULE_SIZE]>,  // Move to heap
+    pub xrabs: Box<[i32; GRANULE_SIZE]>, // Move to heap
     /// Maximum of xrabs array
     pub xrmax: i32,
     /// Total energy per granule
@@ -90,7 +90,7 @@ pub struct L3Loop {
     /// 2**(-x/4) for x = -127..0 (integer version)
     pub steptabi: [i32; 128],
     /// x**(3/4) for x = 0..9999
-    pub int2idx: Box<[i32; 10000]>,  // Move to heap
+    pub int2idx: Box<[i32; 10000]>, // Move to heap
 }
 
 impl Default for L3Loop {
@@ -134,7 +134,7 @@ impl Default for Mdct {
 pub struct Subband {
     pub off: [i32; MAX_CHANNELS],
     pub fl: [[i32; 64]; SBLIMIT],
-    pub x: Box<[[i32; HAN_SIZE]; MAX_CHANNELS]>,  // Move to heap
+    pub x: Box<[[i32; HAN_SIZE]; MAX_CHANNELS]>, // Move to heap
 }
 
 impl Default for Subband {
@@ -215,7 +215,7 @@ pub struct Granule {
 #[derive(Debug, Clone)]
 pub struct ShineSideInfo {
     pub private_bits: u32,
-    pub resv_drain: i32,  // matches resvDrain in shine
+    pub resv_drain: i32, // matches resvDrain in shine
     pub scfsi: [[u32; 4]; MAX_CHANNELS],
     pub gr: [Granule; MAX_GRANULES],
 }
@@ -236,7 +236,7 @@ impl Default for ShineSideInfo {
 #[repr(C)]
 #[derive(Debug)]
 pub struct ShinePsyRatio {
-    pub l: Box<[[[f64; 21]; MAX_CHANNELS]; MAX_GRANULES]>,  // Move to heap
+    pub l: Box<[[[f64; 21]; MAX_CHANNELS]; MAX_GRANULES]>, // Move to heap
 }
 
 impl Default for ShinePsyRatio {
@@ -252,7 +252,7 @@ impl Default for ShinePsyRatio {
 #[repr(C)]
 #[derive(Debug)]
 pub struct ShinePsyXmin {
-    pub l: Box<[[[f64; 21]; MAX_CHANNELS]; MAX_GRANULES]>,  // Move to heap
+    pub l: Box<[[[f64; 21]; MAX_CHANNELS]; MAX_GRANULES]>, // Move to heap
 }
 
 impl Default for ShinePsyXmin {
@@ -269,9 +269,9 @@ impl Default for ShinePsyXmin {
 #[derive(Debug)]
 pub struct ShineScalefac {
     /// Long block scale factors [granule][channel][scalefactor_band]
-    pub l: Box<[[[i32; 22]; MAX_CHANNELS]; MAX_GRANULES]>,  // Move to heap
+    pub l: Box<[[[i32; 22]; MAX_CHANNELS]; MAX_GRANULES]>, // Move to heap
     /// Short block scale factors [granule][channel][scalefactor_band][window]
-    pub s: Box<[[[[i32; 3]; 13]; MAX_CHANNELS]; MAX_GRANULES]>,  // Move to heap
+    pub s: Box<[[[[i32; 3]; 13]; MAX_CHANNELS]; MAX_GRANULES]>, // Move to heap
 }
 
 impl Default for ShineScalefac {
@@ -294,12 +294,12 @@ pub struct ShineGlobalConfig {
     pub sideinfo_len: i32,
     pub mean_bits: i32,
     pub ratio: ShinePsyRatio,
-    pub scalefactor: Box<ShineScalefac>,  // Move to heap
+    pub scalefactor: Box<ShineScalefac>, // Move to heap
     pub buffer: [*mut i16; MAX_CHANNELS],
-    pub pe: Box<[[f64; MAX_GRANULES]; MAX_CHANNELS]>,  // Move to heap
-    pub l3_enc: Box<[[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]>,  // Move to heap
-    pub l3_sb_sample: Box<[[[[i32; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS]>,  // Move to heap
-    pub mdct_freq: Box<[[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]>,  // Move to heap
+    pub pe: Box<[[f64; MAX_GRANULES]; MAX_CHANNELS]>, // Move to heap
+    pub l3_enc: Box<[[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]>, // Move to heap
+    pub l3_sb_sample: Box<[[[[i32; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS]>, // Move to heap
+    pub mdct_freq: Box<[[[i32; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]>, // Move to heap
     pub resv_size: i32,
     pub resv_max: i32,
     pub l3loop: L3Loop,
@@ -316,8 +316,8 @@ impl ShineGlobalConfig {
                 samplerate: 44100,
             },
             mpeg: PrivShineMpeg {
-                version: 3,  // MPEG_I = 3
-                layer: 1,    // LAYER_III = 1
+                version: 3, // MPEG_I = 3
+                layer: 1,   // LAYER_III = 1
                 granules_per_frame: 2,
                 mode: 1,
                 bitr: 128,
@@ -341,12 +341,12 @@ impl ShineGlobalConfig {
             sideinfo_len: 0,
             mean_bits: 0,
             ratio: ShinePsyRatio::default(),
-            scalefactor: Box::new(ShineScalefac::default()),  // Allocate on heap
+            scalefactor: Box::new(ShineScalefac::default()), // Allocate on heap
             buffer: [std::ptr::null_mut(); MAX_CHANNELS],
-            pe: Box::new([[0.0; MAX_GRANULES]; MAX_CHANNELS]),  // Allocate on heap
-            l3_enc: Box::new([[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]),  // Allocate on heap
-            l3_sb_sample: Box::new([[[[0; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS]),  // Allocate on heap
-            mdct_freq: Box::new([[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]),  // Allocate on heap
+            pe: Box::new([[0.0; MAX_GRANULES]; MAX_CHANNELS]), // Allocate on heap
+            l3_enc: Box::new([[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]), // Allocate on heap
+            l3_sb_sample: Box::new([[[[0; SBLIMIT]; 18]; MAX_GRANULES + 1]; MAX_CHANNELS]), // Allocate on heap
+            mdct_freq: Box::new([[[0; GRANULE_SIZE]; MAX_GRANULES]; MAX_CHANNELS]), // Allocate on heap
             resv_size: 0,
             resv_max: 0,
             l3loop: L3Loop::default(),

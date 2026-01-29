@@ -3,11 +3,11 @@
 //! This test suite validates the high-level MP3 encoder API that provides
 //! a more convenient interface compared to the low-level Shine-compatible functions.
 
-use shine_rs::mp3_encoder::{
-    Mp3Encoder, Mp3EncoderConfig, StereoMode, encode_pcm_to_mp3,
-    SUPPORTED_SAMPLE_RATES, SUPPORTED_BITRATES
-};
 use shine_rs::error::{ConfigError, InputDataError};
+use shine_rs::mp3_encoder::{
+    encode_pcm_to_mp3, Mp3Encoder, Mp3EncoderConfig, StereoMode, SUPPORTED_BITRATES,
+    SUPPORTED_SAMPLE_RATES,
+};
 
 #[test]
 fn test_config_validation() {
@@ -16,29 +16,29 @@ fn test_config_validation() {
         .sample_rate(44100)
         .channels(2)
         .bitrate(128);
-    
+
     assert!(config.validate().is_ok());
     println!("✅ Valid configuration accepted");
-    
+
     // Test invalid sample rate
     let invalid_config = Mp3EncoderConfig::new()
         .sample_rate(33333) // Not in SUPPORTED_SAMPLE_RATES
         .channels(2)
         .bitrate(128);
-    
+
     match invalid_config.validate() {
         Err(ConfigError::UnsupportedSampleRate(_)) => {
             println!("✅ Correctly rejected invalid sample rate");
         }
         _ => panic!("❌ Should have rejected invalid sample rate"),
     }
-    
+
     // Test invalid bitrate
     let invalid_config = Mp3EncoderConfig::new()
         .sample_rate(44100)
         .channels(2)
         .bitrate(999); // Not in SUPPORTED_BITRATES
-    
+
     match invalid_config.validate() {
         Err(ConfigError::UnsupportedBitrate(_)) => {
             println!("✅ Correctly rejected invalid bitrate");
@@ -53,7 +53,7 @@ fn test_encoder_creation() {
         .sample_rate(44100)
         .channels(2)
         .bitrate(128);
-    
+
     match Mp3Encoder::new(config) {
         Ok(_encoder) => {
             println!("✅ Encoder creation successful");
@@ -68,22 +68,21 @@ fn test_pcm_encoding() {
         .sample_rate(44100)
         .channels(2)
         .bitrate(128);
-    
-    let mut encoder = Mp3Encoder::new(config)
-        .expect("Failed to create encoder");
-    
+
+    let mut encoder = Mp3Encoder::new(config).expect("Failed to create encoder");
+
     // Generate test PCM data (1 second of silence)
     let samples_per_second = 44100 * 2; // stereo
     let pcm_data = vec![0i16; samples_per_second];
-    
+
     match encoder.encode_interleaved(&pcm_data) {
         Ok(mp3_frames) => {
             let total_bytes: usize = mp3_frames.iter().map(|frame| frame.len()).sum();
             println!("✅ PCM encoding successful: {} bytes output", total_bytes);
-            
+
             // Basic validation
             assert!(!mp3_frames.is_empty(), "Output should not be empty");
-            
+
             // Check for MP3 frame sync in first frame
             if let Some(first_frame) = mp3_frames.first() {
                 let mut found_sync = false;
@@ -106,15 +105,15 @@ fn test_finalize() {
         .sample_rate(44100)
         .channels(2)
         .bitrate(128);
-    
-    let mut encoder = Mp3Encoder::new(config)
-        .expect("Failed to create encoder");
-    
+
+    let mut encoder = Mp3Encoder::new(config).expect("Failed to create encoder");
+
     // Encode some data
     let pcm_data = vec![0i16; 1152 * 2]; // One frame of stereo data
-    let _mp3_frames = encoder.encode_interleaved(&pcm_data)
+    let _mp3_frames = encoder
+        .encode_interleaved(&pcm_data)
         .expect("Failed to encode PCM");
-    
+
     // Finalize
     match encoder.finish() {
         Ok(final_data) => {
@@ -131,16 +130,19 @@ fn test_convenience_function() {
     let channels = 2;
     let duration_seconds = 1;
     let pcm_data = vec![0i16; sample_rate * channels * duration_seconds];
-    
+
     let config = Mp3EncoderConfig::new()
         .sample_rate(sample_rate as u32)
         .channels(channels as u32 as u8)
         .bitrate(128);
-    
+
     match encode_pcm_to_mp3(config, &pcm_data) {
         Ok(mp3_data) => {
-            println!("✅ Convenience function successful: {} bytes", mp3_data.len());
-            
+            println!(
+                "✅ Convenience function successful: {} bytes",
+                mp3_data.len()
+            );
+
             // Basic validation
             assert!(!mp3_data.is_empty(), "Output should not be empty");
         }
@@ -155,31 +157,31 @@ fn test_different_configurations() {
         (44100, 2, 128, StereoMode::Stereo, "44.1kHz stereo 128kbps"),
         (48000, 2, 192, StereoMode::Stereo, "48kHz stereo 192kbps"),
     ];
-    
+
     for (sample_rate, channels, bitrate, stereo_mode, description) in &test_configs {
         // Skip if not supported
         if !SUPPORTED_SAMPLE_RATES.contains(sample_rate) {
             println!("⚠️  Skipping {}: sample rate not supported", description);
             continue;
         }
-        
+
         if !SUPPORTED_BITRATES.contains(bitrate) {
             println!("⚠️  Skipping {}: bitrate not supported", description);
             continue;
         }
-        
+
         let config = Mp3EncoderConfig::new()
             .sample_rate(*sample_rate)
             .channels(*channels as u8)
             .bitrate(*bitrate)
             .stereo_mode(*stereo_mode);
-        
+
         match Mp3Encoder::new(config) {
             Ok(mut encoder) => {
                 // Test encoding one frame
                 let samples_per_frame = 1152 * (*channels as usize);
                 let pcm_data = vec![0i16; samples_per_frame];
-                
+
                 match encoder.encode_interleaved(&pcm_data) {
                     Ok(mp3_frames) => {
                         let total_bytes: usize = mp3_frames.iter().map(|frame| frame.len()).sum();
@@ -200,11 +202,11 @@ fn test_stereo_modes() {
         .channels(2)
         .bitrate(128)
         .stereo_mode(StereoMode::JointStereo);
-    
+
     match Mp3Encoder::new(config) {
         Ok(mut encoder) => {
             let pcm_data = vec![0i16; 1152 * 2]; // One frame stereo
-            
+
             match encoder.encode_interleaved(&pcm_data) {
                 Ok(mp3_frames) => {
                     let total_bytes: usize = mp3_frames.iter().map(|frame| frame.len()).sum();
@@ -223,21 +225,22 @@ fn test_error_conditions() {
         .sample_rate(44100)
         .channels(2)
         .bitrate(128);
-    
-    let mut encoder = Mp3Encoder::new(config)
-        .expect("Failed to create encoder");
-    
+
+    let mut encoder = Mp3Encoder::new(config).expect("Failed to create encoder");
+
     // Test with wrong number of samples (not matching channels)
     let wrong_pcm_data = vec![0i16; 1153]; // Odd number for stereo
-    
+
     match encoder.encode_interleaved(&wrong_pcm_data) {
         Ok(_) => println!("⚠️  Encoder accepted mismatched sample count"),
-        Err(shine_rs::error::EncoderError::InputData(InputDataError::InvalidChannelCount { .. })) => {
+        Err(shine_rs::error::EncoderError::InputData(InputDataError::InvalidChannelCount {
+            ..
+        })) => {
             println!("✅ Correctly rejected invalid sample count");
         }
         Err(e) => panic!("❌ Unexpected error: {}", e),
     }
-    
+
     // Test empty data
     let empty_data = vec![];
     match encoder.encode_interleaved(&empty_data) {
@@ -255,7 +258,7 @@ fn test_error_conditions() {
 #[cfg(test)]
 mod integration_tests {
     use super::*;
-    
+
     #[test]
     fn test_full_encoding_workflow() {
         // Simulate encoding a short audio clip
@@ -263,17 +266,16 @@ mod integration_tests {
         let channels = 2;
         let duration_frames = 10;
         let samples_per_frame = 1152;
-        
+
         let config = Mp3EncoderConfig::new()
             .sample_rate(sample_rate)
             .channels(channels as u8)
             .bitrate(128);
-        
-        let mut encoder = Mp3Encoder::new(config)
-            .expect("Failed to create encoder");
-        
+
+        let mut encoder = Mp3Encoder::new(config).expect("Failed to create encoder");
+
         let mut total_output = Vec::new();
-        
+
         // Encode multiple frames
         for frame_num in 0..duration_frames {
             // Generate different data for each frame (simple sine wave)
@@ -282,12 +284,15 @@ mod integration_tests {
                     let sample_index = i / channels;
                     let amplitude = 16000.0;
                     let frequency = 440.0; // A4 note
-                    let phase = 2.0 * std::f64::consts::PI * frequency * 
-                               (sample_index + frame_num * samples_per_frame) as f64 / sample_rate as f64;
+                    let phase = 2.0
+                        * std::f64::consts::PI
+                        * frequency
+                        * (sample_index + frame_num * samples_per_frame) as f64
+                        / sample_rate as f64;
                     (amplitude * phase.sin()) as i16
                 })
                 .collect();
-            
+
             match encoder.encode_interleaved(&pcm_data) {
                 Ok(mp3_frames) => {
                     for frame in mp3_frames {
@@ -298,7 +303,7 @@ mod integration_tests {
                 Err(e) => panic!("❌ Frame {} encoding failed: {}", frame_num, e),
             }
         }
-        
+
         // Finalize
         match encoder.finish() {
             Ok(final_data) => {
@@ -307,12 +312,15 @@ mod integration_tests {
             }
             Err(e) => panic!("❌ Finalize failed: {}", e),
         }
-        
-        println!("✅ Full workflow complete: {} total bytes", total_output.len());
-        
+
+        println!(
+            "✅ Full workflow complete: {} total bytes",
+            total_output.len()
+        );
+
         // Basic validation of final output
         assert!(!total_output.is_empty(), "Final output should not be empty");
-        
+
         // Should contain multiple MP3 frames
         let mut frame_count = 0;
         for i in 0..total_output.len().saturating_sub(1) {
@@ -320,7 +328,7 @@ mod integration_tests {
                 frame_count += 1;
             }
         }
-        
+
         assert!(frame_count > 0, "Should contain at least one MP3 frame");
         println!("✅ Found {} MP3 frames in output", frame_count);
     }

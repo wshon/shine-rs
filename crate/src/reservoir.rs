@@ -3,11 +3,11 @@
 //! Layer3 bit reservoir: Described in C.1.5.4.2.2 of the IS
 //! This module implements shine's reservoir.c functions exactly
 
-use crate::types::{ShineGlobalConfig, GrInfo};
+use crate::types::{GrInfo, ShineGlobalConfig};
 
 /// Get maximum reservoir bits for current granule
 /// Corresponds to shine_max_reservoir_bits() in reservoir.c
-/// 
+///
 /// Called at the beginning of each granule to get the max bit
 /// allowance for the current granule based on reservoir size
 /// and perceptual entropy.
@@ -51,7 +51,7 @@ pub fn shine_max_reservoir_bits(pe: &f64, config: &ShineGlobalConfig) -> i32 {
 
 /// Adjust reservoir after granule encoding
 /// Corresponds to shine_ResvAdjust() in reservoir.c
-/// 
+///
 /// Called after a granule's bit allocation. Readjusts the size of
 /// the reservoir to reflect the granule's usage.
 pub fn shine_resv_adjust(gi: &GrInfo, config: &mut ShineGlobalConfig) {
@@ -60,7 +60,7 @@ pub fn shine_resv_adjust(gi: &GrInfo, config: &mut ShineGlobalConfig) {
 
 /// Finalize reservoir at frame end
 /// Corresponds to shine_ResvFrameEnd() in reservoir.c
-/// 
+///
 /// Called after all granules in a frame have been allocated. Makes sure
 /// that the reservoir size is within limits, possibly by adding stuffing
 /// bits. Note that stuffing bits are added by increasing a granule's
@@ -111,10 +111,10 @@ pub fn shine_resv_frame_end(config: &mut ShineGlobalConfig) {
                     }
                     let gi = &mut l3_side.gr[gr as usize].ch[ch as usize].tt;
                     let extra_bits = 4095 - gi.part2_3_length as i32;
-                    let bits_this_gr = if extra_bits < stuffing_bits { 
-                        extra_bits 
-                    } else { 
-                        stuffing_bits 
+                    let bits_this_gr = if extra_bits < stuffing_bits {
+                        extra_bits
+                    } else {
+                        stuffing_bits
                     };
                     gi.part2_3_length += bits_this_gr as u32;
                     stuffing_bits -= bits_this_gr;
