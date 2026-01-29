@@ -7,7 +7,7 @@ use shine_rs::encoder::*;
 use shine_rs::types::*;
 
 // Import constants from encoder module
-use shine_rs::encoder::{MPEG_I, MPEG_II, MPEG_25, NONE, LAYER_III};
+use shine_rs::encoder::{LAYER_III, MPEG_25, MPEG_I, MPEG_II, NONE};
 
 #[cfg(test)]
 mod tests {
@@ -19,12 +19,12 @@ mod tests {
         assert_eq!(shine_mpeg_version(0), MPEG_I);
         assert_eq!(shine_mpeg_version(1), MPEG_I);
         assert_eq!(shine_mpeg_version(2), MPEG_I);
-        
+
         // Test MPEG-II (next 3 samplerates)
         assert_eq!(shine_mpeg_version(3), MPEG_II);
         assert_eq!(shine_mpeg_version(4), MPEG_II);
         assert_eq!(shine_mpeg_version(5), MPEG_II);
-        
+
         // Test MPEG-2.5 (remaining samplerates)
         assert_eq!(shine_mpeg_version(6), MPEG_25);
         assert_eq!(shine_mpeg_version(7), MPEG_25);
@@ -43,7 +43,7 @@ mod tests {
         assert_eq!(shine_find_samplerate_index(11025), 6);
         assert_eq!(shine_find_samplerate_index(12000), 7);
         assert_eq!(shine_find_samplerate_index(8000), 8);
-        
+
         // Test invalid samplerate
         assert_eq!(shine_find_samplerate_index(96000), -1);
     }
@@ -54,7 +54,7 @@ mod tests {
         assert_eq!(shine_find_bitrate_index(128, MPEG_I), 9);
         assert_eq!(shine_find_bitrate_index(160, MPEG_I), 10);
         assert_eq!(shine_find_bitrate_index(192, MPEG_I), 11);
-        
+
         // Test invalid bitrate
         assert_eq!(shine_find_bitrate_index(999, MPEG_I), -1);
     }
@@ -63,10 +63,10 @@ mod tests {
     fn test_shine_check_config() {
         // Test valid configuration
         assert!(shine_check_config(44100, 128) >= 0);
-        
+
         // Test invalid samplerate
         assert_eq!(shine_check_config(96000, 128), -1);
-        
+
         // Test invalid bitrate
         assert_eq!(shine_check_config(44100, 999), -1);
     }
@@ -80,9 +80,9 @@ mod tests {
             copyright: 0,
             original: 0,
         };
-        
+
         shine_set_config_mpeg_defaults(&mut mpeg);
-        
+
         assert_eq!(mpeg.bitr, 128);
         assert_eq!(mpeg.emph, NONE);
         assert_eq!(mpeg.copyright, 0);
@@ -93,7 +93,7 @@ mod tests {
     fn test_shine_samples_per_pass() {
         let mut config = Box::new(ShineGlobalConfig::default());
         config.mpeg.granules_per_frame = 2; // MPEG-I
-        
+
         let samples = shine_samples_per_pass(&*config);
         assert_eq!(samples, 2 * GRANULE_SIZE as i32);
     }
@@ -113,10 +113,10 @@ mod tests {
                 original: 1,
             },
         };
-        
+
         let result = shine_initialise(&pub_config);
         assert!(result.is_ok());
-        
+
         let config = result.unwrap();
         assert_eq!(config.wave.channels, 2);
         assert_eq!(config.wave.samplerate, 44100);

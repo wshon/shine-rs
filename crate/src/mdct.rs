@@ -6,21 +6,23 @@
 //! in ref/shine/src/lib/l3mdct.c
 
 use crate::types::{ShineGlobalConfig, GRANULE_SIZE, SBLIMIT};
-use std::f64::consts::PI;
 use lazy_static::lazy_static;
+use std::f64::consts::PI;
 
 /// PI/36 constant for MDCT calculations (matches shine PI36)
 const PI36: f64 = PI / 36.0;
 
 /// Aliasing reduction coefficients (matches shine's MDCT_CA and MDCT_CS macros)
 /// These are table B.9 coefficients for aliasing reduction from the ISO standard
-
+///
 /// MDCT_CA macro: coef / sqrt(1.0 + (coef * coef)) * 0x7fffffff
+#[inline]
 fn mdct_ca(coef: f64) -> i32 {
     (coef / (1.0 + coef * coef).sqrt() * 0x7fffffff as f64) as i32
 }
 
 /// MDCT_CS macro: 1.0 / sqrt(1.0 + (coef * coef)) * 0x7fffffff
+#[inline]
 fn mdct_cs(coef: f64) -> i32 {
     (1.0 / (1.0 + coef * coef).sqrt() * 0x7fffffff as f64) as i32
 }
@@ -48,7 +50,7 @@ lazy_static! {
 }
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations
-
+///
 /// Basic multiplication with 32-bit right shift (matches shine mul)
 #[inline]
 fn mul(a: i32, b: i32) -> i32 {
@@ -93,18 +95,18 @@ fn cmuls(are: i32, aim: i32, bre: i32, bim: i32) -> (i32, i32) {
 /// into a single table, scaled and converted to fixed point.
 pub fn shine_mdct_initialise(config: &mut ShineGlobalConfig) {
     // Prepare the MDCT coefficients (matches shine implementation exactly)
-    for m in (0..18).rev() {  // m from 17 down to 0 (matches shine: for (m = 18; m--;))
-        for k in (0..36).rev() {  // k from 35 down to 0 (matches shine: for (k = 36; k--;))
+    (0..18).rev().for_each(|m| {
+        // m from 17 down to 0 (matches shine: for (m = 18; m--;))
+        (0..36).rev().for_each(|k| {
+            // k from 35 down to 0 (matches shine: for (k = 36; k--;))
             // Combine window and MDCT coefficients into a single table
             // Scale and convert to fixed point before storing
             // (matches shine formula exactly)
-            config.mdct.cos_l[m][k] = (
-                (PI36 * (k as f64 + 0.5)).sin() *
-                ((PI / 72.0) * (2 * k + 19) as f64 * (2 * m + 1) as f64).cos() *
-                0x7fffffff as f64
-            ) as i32;
-        }
-    }
+            config.mdct.cos_l[m][k] = ((PI36 * (k as f64 + 0.5)).sin()
+                * ((PI / 72.0) * (2 * k + 19) as f64 * (2 * m + 1) as f64).cos()
+                * 0x7fffffff as f64) as i32;
+        });
+    });
 }
 /// MDCT subband analysis
 /// Corresponds to shine_mdct_sub() in l3mdct.c
@@ -130,12 +132,10 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
             // Polyphase filtering (matches shine implementation exactly)
             // for (k = 0; k < 18; k += 2)
             for k in (0..18).step_by(2) {
-
                 // Create a fresh buffer reference for each k iteration
                 // This is critical - we need to track the buffer pointer correctly
-                let buffer_slice = unsafe {
-                    std::slice::from_raw_parts(config.buffer[ch_idx], GRANULE_SIZE)
-                };
+                let buffer_slice =
+                    unsafe { std::slice::from_raw_parts(config.buffer[ch_idx], GRANULE_SIZE) };
                 let mut buffer_ref = buffer_slice;
 
                 // First subband filtering call - directly write to l3_sb_sample
@@ -145,7 +145,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     &mut config.l3_sb_sample[ch_idx][gr_idx + 1][k],
                     ch_idx,
                     &mut config.subband,
-                    stride as usize
+                    stride as usize,
                 );
 
                 // Record l3_sb_sample for test collection (after first subband filtering)
@@ -169,7 +169,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     &mut config.l3_sb_sample[ch_idx][gr_idx + 1][k + 1],
                     ch_idx,
                     &mut config.subband,
-                    stride as usize
+                    stride as usize,
                 );
 
                 // Update the main buffer pointer to reflect the consumed samples
@@ -179,7 +179,8 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
 
                 // Compensate for inversion in the analysis filter
                 // (every odd index of band AND k) - matches shine exactly
-                for band in (1..32).step_by(2) {  // band = 1, 3, 5, ..., 31
+                for band in (1..32).step_by(2) {
+                    // band = 1, 3, 5, ..., 31
                     config.l3_sb_sample[ch_idx][gr_idx + 1][k + 1][band] *= -1;
                 }
             }
@@ -187,21 +188,20 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
             // Perform IMDCT of 18 previous + 18 current subband samples
             // (matches shine: for (band = 0; band < 32; band++))
             for band in 0..32 {
-
                 // Prepare input for MDCT (matches shine exactly)
-                for k in (0..18).rev() {  // k from 17 down to 0 (matches shine: for (k = 18; k--;))
+                for k in (0..18).rev() {
+                    // k from 17 down to 0 (matches shine: for (k = 18; k--;))
                     mdct_in[k] = config.l3_sb_sample[ch_idx][gr_idx][k][band];
                     mdct_in[k + 18] = config.l3_sb_sample[ch_idx][gr_idx + 1][k][band];
                 }
 
                 // Debug: Print MDCT input for first band of first frame
 
-
-
                 // Calculation of the MDCT
                 // In the case of long blocks (block_type 0,1,3) there are
                 // 36 coefficients in the time domain and 18 in the frequency domain
-                for k in (0..18).rev() {  // k from 17 down to 0 (matches shine: for (k = 18; k--;))
+                for k in (0..18).rev() {
+                    // k from 17 down to 0 (matches shine: for (k = 18; k--;))
                     let mut vm: i32;
 
                     // Start with the last coefficient (matches shine exactly)
@@ -238,7 +238,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                             .unwrap_or_else(|_| "6".to_string())
                             .parse::<i32>()
                             .unwrap_or(6);
-                        
+
                         // Debug: Show all k values for first band
                         if frame_num <= debug_frames && ch == 0 && gr == 0 && band == 0 && k >= 15 {
                             crate::diagnostics::record_mdct_coeff_before_aliasing(k, vm);
@@ -251,11 +251,11 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     // Apply aliasing reduction for each of the 8 coefficients
                     // (matches shine's cmuls calls exactly)
 
-                    // Get current values
-                    let curr_0 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 0];
+                    // Get current values (band * 18 + 0 simplified to band * 18)
+                    let curr_0 = config.mdct_freq[ch_idx][gr_idx][band * 18];
                     let prev_17 = config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 17];
                     let (new_curr_0, new_prev_17) = cmuls(curr_0, prev_17, *MDCT_CS0, *MDCT_CA0);
-                    config.mdct_freq[ch_idx][gr_idx][band * 18 + 0] = new_curr_0;
+                    config.mdct_freq[ch_idx][gr_idx][band * 18] = new_curr_0;
                     config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 17] = new_prev_17;
 
                     let curr_1 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 1];
@@ -299,7 +299,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     let (new_curr_7, new_prev_10) = cmuls(curr_7, prev_10, *MDCT_CS7, *MDCT_CA7);
                     config.mdct_freq[ch_idx][gr_idx][band * 18 + 7] = new_curr_7;
                     config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 10] = new_prev_10;
-                    
+
                     // Debug: Print MDCT coefficients after aliasing reduction for first band
                     // (matches shine: if (frame_count <= 3 && ch == 0 && gr == 0 && band == 1))
                     #[cfg(feature = "diagnostics")]
@@ -310,9 +310,12 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                             .unwrap_or(6);
                         if frame_num <= debug_frames && ch == 0 && gr == 0 && band == 1 {
                             for k in [17, 16, 15] {
-                                let final_coeff = config.mdct_freq[ch_idx][gr_idx][0 * 18 + k];
+                                let final_coeff = config.mdct_freq[ch_idx][gr_idx][k];
                                 // Record final MDCT coefficient for test collection (after aliasing reduction)
-                                crate::diagnostics::record_mdct_coeff_after_aliasing(k, final_coeff);
+                                crate::diagnostics::record_mdct_coeff_after_aliasing(
+                                    k,
+                                    final_coeff,
+                                );
                             }
                         }
                     }
@@ -322,12 +325,12 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
 
         // Save latest granule's subband samples to be used in the next mdct call
         // (matches shine: memcpy(config->l3_sb_sample[ch][0], config->l3_sb_sample[ch][config->mpeg.granules_per_frame], sizeof(config->l3_sb_sample[0][0])))
-        for k in 0..18 {
-            for band in 0..SBLIMIT {
+        (0..18).for_each(|k| {
+            (0..SBLIMIT).for_each(|band| {
                 config.l3_sb_sample[ch_idx][0][k][band] =
                     config.l3_sb_sample[ch_idx][config.mpeg.granules_per_frame as usize][k][band];
-            }
-        }
+            });
+        });
 
         // Debug: Print saved data for verification (debug mode only)
         #[cfg(feature = "diagnostics")]

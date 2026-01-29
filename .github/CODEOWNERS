@@ -1,0 +1,30 @@
+# Global code owners
+* @wshon
+
+# Core algorithm files require extra scrutiny
+crate/src/encoder.rs @wshon
+crate/src/quantization.rs @wshon
+crate/src/mdct.rs @wshon
+crate/src/huffman.rs @wshon
+crate/src/subband.rs @wshon
+
+# Configuration and API changes
+crate/src/lib.rs @wshon
+crate/src/mp3_encoder.rs @wshon
+crate/src/types.rs @wshon
+
+# Build and CI configuration
+.github/ @wshon
+Cargo.toml @wshon
+crate/Cargo.toml @wshon
+
+# Documentation
+README.md @wshon
+docs/ @wshon
+
+# Test files
+tests/ @wshon
+crate/tests/ @wshon
+
+# Scripts and tools
+scripts/ @wshon

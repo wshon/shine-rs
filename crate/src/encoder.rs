@@ -4,10 +4,10 @@
 //! in shine's layer3.c. It provides the primary interface for MP3 encoding
 //! including initialization, configuration, and encoding operations.
 
-use crate::error::{EncodingError, EncodingResult};
-use crate::types::{ShineGlobalConfig, ShineSideInfo, GRANULE_SIZE};
-use crate::tables::{SAMPLERATES, BITRATES};
 use crate::bitstream::BitstreamWriter;
+use crate::error::{EncodingError, EncodingResult};
+use crate::tables::{BITRATES, SAMPLERATES};
+use crate::types::{ShineGlobalConfig, ShineSideInfo, GRANULE_SIZE};
 
 /// Buffer size for bitstream (matches shine BUFFER_SIZE)
 /// (ref/shine/src/lib/bitstream.h:19)
@@ -83,19 +83,10 @@ impl Default for ShineMpeg {
 /// Public configuration structure (matches shine_config_t)
 /// (ref/shine/src/lib/layer3.h:36-38)
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ShineConfig {
     pub wave: ShineWave,
     pub mpeg: ShineMpeg,
-}
-
-impl Default for ShineConfig {
-    fn default() -> Self {
-        Self {
-            wave: ShineWave::default(),
-            mpeg: ShineMpeg::default(),
-        }
-    }
 }
 
 /// Set default values for important vars (matches shine_set_config_mpeg_defaults)
@@ -125,23 +116,21 @@ pub fn shine_mpeg_version(samplerate_index: i32) -> i32 {
 /// Find samplerate index (matches shine_find_samplerate_index)
 /// (ref/shine/src/lib/layer3.c:35-43)
 pub fn shine_find_samplerate_index(freq: i32) -> i32 {
-    for i in 0..9 {
-        if freq == SAMPLERATES[i] {
-            return i as i32;
-        }
-    }
-    -1 // error - not a valid samplerate for encoder
+    SAMPLERATES
+        .iter()
+        .position(|&rate| rate == freq)
+        .map(|i| i as i32)
+        .unwrap_or(-1)
 }
 
 /// Find bitrate index (matches shine_find_bitrate_index)
 /// (ref/shine/src/lib/layer3.c:45-53)
 pub fn shine_find_bitrate_index(bitr: i32, mpeg_version: i32) -> i32 {
-    for i in 0..16 {
-        if bitr == BITRATES[i][mpeg_version as usize] {
-            return i as i32;
-        }
-    }
-    -1 // error - not a valid bitrate for encoder
+    BITRATES
+        .iter()
+        .position(|&rates| rates[mpeg_version as usize] == bitr)
+        .map(|i| i as i32)
+        .unwrap_or(-1)
 }
 
 /// Check configuration validity (matches shine_check_config)
@@ -172,7 +161,9 @@ pub fn shine_samples_per_pass(config: &ShineGlobalConfig) -> i32 {
 /// (ref/shine/src/lib/layer3.c:75-134)
 pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlobalConfig>> {
     if shine_check_config(pub_config.wave.samplerate, pub_config.mpeg.bitr) < 0 {
-        return Err(EncodingError::ValidationError("Invalid configuration".to_string()));
+        return Err(EncodingError::ValidationError(
+            "Invalid configuration".to_string(),
+        ));
     }
 
     let mut config = Box::new(ShineGlobalConfig::default());
@@ -206,13 +197,14 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
     config.mpeg.granules_per_frame = GRANULES_PER_FRAME[config.mpeg.version as usize];
 
     // Figure average number of 'slots' per frame
-    let avg_slots_per_frame = (config.mpeg.granules_per_frame as f64 * GRANULE_SIZE as f64 /
-                              config.wave.samplerate as f64) *
-                              (1000.0 * config.mpeg.bitr as f64 / config.mpeg.bits_per_slot as f64);
+    let avg_slots_per_frame = (config.mpeg.granules_per_frame as f64 * GRANULE_SIZE as f64
+        / config.wave.samplerate as f64)
+        * (1000.0 * config.mpeg.bitr as f64 / config.mpeg.bits_per_slot as f64);
 
     config.mpeg.whole_slots_per_frame = avg_slots_per_frame as i32;
 
-    config.mpeg.frac_slots_per_frame = avg_slots_per_frame - config.mpeg.whole_slots_per_frame as f64;
+    config.mpeg.frac_slots_per_frame =
+        avg_slots_per_frame - config.mpeg.whole_slots_per_frame as f64;
     config.mpeg.slot_lag = -config.mpeg.frac_slots_per_frame;
 
     if config.mpeg.frac_slots_per_frame == 0.0 {
@@ -227,10 +219,18 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
     // Determine the mean bitrate for main data
     if config.mpeg.granules_per_frame == 2 {
         // MPEG 1
-        config.sideinfo_len = 8 * if config.wave.channels == 1 { 4 + 17 } else { 4 + 32 };
+        config.sideinfo_len = 8 * if config.wave.channels == 1 {
+            4 + 17
+        } else {
+            4 + 32
+        };
     } else {
         // MPEG 2
-        config.sideinfo_len = 8 * if config.wave.channels == 1 { 4 + 9 } else { 4 + 17 };
+        config.sideinfo_len = 8 * if config.wave.channels == 1 {
+            4 + 9
+        } else {
+            4 + 17
+        };
     }
 
     Ok(config)
@@ -238,22 +238,30 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 
 /// Internal encoding function (matches shine_encode_buffer_internal)
 /// (ref/shine/src/lib/layer3.c:136-158)
-fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
+fn shine_encode_buffer_internal(
+    config: &mut ShineGlobalConfig,
+    stride: i32,
+) -> EncodingResult<(&[u8], usize)> {
     #[cfg(feature = "diagnostics")]
     let frame_num = crate::get_next_frame_number();
-    
+
     // Start frame data collection
     #[cfg(feature = "diagnostics")]
     crate::diagnostics::start_frame_collection(frame_num);
 
     // Dynamic padding calculation (matches shine exactly)
     if config.mpeg.frac_slots_per_frame != 0.0 {
-        config.mpeg.padding = if config.mpeg.slot_lag <= (config.mpeg.frac_slots_per_frame - 1.0) { 1 } else { 0 };
+        config.mpeg.padding = if config.mpeg.slot_lag <= (config.mpeg.frac_slots_per_frame - 1.0) {
+            1
+        } else {
+            0
+        };
         config.mpeg.slot_lag += config.mpeg.padding as f64 - config.mpeg.frac_slots_per_frame;
     }
 
     config.mpeg.bits_per_frame = 8 * (config.mpeg.whole_slots_per_frame + config.mpeg.padding);
-    config.mean_bits = (config.mpeg.bits_per_frame - config.sideinfo_len) / config.mpeg.granules_per_frame;
+    config.mean_bits =
+        (config.mpeg.bits_per_frame - config.sideinfo_len) / config.mpeg.granules_per_frame;
 
     // Apply mdct to the polyphase output
     crate::mdct::shine_mdct_sub(config, stride);
@@ -280,7 +288,7 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
         config.mpeg.padding,
         config.mpeg.bits_per_frame,
         written,
-        config.mpeg.slot_lag
+        config.mpeg.slot_lag,
     );
 
     Ok((&config.bs.data[..written], written))
@@ -288,7 +296,10 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
 
 /// Encode buffer with separate channel arrays (matches shine_encode_buffer)
 /// (ref/shine/src/lib/layer3.c:160-167)
-pub fn shine_encode_buffer<'a>(config: &'a mut ShineGlobalConfig, data: &[*const i16]) -> EncodingResult<(&'a [u8], usize)> {
+pub fn shine_encode_buffer<'a>(
+    config: &'a mut ShineGlobalConfig,
+    data: &[*const i16],
+) -> EncodingResult<(&'a [u8], usize)> {
     config.buffer[0] = data[0] as *mut i16;
     if config.wave.channels == 2 {
         config.buffer[1] = data[1] as *mut i16;
@@ -299,7 +310,19 @@ pub fn shine_encode_buffer<'a>(config: &'a mut ShineGlobalConfig, data: &[*const
 
 /// Encode buffer with interleaved channels (matches shine_encode_buffer_interleaved)
 /// (ref/shine/src/lib/layer3.c:169-176)
-pub unsafe fn shine_encode_buffer_interleaved(config: &mut ShineGlobalConfig, data: *const i16) -> EncodingResult<(&[u8], usize)> {
+///
+/// # Safety
+///
+/// This function is unsafe because it accepts a raw pointer to PCM data.
+/// The caller must ensure that:
+/// - `data` points to valid PCM samples
+/// - The data contains at least `GRANULE_SIZE * channels` samples
+/// - The data remains valid for the duration of the function call
+/// - The pointer is properly aligned for i16 access
+pub unsafe fn shine_encode_buffer_interleaved(
+    config: &mut ShineGlobalConfig,
+    data: *const i16,
+) -> EncodingResult<(&[u8], usize)> {
     config.buffer[0] = data as *mut i16;
     if config.wave.channels == 2 {
         config.buffer[1] = data.offset(1) as *mut i16;

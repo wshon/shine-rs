@@ -7,9 +7,9 @@
 //! The implementation strictly follows the shine reference implementation
 //! in ref/shine/src/lib/l3loop.c
 
-use crate::types::{ShineGlobalConfig, GRANULE_SIZE, GrInfo, ShinePsyXmin};
-use crate::tables::{SHINE_SCALE_FACT_BAND_INDEX, SHINE_SLEN1_TAB, SHINE_SLEN2_TAB};
 use crate::huffman::SHINE_HUFFMAN_TABLE;
+use crate::tables::{SHINE_SCALE_FACT_BAND_INDEX, SHINE_SLEN1_TAB, SHINE_SLEN2_TAB};
+use crate::types::{GrInfo, ShineGlobalConfig, ShinePsyXmin, GRANULE_SIZE};
 use std::f64::consts::LN_2;
 
 /// Constants from shine (matches l3loop.c exactly)
@@ -22,7 +22,7 @@ const EN_SCFSI_BAND_KRIT: i32 = 10;
 const XM_SCFSI_BAND_KRIT: i32 = 10;
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations
-
+///
 /// Multiply with rounding and 31-bit right shift (matches shine mulsr)
 #[inline]
 pub fn mulsr(a: i32, b: i32) -> i32 {
@@ -102,11 +102,11 @@ pub fn shine_inner_loop(
             _c1bits = bits;
         }
 
-        // Create a temporary copy for subdivide to avoid borrowing conflicts
+        // Subdivide and select tables - use temporary variables to avoid borrowing conflicts
         {
-            let mut cod_info_copy = config.side_info.gr[gr as usize].ch[ch as usize].tt.clone();
-            subdivide(&mut cod_info_copy, config); // bigvalues sfb division
-            config.side_info.gr[gr as usize].ch[ch as usize].tt = cod_info_copy;
+            let samplerate = config.wave.samplerate;
+            let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
+            subdivide_with_samplerate(cod_info, samplerate);
         }
 
         {
@@ -133,24 +133,25 @@ pub fn shine_inner_loop(
 pub fn shine_outer_loop(
     max_bits: i32,
     _l3_xmin: &mut ShinePsyXmin, // the allowed distortion of the scalefactor
-    ix: &mut [i32], // vector of quantized values ix(0..575)
+    ix: &mut [i32],              // vector of quantized values ix(0..575)
     gr: i32,
     ch: i32,
     config: &mut ShineGlobalConfig,
 ) -> i32 {
-    let bits: i32;
-    let huff_bits: i32;
+    // Extract samplerate to avoid borrowing conflicts
+    let samplerate = config.wave.samplerate;
 
-    // Extract quantizer step size to avoid borrowing conflicts
-    let quantizer_step_size = {
-        let mut cod_info = config.side_info.gr[gr as usize].ch[ch as usize].tt.clone();
-        let result = bin_search_step_size(max_bits, ix, &mut cod_info, config);
-        config.side_info.gr[gr as usize].ch[ch as usize].tt = cod_info;
-        result
-    };
+    // Direct access to cod_info without cloning - major performance improvement
+    let quantizer_step_size = bin_search_step_size_with_samplerate(
+        max_bits,
+        ix,
+        &mut config.side_info.gr[gr as usize].ch[ch as usize].tt,
+        samplerate,
+        &mut config.l3loop,
+    );
 
     let part2_length = part2_length(gr, ch, config) as u32;
-    huff_bits = max_bits - part2_length as i32;
+    let huff_bits = max_bits - part2_length as i32;
 
     // Update cod_info with extracted values
     {
@@ -159,7 +160,7 @@ pub fn shine_outer_loop(
         cod_info.part2_length = part2_length;
     }
 
-    bits = shine_inner_loop(ix, huff_bits, gr, ch, config);
+    let bits = shine_inner_loop(ix, huff_bits, gr, ch, config);
 
     // Update final values
     let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
@@ -176,7 +177,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
 
     let mut l3_xmin = ShinePsyXmin::default();
     let mut ix: *mut i32;
-    
+
     // Store xrmax for the first channel and granule for test data collection
     #[cfg(feature = "diagnostics")]
     let mut saved_xrmax = 0i32;
@@ -206,14 +207,15 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 calc_xmin(&config.ratio, cod_info, &mut l3_xmin, gr, ch);
             }
 
-            if config.mpeg.version == 3 { // MPEG_I = 3
+            if config.mpeg.version == 3 {
+                // MPEG_I = 3
                 // MPEG_I - handle borrowing carefully by cloning l3_xmin temporarily
                 calc_scfsi(&mut l3_xmin, ch, gr, config);
             }
 
             // calculation of number of available bit( per granule )
-            let pe_value = config.pe[ch as usize][gr as usize].clone();
-            let max_bits = crate::reservoir::shine_max_reservoir_bits(&pe_value, &config);
+            let pe_value = config.pe[ch as usize][gr as usize];
+            let max_bits = crate::reservoir::shine_max_reservoir_bits(&pe_value, config);
 
             // Debug logging for algorithm verification
             #[cfg(feature = "diagnostics")]
@@ -229,21 +231,15 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             }
 
             // reset of iteration variables
-            for i in 0..config.scalefactor.l[gr as usize][ch as usize].len() {
-                config.scalefactor.l[gr as usize][ch as usize][i] = 0;
-            }
-            for i in 0..config.scalefactor.s[gr as usize][ch as usize].len() {
-                for j in 0..config.scalefactor.s[gr as usize][ch as usize][i].len() {
-                    config.scalefactor.s[gr as usize][ch as usize][i][j] = 0;
-                }
-            }
+            config.scalefactor.l[gr as usize][ch as usize].fill(0);
+            config.scalefactor.s[gr as usize][ch as usize]
+                .iter_mut()
+                .for_each(|row| row.fill(0));
 
             // Reset cod_info values
             {
                 let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
-                for i in 0..4 {
-                    cod_info.slen[i] = 0;
-                }
+                cod_info.slen = [0; 4];
 
                 cod_info.part2_3_length = 0;
                 cod_info.big_values = 0;
@@ -263,14 +259,8 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             // all spectral values zero ?
             let _part2_3_length = if config.l3loop.xrmax != 0 {
                 let ix_slice = unsafe { std::slice::from_raw_parts_mut(ix, GRANULE_SIZE) };
-                let length = shine_outer_loop(
-                    max_bits,
-                    &mut l3_xmin,
-                    ix_slice.try_into().unwrap(),
-                    gr,
-                    ch,
-                    config,
-                ) as u32;
+                let length =
+                    shine_outer_loop(max_bits, &mut l3_xmin, ix_slice, gr, ch, config) as u32;
 
                 // Update part2_3_length after outer loop
                 let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
@@ -286,11 +276,18 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                     let cod_info = &config.side_info.gr[gr as usize].ch[ch as usize].tt;
                     cod_info.quantizer_step_size
                 };
-                
-                // Call reservoir adjust first (matches Shine order)
-                let cod_info_copy = config.side_info.gr[gr as usize].ch[ch as usize].tt.clone();
-                crate::reservoir::shine_resv_adjust(&cod_info_copy, config);
-                
+
+                // Call reservoir adjust first (matches Shine order) - extract values to avoid borrowing conflicts
+                let part2_3_length = {
+                    let cod_info = &config.side_info.gr[gr as usize].ch[ch as usize].tt;
+                    cod_info.part2_3_length
+                };
+                let mean_bits = config.mean_bits;
+                let channels = config.wave.channels;
+
+                // Manual reservoir adjustment to avoid borrowing conflicts
+                config.resv_size += (mean_bits / channels) - part2_3_length as i32;
+
                 // Set global gain AFTER reservoir adjustment (matches Shine)
                 let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
                 cod_info.global_gain = (quantizer_step_size + 210) as u32;
@@ -315,7 +312,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
     } // for ch
 
     crate::reservoir::shine_resv_frame_end(config);
-    
+
     // Record quantization data AFTER shine_resv_frame_end (matches Shine final output)
     #[cfg(feature = "diagnostics")]
     {
@@ -323,40 +320,43 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             .unwrap_or_else(|_| "6".to_string())
             .parse::<i32>()
             .unwrap_or(6);
-        
+
         if frame_num <= debug_frames {
             // Record data for the first channel and granule (ch=0, gr=0) after all adjustments
             let cod_info = &config.side_info.gr[0].ch[0].tt;
-            let max_bits = crate::reservoir::shine_max_reservoir_bits(&config.pe[0][0], &config);
-            
+            let max_bits = crate::reservoir::shine_max_reservoir_bits(&config.pe[0][0], config);
+
             crate::diagnostics::record_quant_data(
-                saved_xrmax,  // Use the saved xrmax from ch=0, gr=0
+                saved_xrmax, // Use the saved xrmax from ch=0, gr=0
                 max_bits,
-                cod_info.part2_3_length,  // Final value after all reservoir adjustments
+                cod_info.part2_3_length, // Final value after all reservoir adjustments
                 cod_info.quantizer_step_size,
-                cod_info.global_gain
+                cod_info.global_gain,
             );
         }
     }
 }
 /// Calculate scale factor selection information (scfsi)
 /// Corresponds to calc_scfsi() in l3loop.c
-fn calc_scfsi(
-    l3_xmin: &mut ShinePsyXmin,
-    ch: i32,
-    gr: i32,
-    config: &mut ShineGlobalConfig,
-) {
+fn calc_scfsi(l3_xmin: &mut ShinePsyXmin, ch: i32, gr: i32, config: &mut ShineGlobalConfig) {
     let l3_side = &mut config.side_info;
     // This is the scfsi_band table from 2.4.2.7 of the IS
     const SCFSI_BAND_LONG: [i32; 5] = [0, 6, 11, 16, 21];
 
     let mut condition = 0;
-    let mut temp: i32;
+    let mut _temp: i32;
 
     let samplerate_index = match config.wave.samplerate {
-        44100 => 0, 48000 => 1, 32000 => 2, 22050 => 3, 24000 => 4,
-        16000 => 5, 11025 => 6, 12000 => 7, 8000 => 8, _ => 0,
+        44100 => 0,
+        48000 => 1,
+        32000 => 2,
+        22050 => 3,
+        24000 => 4,
+        16000 => 5,
+        11025 => 6,
+        12000 => 7,
+        8000 => 8,
+        _ => 0,
     };
 
     let scalefac_band_long = &SHINE_SCALE_FACT_BAND_INDEX[samplerate_index];
@@ -364,16 +364,15 @@ fn calc_scfsi(
     config.l3loop.xrmaxl[gr as usize] = config.l3loop.xrmax;
 
     // the total energy of the granule
-    temp = 0;
-    for i in (0..GRANULE_SIZE).rev() {
-        temp += config.l3loop.xrsq[i] >> 10; // a bit of scaling to avoid overflow
-    }
-    if temp != 0 {
-        config.l3loop.en_tot[gr as usize] =
-            ((temp as f64 * 4.768371584e-7).ln() / LN_2) as i32; // 1024 / 0x7fffffff
+    let temp = (0..GRANULE_SIZE)
+        .rev()
+        .fold(0, |acc, i| acc + (config.l3loop.xrsq[i] >> 10));
+
+    config.l3loop.en_tot[gr as usize] = if temp != 0 {
+        ((temp as f64 * 4.768371584e-7).ln() / LN_2) as i32 // 1024 / 0x7fffffff
     } else {
-        config.l3loop.en_tot[gr as usize] = 0;
-    }
+        0
+    };
 
     // the energy of each scalefactor band, en
     // the allowed distortion of each scalefactor band, xm
@@ -381,18 +380,15 @@ fn calc_scfsi(
         let start = scalefac_band_long[sfb] as usize;
         let end = scalefac_band_long[sfb + 1] as usize;
 
-        temp = 0;
-        for i in start..end {
-            if i < GRANULE_SIZE {
-                temp += config.l3loop.xrsq[i] >> 10;
-            }
-        }
-        if temp != 0 {
-            config.l3loop.en[gr as usize][sfb] =
-                ((temp as f64 * 4.768371584e-7).ln() / LN_2) as i32;
+        let temp = (start..end)
+            .filter(|&i| i < GRANULE_SIZE)
+            .fold(0, |acc, i| acc + (config.l3loop.xrsq[i] >> 10));
+
+        config.l3loop.en[gr as usize][sfb] = if temp != 0 {
+            ((temp as f64 * 4.768371584e-7).ln() / LN_2) as i32
         } else {
-            config.l3loop.en[gr as usize][sfb] = 0;
-        }
+            0
+        };
 
         if l3_xmin.l[gr as usize][ch as usize][sfb] != 0.0 {
             config.l3loop.xm[gr as usize][sfb] =
@@ -497,59 +493,68 @@ pub fn shine_loop_initialise(config: &mut ShineGlobalConfig) {
     // The table is inverted (negative power) from the equation given
     // in the spec because it is quicker to do x*y than x/y.
     // The 0.5 is for rounding.
-    for i in (0..128).rev() {
+    (0..128).rev().for_each(|i| {
         config.l3loop.steptab[i] = (2.0_f64).powf((127 - i as i32) as f64 / 4.0);
-        if (config.l3loop.steptab[i] * 2.0) > 0x7fffffff as f64 {
-            config.l3loop.steptabi[i] = 0x7fffffff;
+        config.l3loop.steptabi[i] = if (config.l3loop.steptab[i] * 2.0) > 0x7fffffff as f64 {
+            0x7fffffff
         } else {
             // The table is multiplied by 2 to give an extra bit of accuracy.
             // In quantize, the long multiply does not shift its result left one
             // bit to compensate.
-            config.l3loop.steptabi[i] = (config.l3loop.steptab[i] * 2.0 + 0.5) as i32;
-        }
-    }
+            (config.l3loop.steptab[i] * 2.0 + 0.5) as i32
+        };
+    });
 
     // quantize: vector conversion, three quarter power table.
     // The 0.5 is for rounding, the .0946 comes from the spec.
-    for i in (0..10000).rev() {
-        config.l3loop.int2idx[i] = ((i as f64).sqrt().sqrt() * (i as f64).sqrt() - 0.0946 + 0.5) as i32;
-    }
+    (0..10000).rev().for_each(|i| {
+        config.l3loop.int2idx[i] =
+            ((i as f64).sqrt().sqrt() * (i as f64).sqrt() - 0.0946 + 0.5) as i32;
+    });
 }
 /// Quantize MDCT coefficients
 /// Corresponds to quantize() in l3loop.c
 pub fn quantize(ix: &mut [i32], stepsize: i32, config: &mut ShineGlobalConfig) -> i32 {
+    quantize_with_l3loop(ix, stepsize, &mut config.l3loop)
+}
+
+/// Helper function to avoid borrowing conflicts
+pub fn quantize_with_l3loop(
+    ix: &mut [i32],
+    stepsize: i32,
+    l3loop: &mut crate::types::L3Loop,
+) -> i32 {
     let mut max = 0;
-    let scalei: i32;
     let mut scale: f64;
     let mut dbl: f64;
 
-    scalei = config.l3loop.steptabi[(stepsize + 127).clamp(0, 127) as usize]; // 2**(-stepsize/4)
+    let scalei = l3loop.steptabi[(stepsize + 127).clamp(0, 127) as usize]; // 2**(-stepsize/4)
 
     // a quick check to see if ixmax will be less than 8192
     // this speeds up the early calls to bin_search_StepSize
-    if mulr(config.l3loop.xrmax, scalei) > 165140 {
+    if mulr(l3loop.xrmax, scalei) > 165140 {
         // 8192**(4/3)
         max = 16384; // no point in continuing, stepsize not big enough
     } else {
-        for i in 0..GRANULE_SIZE {
+        for (i, ix_val) in ix.iter_mut().enumerate().take(GRANULE_SIZE) {
             // This calculation is very sensitive. The multiply must round its
             // result or bad things happen to the quality.
-            let ln = mulr(labs(unsafe { *config.l3loop.xr.add(i) }), scalei);
+            let ln = mulr(labs(unsafe { *l3loop.xr.add(i) }), scalei);
 
             if ln < 10000 {
                 // ln < 10000 catches most values
-                ix[i] = config.l3loop.int2idx[ln as usize]; // quick look up method
+                *ix_val = l3loop.int2idx[ln as usize]; // quick look up method
             } else {
                 // outside table range so have to do it using floats
-                scale = config.l3loop.steptab[(stepsize + 127).clamp(0, 127) as usize]; // 2**(-stepsize/4)
-                dbl = (config.l3loop.xrabs[i] as f64) * scale * 4.656612875e-10; // 0x7fffffff
-                ix[i] = (dbl.sqrt().sqrt() * dbl.sqrt()) as i32; // dbl**(3/4)
+                scale = l3loop.steptab[(stepsize + 127).clamp(0, 127) as usize]; // 2**(-stepsize/4)
+                dbl = (l3loop.xrabs[i] as f64) * scale * 4.656612875e-10; // 0x7fffffff
+                *ix_val = (dbl.sqrt().sqrt() * dbl.sqrt()) as i32; // dbl**(3/4)
             }
 
             // calculate ixmax while we're here
             // note. ix cannot be negative
-            if max < ix[i] {
-                max = ix[i];
+            if max < *ix_val {
+                max = *ix_val;
             }
         }
     }
@@ -558,17 +563,12 @@ pub fn quantize(ix: &mut [i32], stepsize: i32, config: &mut ShineGlobalConfig) -
 }
 
 /// Calculate maximum value in range
+#[inline]
 pub fn ix_max(ix: &[i32], begin: u32, end: u32) -> i32 {
-    let mut max = 0;
     let start = begin as usize;
     let end = (end as usize).min(GRANULE_SIZE);
 
-    for i in start..end {
-        if max < ix[i] {
-            max = ix[i];
-        }
-    }
-    max
+    ix[start..end].iter().max().copied().unwrap_or(0)
 }
 
 /// Calculate run length encoding information
@@ -622,10 +622,18 @@ pub fn count1_bitcount(ix: &[i32], cod_info: &mut GrInfo) -> i32 {
         let p = (v + (w << 1) + (x << 2) + (y << 3)) as usize;
 
         let mut signbits = 0;
-        if v != 0 { signbits += 1; }
-        if w != 0 { signbits += 1; }
-        if x != 0 { signbits += 1; }
-        if y != 0 { signbits += 1; }
+        if v != 0 {
+            signbits += 1;
+        }
+        if w != 0 {
+            signbits += 1;
+        }
+        if x != 0 {
+            signbits += 1;
+        }
+        if y != 0 {
+            signbits += 1;
+        }
 
         sum0 += signbits;
         sum1 += signbits;
@@ -664,6 +672,11 @@ pub fn count1_bitcount(ix: &[i32], cod_info: &mut GrInfo) -> i32 {
 /// Subdivide big values region into regions for different Huffman tables
 /// Corresponds to subdivide() in l3loop.c
 pub fn subdivide(cod_info: &mut GrInfo, config: &mut ShineGlobalConfig) {
+    subdivide_with_samplerate(cod_info, config.wave.samplerate);
+}
+
+/// Helper function to subdivide without borrowing conflicts
+pub fn subdivide_with_samplerate(cod_info: &mut GrInfo, samplerate: i32) {
     // Subdivision table from shine (matches exactly)
     const SUBDV_TABLE: [(u32, u32); 23] = [
         (0, 0), // 0 bands
@@ -696,9 +709,17 @@ pub fn subdivide(cod_info: &mut GrInfo, config: &mut ShineGlobalConfig) {
         cod_info.region0_count = 0;
         cod_info.region1_count = 0;
     } else {
-        let samplerate_index = match config.wave.samplerate {
-            44100 => 0, 48000 => 1, 32000 => 2, 22050 => 3, 24000 => 4,
-            16000 => 5, 11025 => 6, 12000 => 7, 8000 => 8, _ => 0,
+        let samplerate_index = match samplerate {
+            44100 => 0,
+            48000 => 1,
+            32000 => 2,
+            22050 => 3,
+            24000 => 4,
+            16000 => 5,
+            11025 => 6,
+            12000 => 7,
+            8000 => 8,
+            _ => 0,
         };
         let scalefac_band_long = &SHINE_SCALE_FACT_BAND_INDEX[samplerate_index];
 
@@ -756,7 +777,8 @@ pub fn bigv_tab_select(ix: &[i32], cod_info: &mut GrInfo) {
     }
 
     if (cod_info.big_values << 1) > cod_info.address2 {
-        cod_info.table_select[2] = new_choose_table(ix, cod_info.address2, cod_info.big_values << 1);
+        cod_info.table_select[2] =
+            new_choose_table(ix, cod_info.address2, cod_info.big_values << 1);
     }
 }
 
@@ -773,14 +795,14 @@ fn new_choose_table(ix: &[i32], begin: u32, end: u32) -> u32 {
 
     if max < 15 {
         // try tables with no linbits
-        for i in (0..14).rev() {
-            if let Some(table) = SHINE_HUFFMAN_TABLE.get(i) {
-                if table.xlen > max as u32 {
-                    choice[0] = i as u32;
-                    break;
-                }
-            }
-        }
+        choice[0] = (0..14)
+            .rev()
+            .find(|&i| {
+                SHINE_HUFFMAN_TABLE
+                    .get(i)
+                    .is_some_and(|table| table.xlen > max as u32)
+            })
+            .unwrap_or(0) as u32;
 
         sum[0] = count_bit(ix, begin, end, choice[0]);
 
@@ -831,23 +853,21 @@ fn new_choose_table(ix: &[i32], begin: u32, end: u32) -> u32 {
         // try tables with linbits
         let max_linbits = max - 15;
 
-        for i in 15..24 {
-            if let Some(table) = SHINE_HUFFMAN_TABLE.get(i) {
-                if table.linmax >= max_linbits as u32 {
-                    choice[0] = i as u32;
-                    break;
-                }
-            }
-        }
+        choice[0] = (15..24)
+            .find(|&i| {
+                SHINE_HUFFMAN_TABLE
+                    .get(i)
+                    .is_some_and(|table| table.linmax >= max_linbits as u32)
+            })
+            .unwrap_or(15) as u32;
 
-        for i in 24..32 {
-            if let Some(table) = SHINE_HUFFMAN_TABLE.get(i) {
-                if table.linmax >= max_linbits as u32 {
-                    choice[1] = i as u32;
-                    break;
-                }
-            }
-        }
+        choice[1] = (24..32)
+            .find(|&i| {
+                SHINE_HUFFMAN_TABLE
+                    .get(i)
+                    .is_some_and(|table| table.linmax >= max_linbits as u32)
+            })
+            .unwrap_or(24) as u32;
 
         sum[0] = count_bit(ix, begin, end, choice[0]);
         sum[1] = count_bit(ix, begin, end, choice[1]);
@@ -879,6 +899,7 @@ fn bigv_bitcount(ix: &[i32], gi: &GrInfo) -> i32 {
 
 /// Count the number of bits necessary to code the subregion
 /// Corresponds to count_bit() in l3loop.c
+#[inline]
 pub fn count_bit(ix: &[i32], start: u32, end: u32, table: u32) -> i32 {
     if table == 0 {
         return 0;
@@ -968,11 +989,12 @@ pub fn count_bit(ix: &[i32], start: u32, end: u32, table: u32) -> i32 {
 
 /// Binary search for optimal quantizer step size
 /// Corresponds to bin_search_StepSize() in l3loop.c
-fn bin_search_step_size(
+fn bin_search_step_size_with_samplerate(
     desired_rate: i32,
     ix: &mut [i32],
     cod_info: &mut GrInfo,
-    config: &mut ShineGlobalConfig,
+    samplerate: i32,
+    l3loop: &mut crate::types::L3Loop,
 ) -> i32 {
     let mut next = -120;
     let mut count = 120;
@@ -980,12 +1002,12 @@ fn bin_search_step_size(
     loop {
         let half = count / 2;
 
-        let bit = if quantize(ix, next + half, config) > 8192 {
+        let bit = if quantize_with_l3loop(ix, next + half, l3loop) > 8192 {
             100000 // fail
         } else {
             calc_runlen(ix, cod_info); // rzero,count1,big_values
             let mut bit = count1_bitcount(ix, cod_info); // count1_table selection
-            subdivide(cod_info, config); // bigvalues sfb division
+            subdivide_with_samplerate(cod_info, samplerate); // bigvalues sfb division
             bigv_tab_select(ix, cod_info); // codebook selection
             bit += bigv_bitcount(ix, cod_info); // bit count
             bit
