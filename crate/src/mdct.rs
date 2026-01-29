@@ -310,7 +310,7 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                             .unwrap_or(6);
                         if frame_num <= debug_frames && ch == 0 && gr == 0 && band == 1 {
                             for k in [17, 16, 15] {
-                                let final_coeff = config.mdct_freq[ch_idx][gr_idx][0 * 18 + k];
+                                let final_coeff = config.mdct_freq[ch_idx][gr_idx][k];
                                 // Record final MDCT coefficient for test collection (after aliasing reduction)
                                 crate::diagnostics::record_mdct_coeff_after_aliasing(
                                     k,

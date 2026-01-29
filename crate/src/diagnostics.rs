@@ -241,7 +241,7 @@ impl TestDataCollector {
         let thread_id = thread::current().id();
         let mut guard = TEST_DATA_COLLECTORS.lock().unwrap();
         if let Some(collector) = guard.get_mut(&thread_id) {
-            if collector.current_frame <= 6 && k >= 15 && k <= 17 {
+            if collector.current_frame <= 6 && (15..=17).contains(&k) {
                 if let Some(frame) = collector
                     .test_case
                     .frames
@@ -270,7 +270,7 @@ impl TestDataCollector {
         let thread_id = thread::current().id();
         let mut guard = TEST_DATA_COLLECTORS.lock().unwrap();
         if let Some(collector) = guard.get_mut(&thread_id) {
-            if collector.current_frame <= 6 && k >= 15 && k <= 17 {
+            if collector.current_frame <= 6 && (15..=17).contains(&k) {
                 if let Some(frame) = collector
                     .test_case
                     .frames

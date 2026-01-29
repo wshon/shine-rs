@@ -50,8 +50,6 @@ impl Args {
         let mut verbose = false;
 
         let mut i = 1;
-        let input_file: String;
-        let output_file: String;
 
         // Parse options (flags starting with -)
         while i < args.len() && args[i].starts_with('-') && args[i] != "-" {
@@ -114,8 +112,8 @@ impl Args {
             return Err("".to_string()); // Empty error triggers usage display
         }
 
-        input_file = args[i].clone();
-        output_file = args[i + 1].clone();
+        let input_file: String = args[i].clone();
+        let output_file: String = args[i + 1].clone();
 
         // Validate bitrate (matches shine's supported bitrates)
         if ![

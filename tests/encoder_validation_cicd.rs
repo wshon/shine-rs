@@ -8,7 +8,6 @@
 //! - Different bitrates (128, 192, 256 kbps)
 //! - Standard test files
 
-use serde_json;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::fs;
@@ -82,7 +81,7 @@ fn run_rust_encoder(input_file: &str, output_file: &str) -> Result<(), String> {
     }
 
     let result = Command::new("cargo")
-        .args(&["run", "--", input_file, output_file])
+        .args(["run", "--", input_file, output_file])
         .output()
         .map_err(|e| format!("Failed to run Rust encoder: {}", e))?;
 
@@ -159,7 +158,7 @@ fn test_standard_configurations() {
     let mut failed = 0;
 
     for config_name in &standard_configs {
-        if let Some(config) = configs.get(&config_name.to_string()) {
+        if let Some(config) = configs.get(*config_name) {
             print!("Testing {}: ", config_name);
             match validate_configuration(config_name, config) {
                 Ok(()) => {

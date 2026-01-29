@@ -324,7 +324,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
         if frame_num <= debug_frames {
             // Record data for the first channel and granule (ch=0, gr=0) after all adjustments
             let cod_info = &config.side_info.gr[0].ch[0].tt;
-            let max_bits = crate::reservoir::shine_max_reservoir_bits(&config.pe[0][0], &config);
+            let max_bits = crate::reservoir::shine_max_reservoir_bits(&config.pe[0][0], config);
 
             crate::diagnostics::record_quant_data(
                 saved_xrmax, // Use the saved xrmax from ch=0, gr=0
@@ -536,25 +536,25 @@ pub fn quantize_with_l3loop(
         // 8192**(4/3)
         max = 16384; // no point in continuing, stepsize not big enough
     } else {
-        for i in 0..GRANULE_SIZE {
+        for (i, ix_val) in ix.iter_mut().enumerate().take(GRANULE_SIZE) {
             // This calculation is very sensitive. The multiply must round its
             // result or bad things happen to the quality.
             let ln = mulr(labs(unsafe { *l3loop.xr.add(i) }), scalei);
 
             if ln < 10000 {
                 // ln < 10000 catches most values
-                ix[i] = l3loop.int2idx[ln as usize]; // quick look up method
+                *ix_val = l3loop.int2idx[ln as usize]; // quick look up method
             } else {
                 // outside table range so have to do it using floats
                 scale = l3loop.steptab[(stepsize + 127).clamp(0, 127) as usize]; // 2**(-stepsize/4)
                 dbl = (l3loop.xrabs[i] as f64) * scale * 4.656612875e-10; // 0x7fffffff
-                ix[i] = (dbl.sqrt().sqrt() * dbl.sqrt()) as i32; // dbl**(3/4)
+                *ix_val = (dbl.sqrt().sqrt() * dbl.sqrt()) as i32; // dbl**(3/4)
             }
 
             // calculate ixmax while we're here
             // note. ix cannot be negative
-            if max < ix[i] {
-                max = ix[i];
+            if max < *ix_val {
+                max = *ix_val;
             }
         }
     }
