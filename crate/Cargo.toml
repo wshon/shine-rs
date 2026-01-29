@@ -1,6 +1,6 @@
 [package]
 name = "shine-rs"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 authors = ["Shon Wang <code@wshon.com>"]
 description = "A pure Rust MP3 encoder based on the shine library, providing complete MPEG Layer III encoding functionality"
