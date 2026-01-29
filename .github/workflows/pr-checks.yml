@@ -34,9 +34,19 @@ jobs:
     - name: Validate PR title
       run: |
         title="${{ github.event.pull_request.title }}"
-        if [[ ! "$title" =~ ^(feat|fix|docs|style|refactor|perf|test|chore|ci)(\(.+\))?: .+ ]]; then
+        echo "Validating PR title: $title"
+        
+        # Check if title follows conventional commits format
+        if echo "$title" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|chore|ci)(\(.+\))?: .+'; then
+          echo "✅ PR title follows conventional commits format"
+        else
           echo "❌ PR title must follow conventional commits format"
-          echo "Examples: feat: add new feature, fix(encoder): resolve bug, docs: update README"
+          echo "Current title: $title"
+          echo "Examples:"
+          echo "  feat: add new feature"
+          echo "  fix(encoder): resolve quantization bug"
+          echo "  docs: update README"
+          echo "  refactor(mdct): modernize loop implementation"
           exit 1
         fi
 
