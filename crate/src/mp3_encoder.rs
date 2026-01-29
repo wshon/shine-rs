@@ -197,7 +197,7 @@ impl Mp3Encoder {
 
         // 初始化shine编码器
         let global_config = shine_initialise(&shine_config)
-            .map_err(|e| EncoderError::Encoding(e))?;
+            .map_err(EncoderError::Encoding)?;
 
         // 计算每帧需要的样本数（交错格式的总样本数）
         let samples_per_channel = crate::encoder::shine_samples_per_pass(&global_config) as usize;

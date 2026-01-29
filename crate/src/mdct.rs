@@ -14,7 +14,7 @@ const PI36: f64 = PI / 36.0;
 
 /// Aliasing reduction coefficients (matches shine's MDCT_CA and MDCT_CS macros)
 /// These are table B.9 coefficients for aliasing reduction from the ISO standard
-
+///
 /// MDCT_CA macro: coef / sqrt(1.0 + (coef * coef)) * 0x7fffffff
 fn mdct_ca(coef: f64) -> i32 {
     (coef / (1.0 + coef * coef).sqrt() * 0x7fffffff as f64) as i32
@@ -48,7 +48,7 @@ lazy_static! {
 }
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations
-
+///
 /// Basic multiplication with 32-bit right shift (matches shine mul)
 #[inline]
 fn mul(a: i32, b: i32) -> i32 {
@@ -251,11 +251,11 @@ pub fn shine_mdct_sub(config: &mut ShineGlobalConfig, stride: i32) {
                     // Apply aliasing reduction for each of the 8 coefficients
                     // (matches shine's cmuls calls exactly)
 
-                    // Get current values
-                    let curr_0 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 0];
+                    // Get current values (band * 18 + 0 simplified to band * 18)
+                    let curr_0 = config.mdct_freq[ch_idx][gr_idx][band * 18];
                     let prev_17 = config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 17];
                     let (new_curr_0, new_prev_17) = cmuls(curr_0, prev_17, *MDCT_CS0, *MDCT_CA0);
-                    config.mdct_freq[ch_idx][gr_idx][band * 18 + 0] = new_curr_0;
+                    config.mdct_freq[ch_idx][gr_idx][band * 18] = new_curr_0;
                     config.mdct_freq[ch_idx][gr_idx][(band - 1) * 18 + 17] = new_prev_17;
 
                     let curr_1 = config.mdct_freq[ch_idx][gr_idx][band * 18 + 1];

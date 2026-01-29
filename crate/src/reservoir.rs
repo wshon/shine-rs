@@ -12,10 +12,8 @@ use crate::types::{ShineGlobalConfig, GrInfo};
 /// allowance for the current granule based on reservoir size
 /// and perceptual entropy.
 pub fn shine_max_reservoir_bits(pe: &f64, config: &ShineGlobalConfig) -> i32 {
-    let more_bits: i32;
     let mut max_bits: i32;
     let mut add_bits: i32;
-    let over_bits: i32;
     let mut mean_bits = config.mean_bits;
 
     mean_bits /= config.wave.channels;
@@ -28,7 +26,7 @@ pub fn shine_max_reservoir_bits(pe: &f64, config: &ShineGlobalConfig) -> i32 {
         return max_bits;
     }
 
-    more_bits = (*pe * 3.1) as i32 - mean_bits;
+    let more_bits = (*pe * 3.1) as i32 - mean_bits;
     add_bits = 0;
     if more_bits > 100 {
         let frac = (config.resv_size * 6) / 10;
@@ -39,7 +37,7 @@ pub fn shine_max_reservoir_bits(pe: &f64, config: &ShineGlobalConfig) -> i32 {
             add_bits = more_bits;
         }
     }
-    over_bits = config.resv_size - ((config.resv_max << 3) / 10) - add_bits;
+    let over_bits = config.resv_size - ((config.resv_max << 3) / 10) - add_bits;
     if over_bits > 0 {
         add_bits += over_bits;
     }

@@ -235,25 +235,25 @@ fn encode_main_data(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
             if gr == 0 || scfsi[0] == 0 {
                 for sfb in 0..6 {
                     let sf_val = config.scalefactor.l[gr][ch][sfb];
-                    config.bs.put_bits(sf_val as u32, slen1 as i32)?;
+                    config.bs.put_bits(sf_val as u32, slen1)?;
                 }
             }
             if gr == 0 || scfsi[1] == 0 {
                 for sfb in 6..11 {
                     let sf_val = config.scalefactor.l[gr][ch][sfb];
-                    config.bs.put_bits(sf_val as u32, slen1 as i32)?;
+                    config.bs.put_bits(sf_val as u32, slen1)?;
                 }
             }
             if gr == 0 || scfsi[2] == 0 {
                 for sfb in 11..16 {
                     let sf_val = config.scalefactor.l[gr][ch][sfb];
-                    config.bs.put_bits(sf_val as u32, slen2 as i32)?;
+                    config.bs.put_bits(sf_val as u32, slen2)?;
                 }
             }
             if gr == 0 || scfsi[3] == 0 {
                 for sfb in 16..21 {
                     let sf_val = config.scalefactor.l[gr][ch][sfb];
-                    config.bs.put_bits(sf_val as u32, slen2 as i32)?;
+                    config.bs.put_bits(sf_val as u32, slen2)?;
                 }
             }
 

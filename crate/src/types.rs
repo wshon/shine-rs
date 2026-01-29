@@ -198,32 +198,16 @@ impl Default for GrInfo {
 
 /// Channel information within a granule
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct GranuleChannel {
     pub tt: GrInfo,
 }
 
-impl Default for GranuleChannel {
-    fn default() -> Self {
-        Self {
-            tt: GrInfo::default(),
-        }
-    }
-}
-
 /// Granule structure
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Granule {
     pub ch: [GranuleChannel; MAX_CHANNELS],
-}
-
-impl Default for Granule {
-    fn default() -> Self {
-        Self {
-            ch: [GranuleChannel::default(), GranuleChannel::default()],
-        }
-    }
 }
 /// Side information structure (matches shine_side_info_t)
 /// (ref/shine/src/lib/types.h:135-144)

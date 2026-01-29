@@ -22,7 +22,7 @@ const EN_SCFSI_BAND_KRIT: i32 = 10;
 const XM_SCFSI_BAND_KRIT: i32 = 10;
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations
-
+///
 /// Multiply with rounding and 31-bit right shift (matches shine mulsr)
 #[inline]
 pub fn mulsr(a: i32, b: i32) -> i32 {
@@ -138,9 +138,6 @@ pub fn shine_outer_loop(
     ch: i32,
     config: &mut ShineGlobalConfig,
 ) -> i32 {
-    let bits: i32;
-    let huff_bits: i32;
-
     // Extract quantizer step size to avoid borrowing conflicts
     let quantizer_step_size = {
         let mut cod_info = config.side_info.gr[gr as usize].ch[ch as usize].tt.clone();
@@ -150,7 +147,7 @@ pub fn shine_outer_loop(
     };
 
     let part2_length = part2_length(gr, ch, config) as u32;
-    huff_bits = max_bits - part2_length as i32;
+    let huff_bits = max_bits - part2_length as i32;
 
     // Update cod_info with extracted values
     {
@@ -159,7 +156,7 @@ pub fn shine_outer_loop(
         cod_info.part2_length = part2_length;
     }
 
-    bits = shine_inner_loop(ix, huff_bits, gr, ch, config);
+    let bits = shine_inner_loop(ix, huff_bits, gr, ch, config);
 
     // Update final values
     let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
@@ -212,8 +209,8 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
             }
 
             // calculation of number of available bit( per granule )
-            let pe_value = config.pe[ch as usize][gr as usize].clone();
-            let max_bits = crate::reservoir::shine_max_reservoir_bits(&pe_value, &config);
+            let pe_value = config.pe[ch as usize][gr as usize];
+            let max_bits = crate::reservoir::shine_max_reservoir_bits(&pe_value, config);
 
             // Debug logging for algorithm verification
             #[cfg(feature = "diagnostics")]
@@ -266,7 +263,7 @@ pub fn shine_iteration_loop(config: &mut ShineGlobalConfig) {
                 let length = shine_outer_loop(
                     max_bits,
                     &mut l3_xmin,
-                    ix_slice.try_into().unwrap(),
+                    ix_slice,
                     gr,
                     ch,
                     config,
@@ -519,11 +516,10 @@ pub fn shine_loop_initialise(config: &mut ShineGlobalConfig) {
 /// Corresponds to quantize() in l3loop.c
 pub fn quantize(ix: &mut [i32], stepsize: i32, config: &mut ShineGlobalConfig) -> i32 {
     let mut max = 0;
-    let scalei: i32;
     let mut scale: f64;
     let mut dbl: f64;
 
-    scalei = config.l3loop.steptabi[(stepsize + 127).clamp(0, 127) as usize]; // 2**(-stepsize/4)
+    let scalei = config.l3loop.steptabi[(stepsize + 127).clamp(0, 127) as usize]; // 2**(-stepsize/4)
 
     // a quick check to see if ixmax will be less than 8192
     // this speeds up the early calls to bin_search_StepSize
@@ -531,25 +527,25 @@ pub fn quantize(ix: &mut [i32], stepsize: i32, config: &mut ShineGlobalConfig) -
         // 8192**(4/3)
         max = 16384; // no point in continuing, stepsize not big enough
     } else {
-        for i in 0..GRANULE_SIZE {
+        for (i, ix_val) in ix.iter_mut().enumerate().take(GRANULE_SIZE) {
             // This calculation is very sensitive. The multiply must round its
             // result or bad things happen to the quality.
             let ln = mulr(labs(unsafe { *config.l3loop.xr.add(i) }), scalei);
 
             if ln < 10000 {
                 // ln < 10000 catches most values
-                ix[i] = config.l3loop.int2idx[ln as usize]; // quick look up method
+                *ix_val = config.l3loop.int2idx[ln as usize]; // quick look up method
             } else {
                 // outside table range so have to do it using floats
                 scale = config.l3loop.steptab[(stepsize + 127).clamp(0, 127) as usize]; // 2**(-stepsize/4)
                 dbl = (config.l3loop.xrabs[i] as f64) * scale * 4.656612875e-10; // 0x7fffffff
-                ix[i] = (dbl.sqrt().sqrt() * dbl.sqrt()) as i32; // dbl**(3/4)
+                *ix_val = (dbl.sqrt().sqrt() * dbl.sqrt()) as i32; // dbl**(3/4)
             }
 
             // calculate ixmax while we're here
             // note. ix cannot be negative
-            if max < ix[i] {
-                max = ix[i];
+            if max < *ix_val {
+                max = *ix_val;
             }
         }
     }
@@ -559,16 +555,12 @@ pub fn quantize(ix: &mut [i32], stepsize: i32, config: &mut ShineGlobalConfig) -
 
 /// Calculate maximum value in range
 pub fn ix_max(ix: &[i32], begin: u32, end: u32) -> i32 {
-    let mut max = 0;
     let start = begin as usize;
     let end = (end as usize).min(GRANULE_SIZE);
 
-    for i in start..end {
-        if max < ix[i] {
-            max = ix[i];
-        }
-    }
-    max
+    ix[start..end]
+        .iter()
+        .fold(0, |acc, &val| acc.max(val))
 }
 
 /// Calculate run length encoding information

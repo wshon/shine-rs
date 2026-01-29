@@ -13,7 +13,7 @@ use std::f64::consts::PI;
 
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations
-
+///
 /// Basic multiplication with 32-bit right shift
 #[inline]
 pub fn mul(a: i32, b: i32) -> i32 {
@@ -122,10 +122,10 @@ pub fn shine_window_filter_subband(
         #[allow(unused_assignments)] // s_value is used but compiler doesn't detect it properly
         let mut s_value = 0i32;
         
-        // Windowing operation using shine's exact loop structure
+        // Windowing operation using shine's exact loop structure (0 << 6 simplified to 0)
         s_value = mul0(
-            subband.x[ch][(subband.off[ch] as usize + i + (0 << 6)) & (HAN_SIZE - 1)],
-            SHINE_ENWINDOW[i + (0 << 6)]
+            subband.x[ch][(subband.off[ch] as usize + i) & (HAN_SIZE - 1)],
+            SHINE_ENWINDOW[i]
         );
         s_value = muladd(
             s_value,

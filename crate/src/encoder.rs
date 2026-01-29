@@ -83,19 +83,10 @@ impl Default for ShineMpeg {
 /// Public configuration structure (matches shine_config_t)
 /// (ref/shine/src/lib/layer3.h:36-38)
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct ShineConfig {
     pub wave: ShineWave,
     pub mpeg: ShineMpeg,
-}
-
-impl Default for ShineConfig {
-    fn default() -> Self {
-        Self {
-            wave: ShineWave::default(),
-            mpeg: ShineMpeg::default(),
-        }
-    }
 }
 
 /// Set default values for important vars (matches shine_set_config_mpeg_defaults)
@@ -125,23 +116,21 @@ pub fn shine_mpeg_version(samplerate_index: i32) -> i32 {
 /// Find samplerate index (matches shine_find_samplerate_index)
 /// (ref/shine/src/lib/layer3.c:35-43)
 pub fn shine_find_samplerate_index(freq: i32) -> i32 {
-    for i in 0..9 {
-        if freq == SAMPLERATES[i] {
-            return i as i32;
-        }
-    }
-    -1 // error - not a valid samplerate for encoder
+    SAMPLERATES
+        .iter()
+        .position(|&rate| rate == freq)
+        .map(|i| i as i32)
+        .unwrap_or(-1)
 }
 
 /// Find bitrate index (matches shine_find_bitrate_index)
 /// (ref/shine/src/lib/layer3.c:45-53)
 pub fn shine_find_bitrate_index(bitr: i32, mpeg_version: i32) -> i32 {
-    for i in 0..16 {
-        if bitr == BITRATES[i][mpeg_version as usize] {
-            return i as i32;
-        }
-    }
-    -1 // error - not a valid bitrate for encoder
+    BITRATES
+        .iter()
+        .position(|&rates| rates[mpeg_version as usize] == bitr)
+        .map(|i| i as i32)
+        .unwrap_or(-1)
 }
 
 /// Check configuration validity (matches shine_check_config)
@@ -299,6 +288,15 @@ pub fn shine_encode_buffer<'a>(config: &'a mut ShineGlobalConfig, data: &[*const
 
 /// Encode buffer with interleaved channels (matches shine_encode_buffer_interleaved)
 /// (ref/shine/src/lib/layer3.c:169-176)
+/// 
+/// # Safety
+/// 
+/// This function is unsafe because it accepts a raw pointer to PCM data.
+/// The caller must ensure that:
+/// - `data` points to valid PCM samples
+/// - The data contains at least `GRANULE_SIZE * channels` samples
+/// - The data remains valid for the duration of the function call
+/// - The pointer is properly aligned for i16 access
 pub unsafe fn shine_encode_buffer_interleaved(config: &mut ShineGlobalConfig, data: *const i16) -> EncodingResult<(&[u8], usize)> {
     config.buffer[0] = data as *mut i16;
     if config.wave.channels == 2 {
