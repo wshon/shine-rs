@@ -5,6 +5,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [ main, develop ]
 
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
 jobs:
   pr-validation:
     name: PR Validation
@@ -65,10 +69,45 @@ jobs:
         echo "🔍 Running clippy analysis..."
         cargo clippy --all-targets --all-features -- -D warnings
         
+        echo "🔍 Building project..."
+        cargo build --all-features
+        
         echo "🔍 Running tests..."
         cargo test --all-features
         
+        echo "🔍 Checking documentation..."
+        cargo doc --all-features --no-deps
+        
         echo "✅ All PR checks passed!"
+
+  quick-test:
+    name: Quick Test (Essential Only)
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: recursive
+
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache cargo registry
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: ${{ runner.os }}-cargo-quick-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Run essential tests only
+      run: |
+        echo "🚀 Running essential tests for quick feedback..."
+        cargo test --lib --all-features
+        echo "✅ Essential tests passed!"
 
   required-checks:
     name: Required Checks Status

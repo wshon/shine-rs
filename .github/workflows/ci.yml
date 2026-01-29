@@ -1,10 +1,10 @@
 name: CI
 
 on:
-  pull_request:
-    branches: [ main, develop ]
   push:
     branches: [ main, develop ]
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday
 
 env:
   CARGO_TERM_COLOR: always
@@ -185,7 +185,7 @@ jobs:
     - name: Install minimum Rust version
       uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: 1.70.0  # Adjust based on your MSRV
+        toolchain: 1.78.0  # Required for serde 1.0.204+ and other dependencies
 
     - name: Check build with minimum Rust version
       run: cargo check --all-features
