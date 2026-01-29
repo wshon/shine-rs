@@ -119,10 +119,6 @@ pub enum EncodingError {
     /// Validation error for testing and verification
     #[error("Validation error: {0}")]
     ValidationError(String),
-    
-    /// Debug stop after specified number of frames
-    #[error("Debug stop after frames")]
-    StopAfterFrames,
 }
 
 /// Specialized result types for different modules

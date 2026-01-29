@@ -43,13 +43,16 @@
 
 ```bash
 # 基本用法：WAV 转 MP3
-cd tools && cargo run --bin wav2mp3 ..\testing\fixtures\audio\sample-3s.wav ..\testing\fixtures\output\wav2mp3_output.mp3
+cargo run testing/fixtures/audio/sample-3s.wav output.mp3
 
 # 指定比特率和立体声模式
-cd tools && cargo run --bin wav2mp3 input.wav output.mp3 128 stereo
+cargo run input.wav output.mp3 128 stereo
 
 # 调试模式：限制编码帧数
-cd tools && cargo run --bin wav2mp3 input.wav output.mp3 --max-frames 10
+cargo run input.wav output.mp3 --max-frames 10
+
+# 详细输出模式
+cargo run input.wav output.mp3 --verbose
 ```
 
 ### 作为库使用
@@ -91,25 +94,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```
 shine-rs/
-├── src/                        # Rust 源代码
-│   ├── bitstream.rs           # 比特流处理
-│   ├── encoder.rs             # 主编码器（底层接口）
-│   ├── mp3_encoder.rs         # 高级编码器接口
-│   ├── huffman.rs             # Huffman 编码
-│   ├── mdct.rs                # MDCT 变换
-│   ├── quantization.rs        # 量化算法
-│   ├── subband.rs             # 子带分析
-│   ├── tables.rs              # 查找表
-│   └── ...                    # 其他模块
-├── tools/                     # 命令行工具
-│   └── wav2mp3/               # WAV 转 MP3 工具
-├── ref/shine/                 # Shine C 参考实现
-├── testing/                   # 测试相关文件
-│   ├── fixtures/              # 测试数据和音频文件
-│   ├── integration/           # 集成测试
-│   └── regression/            # 回归测试数据
-├── docs/                      # 项目文档
-└── scripts/                   # 辅助脚本
+├── 📁 crate/                    # 发布的库代码 (shine-rs)
+│   ├── src/                     # 核心 MP3 编码器实现
+│   │   ├── bitstream.rs         # 比特流处理
+│   │   ├── encoder.rs           # 主编码器（底层接口）
+│   │   ├── mp3_encoder.rs       # 高级编码器接口
+│   │   ├── huffman.rs           # Huffman 编码
+│   │   ├── mdct.rs              # MDCT 变换
+│   │   ├── quantization.rs      # 量化算法
+│   │   ├── subband.rs           # 子带分析
+│   │   ├── tables.rs            # 查找表
+│   │   ├── reservoir.rs         # 比特池管理
+│   │   ├── error.rs             # 错误处理
+│   │   ├── types.rs             # 类型定义
+│   │   └── lib.rs               # 库入口
+│   ├── tests/                   # 库的单元测试
+│   └── Cargo.toml               # 库配置
+├── 📁 src/                      # CLI 工具代码
+│   ├── main.rs                  # WAV 转 MP3 命令行工具
+│   ├── util.rs                  # 工具函数（WAV 读取、PCM 处理等）
+│   └── lib.rs                   # CLI 工具库入口
+├── 📁 testing/                  # 测试相关文件
+│   ├── fixtures/                # 测试数据和音频文件
+│   └── integration/             # 集成测试
+├── 📁 ref/shine/                # Shine C 参考实现
+├── 📁 docs/                     # 项目文档
+└── 📁 scripts/                  # 辅助脚本
 ```
 
 ### 核心算法流程
@@ -154,24 +164,21 @@ cargo test
 # 运行集成测试
 cargo test --test integration_full_pipeline_validation
 
-# 使用测试数据验证实现
-cargo run --bin validate_test_data testing/fixtures/data/sample-3s_128k_6f.json
+# 使用新的参考验证系统
+cargo test encoder_validation_cicd
 
 # 运行命令行工具
-cd tools && cargo run --bin wav2mp3 testing/fixtures/audio/sample-3s.wav output.mp3
+cargo run testing/fixtures/audio/sample-3s.wav output.mp3
 ```
 
 ### 调试和开发
 
 ```bash
 # 启用调试日志
-cd tools && RUST_LOG=debug cargo run --bin wav2mp3 input.wav output.mp3
+RUST_LOG=debug cargo run input.wav output.mp3
 
 # 限制编码帧数（调试用）
-cd tools && cargo run --bin wav2mp3 input.wav output.mp3 --max-frames 5
-
-# 收集测试数据（需要相应的工具）
-cargo run --bin collect_test_data input.wav test_data.json 128
+cargo run input.wav output.mp3 --max-frames 5
 ```
 
 ## 性能和兼容性
@@ -226,4 +233,6 @@ cargo run --bin collect_test_data input.wav test_data.json 128
 
 ## 致谢
 
-本项目基于 [Shine](https://github.com/toots/shine) MP3 编码器库，感谢原作者 Savonet 团队的优秀工作。该项目严格遵循 Shine 的算法实现，确保了 MP3 编码的质量和标准符合性。
+本项目基于 [Shine](https://github.com/toots/shine) MP3 编码器库开发，谨向所有为该项目付出努力的开发者致以诚挚感谢。感谢 Gabriel Bouvigne 创作原始核心代码，Pete Everett 完成定点数运算移植以适配无 FPU 设备，Patrick Roberts 实现多平台适配与库化重构，同时感谢 Savonet 团队对该项目的长期维护与迭代，为开源社区提供了高质量的定点数 MP3 编码方案。
+
+本项目严格遵循 Shine 的核心算法实现，延续其定点数编码优势，确保 MP3 编码的质量稳定性与标准符合性（兼容 ISO/IEC 11172-3 标准）。

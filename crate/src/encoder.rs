@@ -45,6 +45,15 @@ pub struct ShineWave {
     pub samplerate: i32,
 }
 
+impl Default for ShineWave {
+    fn default() -> Self {
+        Self {
+            channels: 2,
+            samplerate: 44100,
+        }
+    }
+}
+
 /// Public MPEG configuration (matches shine_mpeg_t)
 /// (ref/shine/src/lib/layer3.h:21-34)
 #[repr(C)]
@@ -57,6 +66,20 @@ pub struct ShineMpeg {
     pub original: i32,
 }
 
+impl Default for ShineMpeg {
+    fn default() -> Self {
+        let mut mpeg = Self {
+            mode: 0,
+            bitr: 128,
+            emph: NONE,
+            copyright: 0,
+            original: 1,
+        };
+        shine_set_config_mpeg_defaults(&mut mpeg);
+        mpeg
+    }
+}
+
 /// Public configuration structure (matches shine_config_t)
 /// (ref/shine/src/lib/layer3.h:36-38)
 #[repr(C)]
@@ -64,6 +87,15 @@ pub struct ShineMpeg {
 pub struct ShineConfig {
     pub wave: ShineWave,
     pub mpeg: ShineMpeg,
+}
+
+impl Default for ShineConfig {
+    fn default() -> Self {
+        Self {
+            wave: ShineWave::default(),
+            mpeg: ShineMpeg::default(),
+        }
+    }
 }
 
 /// Set default values for important vars (matches shine_set_config_mpeg_defaults)
@@ -207,12 +239,12 @@ pub fn shine_initialise(pub_config: &ShineConfig) -> EncodingResult<Box<ShineGlo
 /// Internal encoding function (matches shine_encode_buffer_internal)
 /// (ref/shine/src/lib/layer3.c:136-158)
 fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> EncodingResult<(&[u8], usize)> {
-    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    #[cfg(feature = "diagnostics")]
     let frame_num = crate::get_next_frame_number();
-
+    
     // Start frame data collection
     #[cfg(feature = "diagnostics")]
-    crate::diagnostics_data::start_frame_collection(frame_num);
+    crate::diagnostics::start_frame_collection(frame_num);
 
     // Dynamic padding calculation (matches shine exactly)
     if config.mpeg.frac_slots_per_frame != 0.0 {
@@ -237,40 +269,19 @@ fn shine_encode_buffer_internal(config: &mut ShineGlobalConfig, stride: i32) -> 
     config.bs.data_position = 0;
 
     // Print key parameters for verification (debug mode only)
-    #[cfg(any(debug_assertions, feature = "diagnostics"))]
+    #[cfg(feature = "diagnostics")]
     {
-        use log::debug;
-        debug!("[Frame {}] pad={}, bits={}, written={}, slot_lag={:.6}",
-                 frame_num, config.mpeg.padding, config.mpeg.bits_per_frame, written, config.mpeg.slot_lag);
+        // Silent - no debug output
     }
 
     // Record bitstream data for test collection
     #[cfg(feature = "diagnostics")]
-    crate::diagnostics_data::record_bitstream_data(
+    crate::diagnostics::record_bitstream_data(
         config.mpeg.padding,
         config.mpeg.bits_per_frame,
         written,
         config.mpeg.slot_lag
     );
-
-    // Stop after specified frames for debugging (debug mode only)
-    #[cfg(any(debug_assertions, feature = "diagnostics"))]
-    {
-        // Check for frame limit from environment variable or default to unlimited
-        if let Ok(max_frames_str) = std::env::var("RUST_MP3_MAX_FRAMES") {
-            if let Ok(max_frames) = max_frames_str.parse::<i32>() {
-                if frame_num > max_frames {
-                    #[cfg(any(debug_assertions, feature = "diagnostics"))]
-                    {
-                        use log::info;
-                        info!("[RUST] Stopping after {} frames for comparison", max_frames);
-                    }
-                    // Return a special error to indicate we should stop encoding but still write the file
-                    return Err(EncodingError::StopAfterFrames);
-                }
-            }
-        }
-    }
 
     Ok((&config.bs.data[..written], written))
 }
