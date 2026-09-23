@@ -708,6 +708,9 @@ pub fn subdivide_with_samplerate(cod_info: &mut GrInfo, samplerate: i32) {
         // no big_values region
         cod_info.region0_count = 0;
         cod_info.region1_count = 0;
+        cod_info.address1 = 0;
+        cod_info.address2 = 0;
+        cod_info.address3 = 0;
     } else {
         let samplerate_index = match samplerate {
             44100 => 0,
@@ -739,7 +742,8 @@ pub fn subdivide_with_samplerate(cod_info: &mut GrInfo, samplerate: i32) {
             thiscount -= 1;
         }
         cod_info.region0_count = thiscount;
-        cod_info.address1 = scalefac_band_long[thiscount as usize + 1] as u32;
+        cod_info.address1 =
+            (scalefac_band_long[thiscount as usize + 1] as u32).min(bigvalues_region);
 
         let mut thiscount = SUBDV_TABLE[scfb_anz].1;
         while thiscount > 0 {
@@ -752,7 +756,7 @@ pub fn subdivide_with_samplerate(cod_info: &mut GrInfo, samplerate: i32) {
         cod_info.region1_count = thiscount;
         let idx = (cod_info.region0_count + 1 + thiscount) as usize;
         if idx + 1 < 22 {
-            cod_info.address2 = scalefac_band_long[idx + 1] as u32;
+            cod_info.address2 = (scalefac_band_long[idx + 1] as u32).min(bigvalues_region);
         } else {
             cod_info.address2 = bigvalues_region;
         }
