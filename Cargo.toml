@@ -16,7 +16,7 @@ homepage = "https://github.com/wshon/shine-rs"
 readme = "README.md"
 
 [dependencies]
-shine-rs = { path = "crate" }
+shine-rs = { path = "crate", version = "0.1.5" }
 env_logger = "0.10"
 log = "0.4"
 anyhow = "1.0"
