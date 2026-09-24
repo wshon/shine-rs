@@ -5,22 +5,20 @@
 //!
 //! This module is only available when the "diagnostics" feature is enabled.
 
-use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::Write;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::thread;
 
-lazy_static! {
-    /// Thread-local frame counters for debugging consistency across modules
-    static ref THREAD_FRAME_COUNTERS: Mutex<HashMap<std::thread::ThreadId, i32>> = Mutex::new(HashMap::new());
-}
-lazy_static! {
-    /// Global test data collector - now supports multiple threads
-    static ref TEST_DATA_COLLECTORS: Mutex<HashMap<std::thread::ThreadId, TestDataCollector>> = Mutex::new(HashMap::new());
-}
+/// Thread-local frame counters for debugging consistency across modules
+static THREAD_FRAME_COUNTERS: LazyLock<Mutex<HashMap<std::thread::ThreadId, i32>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Global test data collector - now supports multiple threads
+static TEST_DATA_COLLECTORS: LazyLock<Mutex<HashMap<std::thread::ThreadId, TestDataCollector>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Reset the frame counter for current thread (for testing)
 pub fn reset_frame_counter() {
