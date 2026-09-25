@@ -1,168 +1,170 @@
-# shine-rs 库
+[中文文档](README_zh_CN.md)
 
-这是 shine-rs MP3 编码器的核心库实现。该库提供了完整的 MP3 Layer III 编码功能，严格遵循 Shine C 语言参考实现。
+# shine-rs Library
 
-## 库架构
+This is the core library implementation of the shine-rs MP3 encoder. The library provides complete MP3 Layer III encoding functionality, strictly following the Shine C reference implementation.
 
-### 核心模块
+## Library Architecture
 
-- **`encoder`** - 主编码器模块，提供底层 Shine 兼容接口
-- **`mp3_encoder`** - 高级编码器接口，提供更友好的 Rust API
-- **`config`** - 编码配置管理
-- **`error`** - 错误类型定义
+### Core Modules
 
-### 算法模块
+- **`encoder`** - Main encoder module, provides low-level Shine-compatible interface
+- **`mp3_encoder`** - High-level encoder interface, provides friendlier Rust API
+- **`config`** - Encoding configuration management
+- **`error`** - Error type definitions
 
-- **`subband`** - 32频带子带分析滤波器
-- **`mdct`** - 修正离散余弦变换 (Modified Discrete Cosine Transform)
-- **`quantization`** - 量化循环和比特率控制
-- **`huffman`** - Huffman 编码器
-- **`bitstream`** - MP3 比特流写入器
-- **`reservoir`** - 比特池管理
+### Algorithm Modules
 
-### 数据和查找表
+- **`subband`** - 32-band subband analysis filter
+- **`mdct`** - Modified Discrete Cosine Transform
+- **`quantization`** - Quantization loop and bitrate control
+- **`huffman`** - Huffman encoder
+- **`bitstream`** - MP3 bitstream writer
+- **`reservoir`** - Bit reservoir management
 
-- **`tables`** - 所有 MP3 编码所需的查找表
-- **`psychoacoustic`** - 心理声学模型（简化版）
+### Data and Lookup Tables
 
-## API 使用
+- **`tables`** - All lookup tables required for MP3 encoding
+- **`psychoacoustic`** - Psychoacoustic model (simplified)
 
-### 高级接口 (推荐)
+## API Usage
+
+### High-level Interface (Recommended)
 
 ```rust
 use shine_rs::{Mp3Encoder, Mp3EncoderConfig, StereoMode};
 
-// 创建配置
+// Create config
 let config = Mp3EncoderConfig::new()
     .sample_rate(44100)
     .bitrate(128)
     .channels(2)
     .stereo_mode(StereoMode::Stereo);
 
-// 创建编码器
+// Create encoder
 let mut encoder = Mp3Encoder::new(config)?;
 
-// 编码音频数据 (交错格式)
+// Encode audio data (interleaved format)
 let pcm_samples = vec![0i16; encoder.samples_per_frame()];
 let mp3_data = encoder.encode_interleaved(&pcm_samples)?;
 
-// 完成编码
+// Finish encoding
 let final_data = encoder.finish()?;
 ```
 
-### 底层接口 (Shine 兼容)
+### Low-level Interface (Shine Compatible)
 
 ```rust
 use shine_rs::{
     ShineConfig, ShineWave, ShineMpeg,
-    shine_initialise, shine_encode_buffer_interleaved, 
+    shine_initialise, shine_encode_buffer_interleaved,
     shine_flush, shine_close
 };
 
-// 初始化配置
+// Initialize config
 let mut config = ShineConfig::default();
 config.wave.samplerate = 44100;
 config.wave.channels = 2;
 config.mpeg.bitr = 128;
 
-// 初始化编码器
+// Initialize encoder
 shine_initialise(&mut config);
 
-// 编码数据
+// Encode data
 let pcm_data = vec![0i16; config.samples_per_pass()];
 let mp3_data = shine_encode_buffer_interleaved(&mut config, &pcm_data);
 
-// 完成编码
+// Finish encoding
 let final_data = shine_flush(&mut config);
 shine_close(&mut config);
 ```
 
-## 配置选项
+## Configuration Options
 
 ### Mp3EncoderConfig
 
 ```rust
 pub struct Mp3EncoderConfig {
-    sample_rate: u32,      // 采样率 (8000-48000 Hz)
-    bitrate: u32,          // 比特率 (8-320 kbps)
-    channels: u16,         // 声道数 (1-2)
-    stereo_mode: StereoMode, // 立体声模式
-    copyright: bool,       // 版权标志
-    original: bool,        // 原创标志
-    emphasis: Emphasis,    // 预加重
+    sample_rate: u32,      // Sample rate (8000-48000 Hz)
+    bitrate: u32,          // Bitrate (8-320 kbps)
+    channels: u16,         // Number of channels (1-2)
+    stereo_mode: StereoMode, // Stereo mode
+    copyright: bool,       // Copyright flag
+    original: bool,        // Original flag
+    emphasis: Emphasis,    // Emphasis
 }
 ```
 
-### 立体声模式
+### Stereo Modes
 
 ```rust
 pub enum StereoMode {
-    Stereo,      // 立体声
-    JointStereo, // 联合立体声
-    DualChannel, // 双声道
-    Mono,        // 单声道
+    Stereo,      // Stereo
+    JointStereo, // Joint Stereo
+    DualChannel, // Dual Channel
+    Mono,        // Mono
 }
 ```
 
-### 支持的采样率和比特率组合
+### Supported Sample Rate and Bitrate Combinations
 
-| MPEG版本 | 采样率 (Hz) | 比特率范围 (kbps) |
-|----------|-------------|-------------------|
-| MPEG-1   | 32000, 44100, 48000 | 32-320 |
-| MPEG-2   | 16000, 22050, 24000 | 8-160  |
-| MPEG-2.5 | 8000, 11025, 12000  | 8-64   |
+| MPEG Version | Sample Rate (Hz) | Bitrate Range (kbps) |
+|--------------|------------------|---------------------|
+| MPEG-1       | 32000, 44100, 48000 | 32-320 |
+| MPEG-2       | 16000, 22050, 24000 | 8-160  |
+| MPEG-2.5     | 8000, 11025, 12000  | 8-64   |
 
-## 错误处理
+## Error Handling
 
 ```rust
 use shine_rs::EncodingError;
 
 match encoder.encode_interleaved(&pcm_data) {
     Ok(mp3_data) => {
-        // 处理编码数据
+        // Process encoded data
     }
     Err(EncodingError::InvalidSampleRate(rate)) => {
-        eprintln!("不支持的采样率: {}", rate);
+        eprintln!("Unsupported sample rate: {}", rate);
     }
     Err(EncodingError::InvalidBitrate(bitrate)) => {
-        eprintln!("不支持的比特率: {}", bitrate);
+        eprintln!("Unsupported bitrate: {}", bitrate);
     }
     Err(EncodingError::InvalidChannelCount(channels)) => {
-        eprintln!("不支持的声道数: {}", channels);
+        eprintln!("Unsupported channel count: {}", channels);
     }
     Err(e) => {
-        eprintln!("编码错误: {}", e);
+        eprintln!("Encoding error: {}", e);
     }
 }
 ```
 
-## 内存管理
+## Memory Management
 
-### 缓冲区大小
+### Buffer Sizes
 
 ```rust
-// 获取每帧所需的 PCM 样本数
-let samples_per_frame = encoder.samples_per_frame(); // 通常是 1152
+// Get PCM samples required per frame
+let samples_per_frame = encoder.samples_per_frame(); // Usually 1152
 
-// 获取最大 MP3 帧大小
-let max_mp3_frame_size = encoder.max_mp3_frame_size(); // 取决于比特率
+// Get maximum MP3 frame size
+let max_mp3_frame_size = encoder.max_mp3_frame_size(); // Depends on bitrate
 
-// 预分配缓冲区
+// Pre-allocate buffers
 let mut pcm_buffer = vec![0i16; samples_per_frame];
 let mut mp3_buffer = Vec::with_capacity(max_mp3_frame_size);
 ```
 
-### 批量处理
+### Batch Processing
 
 ```rust
-// 处理大量音频数据
+// Process large amounts of audio data
 let chunk_size = encoder.samples_per_frame();
 for chunk in pcm_data.chunks(chunk_size) {
     if chunk.len() == chunk_size {
         let mp3_frame = encoder.encode_interleaved(chunk)?;
         output.extend_from_slice(&mp3_frame);
     } else {
-        // 处理最后一个不完整的块
+        // Handle last incomplete chunk
         let mut padded_chunk = vec![0i16; chunk_size];
         padded_chunk[..chunk.len()].copy_from_slice(chunk);
         let mp3_frame = encoder.encode_interleaved(&padded_chunk)?;
@@ -171,9 +173,9 @@ for chunk in pcm_data.chunks(chunk_size) {
 }
 ```
 
-## 调试功能
+## Debug Features
 
-### 启用诊断特性
+### Enabling Diagnostics Feature
 
 ```toml
 [dependencies]
@@ -183,38 +185,38 @@ shine-rs = { version = "0.1", features = ["diagnostics"] }
 ```rust
 #[cfg(feature = "diagnostics")]
 {
-    // 访问内部诊断数据
+    // Access internal diagnostic data
     let diagnostics = encoder.get_diagnostics();
-    println!("MDCT 系数: {:?}", diagnostics.mdct_coefficients);
-    println!("量化参数: {:?}", diagnostics.quantization_params);
+    println!("MDCT coefficients: {:?}", diagnostics.mdct_coefficients);
+    println!("Quantization params: {:?}", diagnostics.quantization_params);
 }
 ```
 
-### 日志输出
+### Logging Output
 
 ```rust
 use log::{info, debug};
 
-// 启用日志
+// Enable logging
 env_logger::init();
 
-// 编码时会输出详细日志
-debug!("开始编码帧 {}", frame_number);
-info!("编码完成，输出 {} 字节", mp3_data.len());
+// Detailed logging during encoding
+debug!("Starting encode frame {}", frame_number);
+info!("Encoding complete, output {} bytes", mp3_data.len());
 ```
 
-## 性能优化
+## Performance Optimization
 
-### 预分配缓冲区
+### Pre-allocated Buffers
 
 ```rust
-// 避免重复分配
+// Avoid repeated allocations
 let mut encoder = Mp3Encoder::new(config)?;
 let mut pcm_buffer = vec![0i16; encoder.samples_per_frame()];
 let mut mp3_output = Vec::new();
 
 loop {
-    // 重用缓冲区
+    // Reuse buffers
     if let Some(samples) = read_audio_samples(&mut pcm_buffer) {
         let mp3_frame = encoder.encode_interleaved(&pcm_buffer[..samples])?;
         mp3_output.extend_from_slice(&mp3_frame);
@@ -224,10 +226,10 @@ loop {
 }
 ```
 
-### 批量处理
+### Batch Processing
 
 ```rust
-// 处理多个帧以减少函数调用开销
+// Process multiple frames to reduce function call overhead
 const BATCH_SIZE: usize = 10;
 let frame_size = encoder.samples_per_frame();
 let batch_size = frame_size * BATCH_SIZE;
@@ -240,54 +242,54 @@ for batch in pcm_data.chunks(batch_size) {
 }
 ```
 
-## 线程安全
+## Thread Safety
 
-该库不是线程安全的。如需在多线程环境中使用，请为每个线程创建独立的编码器实例：
+This library is not thread-safe. For multi-threaded use, create separate encoder instances per thread:
 
 ```rust
 use std::thread;
 use std::sync::mpsc;
 
-// 为每个线程创建独立的编码器
+// Create separate encoder for each thread
 let handles: Vec<_> = (0..num_threads).map(|_| {
     let config = config.clone();
     thread::spawn(move || {
         let mut encoder = Mp3Encoder::new(config).unwrap();
-        // 处理音频数据...
+        // Process audio data...
     })
 }).collect();
 ```
 
-## 与 Shine C 实现的对应关系
+## Correspondence with Shine C Implementation
 
-| Rust 函数 | Shine C 函数 | 说明 |
-|-----------|--------------|------|
-| `Mp3Encoder::new()` | `shine_initialise()` | 初始化编码器 |
-| `encode_interleaved()` | `shine_encode_buffer_interleaved()` | 编码交错音频数据 |
-| `finish()` | `shine_flush()` + `shine_close()` | 完成编码并清理 |
-| `samples_per_frame()` | `shine_samples_per_pass()` | 每帧样本数 |
+| Rust Function | Shine C Function | Description |
+|---------------|------------------|-------------|
+| `Mp3Encoder::new()` | `shine_initialise()` | Initialize encoder |
+| `encode_interleaved()` | `shine_encode_buffer_interleaved()` | Encode interleaved audio data |
+| `finish()` | `shine_flush()` + `shine_close()` | Finish encoding and cleanup |
+| `samples_per_frame()` | `shine_samples_per_pass()` | Samples per frame |
 
-## 测试和验证
+## Testing and Verification
 
 ```bash
-# 运行单元测试
+# Run unit tests
 cargo test
 
-# 运行集成测试
+# Run integration tests
 cargo test --test integration_*
 
-# 启用诊断特性测试
+# Enable diagnostics feature tests
 cargo test --features diagnostics
 
-# 性能基准测试
+# Performance benchmarks
 cargo bench
 ```
 
-## 构建特性
+## Build Features
 
-- `default` - 标准功能
-- `diagnostics` - 启用内部诊断数据访问
-- `logging` - 启用详细日志输出
+- `default` - Standard functionality
+- `diagnostics` - Enable internal diagnostic data access
+- `logging` - Enable detailed logging output
 
 ```toml
 [dependencies]
