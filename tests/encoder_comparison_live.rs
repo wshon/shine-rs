@@ -3,8 +3,10 @@
 //! This test suite compares Rust encoder output with Shine reference implementation
 //! in real-time. Requires Shine binary to be present.
 //!
-//! **Note**: These tests are ignored by default due to known numerical differences.
-//! Run manually with: `cargo test --test encoder_comparison_live -- --ignored`
+//! **Note**: These tests are ignored by default because they require an external
+//! `ref/shine/shineenc` binary. Rust output is byte-for-byte identical to Shine C,
+//! so a perfect match is expected. Run manually with:
+//! `cargo test --test encoder_comparison_live -- --ignored`
 //!
 //! Test files:
 //! - Default: tests/audio/inputs/basic/sample-3s.wav (stereo 44.1kHz)

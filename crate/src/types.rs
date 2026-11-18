@@ -13,7 +13,8 @@ pub const PI12: f64 = 0.26179938779915;
 pub const PI36: f64 = 0.087266462599717;
 pub const PI64: f64 = 0.049087385212;
 pub const SQRT2: f64 = std::f64::consts::SQRT_2;
-pub const LN2: f64 = std::f64::consts::LN_2;
+#[allow(clippy::approx_constant)] // C's truncated literal, kept for bit-exact output
+pub const LN2: f64 = 0.69314718;
 pub const LN_TO_LOG10: f64 = 0.2302585093;
 pub const BLKSIZE: usize = 1024;
 pub const HAN_SIZE: usize = 512; // for loop unrolling, require that HAN_SIZE%8==0

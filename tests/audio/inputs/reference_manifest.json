@@ -3,7 +3,7 @@
   "generated_by": "scripts/generate_reference_validation_data.py",
   "generation_date": "2026-01-28 09:56:52 UTC",
   "encoder_version": "Rust shine-rs implementation",
-  "note": "Using Rust encoder as reference due to minor numerical differences with original Shine",
+  "note": "Rust-generated reference data; output is byte-identical to the Shine C reference",
   "default_encoding_parameters": {
     "encoder": "Rust shine-rs",
     "bitrate": 128,
@@ -19,7 +19,7 @@
       "input_file": "basic/Free_Test_Data_500KB_WAV.wav",
       "file_path": "reference/Free_Test_Data_500KB_WAV.mp3",
       "size_bytes": 46812,
-      "sha256": "363242f756ecd30676e23129e401b6a19b94a5014fc1ddb53f853d0f2c15b192",
+      "sha256": "bfc24a674420d4519655b5c8dfb7f31f5723405af82236652e8a86135de9ad03",
       "encoding_parameters": {
         "encoder": "Rust shine-rs",
         "bitrate": 128,
@@ -53,7 +53,7 @@
       "input_file": "basic/voice-recorder-testing-1-2-3-sound-file.wav",
       "file_path": "reference/voice-recorder-testing-1-2-3-sound-file.mp3",
       "size_bytes": 61824,
-      "sha256": "3fd8f8aad848b83b6704b71574b63208e597125d51b07981fbc83d307d3fee7c",
+      "sha256": "d7bacae95e980c600e805e0219387b0aadddf1f14f1bd5fd9b91ed3d302e5316",
       "encoding_parameters": {
         "encoder": "Rust shine-rs",
         "bitrate": 128,

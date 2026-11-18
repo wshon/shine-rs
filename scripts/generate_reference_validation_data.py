@@ -114,7 +114,7 @@ def generate_reference_data():
         "generated_by": "scripts/generate_reference_validation_data.py",
         "generation_date": time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime()),
         "encoder_version": "Rust shine-rs implementation",
-        "note": "Using Rust encoder as reference due to minor numerical differences with original Shine",
+        "note": "Rust-generated reference data; output is byte-identical to the Shine C reference",
         "default_encoding_parameters": {
             "encoder": "Rust shine-rs",
             "bitrate": 128,

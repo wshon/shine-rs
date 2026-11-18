@@ -9,8 +9,8 @@
 
 use crate::huffman::SHINE_HUFFMAN_TABLE;
 use crate::tables::{SHINE_SCALE_FACT_BAND_INDEX, SHINE_SLEN1_TAB, SHINE_SLEN2_TAB};
+use crate::types::LN2;
 use crate::types::{GrInfo, ShineGlobalConfig, ShinePsyXmin, GRANULE_SIZE};
-use std::f64::consts::LN_2;
 
 /// Constants from shine (matches l3loop.c exactly)
 #[allow(dead_code)] // May be used in future implementations
@@ -369,7 +369,7 @@ fn calc_scfsi(l3_xmin: &mut ShinePsyXmin, ch: i32, gr: i32, config: &mut ShineGl
         .fold(0, |acc, i| acc + (config.l3loop.xrsq[i] >> 10));
 
     config.l3loop.en_tot[gr as usize] = if temp != 0 {
-        ((temp as f64 * 4.768371584e-7).ln() / LN_2) as i32 // 1024 / 0x7fffffff
+        ((temp as f64 * 4.768371584e-7).ln() / LN2) as i32 // 1024 / 0x7fffffff
     } else {
         0
     };
@@ -385,14 +385,14 @@ fn calc_scfsi(l3_xmin: &mut ShinePsyXmin, ch: i32, gr: i32, config: &mut ShineGl
             .fold(0, |acc, i| acc + (config.l3loop.xrsq[i] >> 10));
 
         config.l3loop.en[gr as usize][sfb] = if temp != 0 {
-            ((temp as f64 * 4.768371584e-7).ln() / LN_2) as i32
+            ((temp as f64 * 4.768371584e-7).ln() / LN2) as i32
         } else {
             0
         };
 
         if l3_xmin.l[gr as usize][ch as usize][sfb] != 0.0 {
             config.l3loop.xm[gr as usize][sfb] =
-                (l3_xmin.l[gr as usize][ch as usize][sfb].ln() / LN_2) as i32;
+                (l3_xmin.l[gr as usize][ch as usize][sfb].ln() / LN2) as i32;
         } else {
             config.l3loop.xm[gr as usize][sfb] = 0;
         }
