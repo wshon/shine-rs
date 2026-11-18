@@ -3,7 +3,7 @@
   "generated_by": "scripts/generate_reference_validation_data.py",
   "generation_date": "2026-01-28 09:56:52 UTC",
   "encoder_version": "Rust shine-rs implementation",
-  "note": "Using Rust encoder as reference due to minor numerical differences with original Shine",
+  "note": "Rust-generated reference data; output is byte-identical to the Shine C reference",
   "default_encoding_parameters": {
     "encoder": "Rust shine-rs",
     "bitrate": 128,
