@@ -344,9 +344,9 @@ fn encode_side_info(config: &mut ShineGlobalConfig) -> EncodingResult<()> {
     }
 
     // Write granule information
-    for gr in 0..config.mpeg.granules_per_frame as usize {
-        for ch in 0..config.wave.channels as usize {
-            let gi = &si.gr[gr].ch[ch].tt;
+    for gr_chan in si.gr.iter().take(config.mpeg.granules_per_frame as usize) {
+        for ch_chan in gr_chan.ch.iter().take(config.wave.channels as usize) {
+            let gi = &ch_chan.tt;
 
             config.bs.put_bits(gi.part2_3_length, 12)?;
             config.bs.put_bits(gi.big_values, 9)?;

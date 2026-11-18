@@ -565,13 +565,17 @@ impl Encoder {
 
         // Fallback: extract l3_sb_sample data from encoder state
         let mut l3_sb_sample = Vec::new();
-        for gr in 0..std::cmp::min(self.config.mpeg.granules_per_frame as usize, 1) {
-            for sb in 0..std::cmp::min(18, 3) {
+        for gr_sample in self.config.l3_sb_sample[0].iter().take(std::cmp::min(
+            self.config.mpeg.granules_per_frame as usize,
+            1,
+        )) {
+            for sb_sample in gr_sample.iter().take(std::cmp::min(18, 3)) {
                 // Limit to first few subbands
-                for i in 0..std::cmp::min(crate::types::SBLIMIT, 8) {
-                    // Limit samples
-                    l3_sb_sample.push(self.config.l3_sb_sample[0][gr][sb][i]);
-                }
+                l3_sb_sample.extend(
+                    sb_sample
+                        .iter()
+                        .take(std::cmp::min(crate::types::SBLIMIT, 8)),
+                );
             }
         }
 
