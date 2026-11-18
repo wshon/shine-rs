@@ -1,0 +1,68 @@
+/* Pure-encode benchmark harness for Shine C.
+ * Reads WAV into memory OUTSIDE the timed region, then times only
+ * shine_initialise + encode loop + flush. Output is discarded.
+ * Usage: bench_encode_c <wav> <bitrate>
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include "layer3.h"
+#include "wave.h"
+
+#define MAX_PCM (1 << 24)
+
+static int16_t pcm[MAX_PCM];
+static int16_t frame[2 * 1152];
+
+/* Symbols wave.c expects from main.c */
+int verbose(void) { return 0; }
+void error(char *s) { fprintf(stderr, "Error: %s\n", s); exit(1); }
+extern int read_samples(int16_t *buf, int frame_size, FILE *file);
+
+int main(int argc, char **argv) {
+  if (argc < 3) return 1;
+  int bitrate = atoi(argv[2]);
+
+  wave_t wave;
+  shine_config_t config;
+  memset(&config, 0, sizeof(config));
+  shine_set_config_mpeg_defaults(&config.mpeg);
+  if (!wave_open(argv[1], &wave, &config, 1)) return 1;
+  int channels = config.wave.channels;
+  int rate = config.wave.samplerate;
+  config.mpeg.bitr = bitrate;
+  config.mpeg.mode = channels > 1 ? JOINT_STEREO : MONO;
+
+  /* Read all PCM into memory (OUTSIDE timed region) */
+  int total = 0;
+  int16_t buf[2 * 1152];
+  int spp = (rate >= 32000) ? 1152 : 576;
+  int n;
+  while ((n = read_samples(buf, spp * channels, wave.file)) > 0) {
+    for (int i = 0; i < n; i++) pcm[total++] = buf[i];
+  }
+  wave_close(&wave);
+  double duration = (double)total / (rate * channels);
+
+  /* Pure encode (TIMED): init + loop + flush, output discarded */
+  struct timespec ts0, ts1;
+  clock_gettime(CLOCK_MONOTONIC, &ts0);
+  shine_t s = shine_initialise(&config);
+  int written;
+  int pos = 0;
+  while (pos < total) {
+    int cnt = total - pos < spp * channels ? total - pos : spp * channels;
+    memset(frame, 0, sizeof(frame));
+    for (int i = 0; i < cnt; i++) frame[i] = pcm[pos + i];
+    shine_encode_buffer_interleaved(s, frame, &written);
+    pos += cnt;
+  }
+  shine_flush(s, &written);
+  shine_close(s);
+  clock_gettime(CLOCK_MONOTONIC, &ts1);
+  double elapsed = (ts1.tv_sec - ts0.tv_sec) + (ts1.tv_nsec - ts0.tv_nsec) * 1e-9;
+
+  printf("%.1fx realtime\n", duration / elapsed);
+  return 0;
+}
