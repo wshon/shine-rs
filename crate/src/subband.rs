@@ -8,13 +8,7 @@
 //! in ref/shine/src/lib/l3subband.c
 
 use crate::tables::SHINE_ENWINDOW;
-use crate::types::{Subband, HAN_SIZE, MAX_CHANNELS, SBLIMIT};
-
-/// Shine's truncated PI/64 constant (types.h: `#define PI64 0.049087385212`).
-/// Using the full-precision `std::f64::consts::PI / 64.0` here shifts the
-/// filterbank coefficients by up to 3 LSB after the `modf` rounding step,
-/// which cascades into the MDCT and changes the encoded bitstream.
-const PI64: f64 = 0.049087385212;
+use crate::types::{Subband, PI64, HAN_SIZE, MAX_CHANNELS, SBLIMIT};
 
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations

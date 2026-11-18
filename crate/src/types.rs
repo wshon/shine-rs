@@ -13,9 +13,6 @@ pub const PI12: f64 = 0.26179938779915;
 pub const PI36: f64 = 0.087266462599717;
 pub const PI64: f64 = 0.049087385212;
 pub const SQRT2: f64 = std::f64::consts::SQRT_2;
-/// C's truncated LN2 constant (types.h: `#define LN2 0.69314718`).
-/// The energy computations divide by this then truncate via `as i32`;
-/// full-precision LN2 shifts borderline values across the integer boundary.
 pub const LN2: f64 = 0.69314718;
 pub const LN_TO_LOG10: f64 = 0.2302585093;
 pub const BLKSIZE: usize = 1024;
