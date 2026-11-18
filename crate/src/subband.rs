@@ -8,7 +8,7 @@
 //! in ref/shine/src/lib/l3subband.c
 
 use crate::tables::SHINE_ENWINDOW;
-use crate::types::{Subband, PI64, HAN_SIZE, MAX_CHANNELS, SBLIMIT};
+use crate::types::{Subband, HAN_SIZE, MAX_CHANNELS, PI64, SBLIMIT};
 
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations

@@ -9,8 +9,8 @@
 
 use crate::huffman::SHINE_HUFFMAN_TABLE;
 use crate::tables::{SHINE_SCALE_FACT_BAND_INDEX, SHINE_SLEN1_TAB, SHINE_SLEN2_TAB};
-use crate::types::{GrInfo, ShineGlobalConfig, ShinePsyXmin, GRANULE_SIZE};
 use crate::types::LN2;
+use crate::types::{GrInfo, ShineGlobalConfig, ShinePsyXmin, GRANULE_SIZE};
 
 /// Constants from shine (matches l3loop.c exactly)
 #[allow(dead_code)] // May be used in future implementations
