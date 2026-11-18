@@ -271,8 +271,12 @@ fn convert_wav_to_mp3(args: Args) -> Result<(), Box<dyn std::error::Error>> {
         Box::new(File::create(&args.output_file)?)
     };
 
-    // Calculate samples per frame
-    let samples_per_frame = 1152; // MPEG Layer III frame size
+    // Samples per frame: MPEG-1 (32/44.1/48 kHz) has 2 granules = 1152
+    // samples; MPEG-2/2.5 (incl. 24 kHz) has 1 granule = 576 samples.
+    // Hardcoding 1152 feeds twice as many samples per frame as the core
+    // consumes at 24 kHz, dropping every other block and creating the
+    // apparent subband energy defect.
+    let samples_per_frame = if sample_rate >= 32000 { 1152 } else { 576 };
     let frame_size = samples_per_frame * channels as usize;
     let mut mp3_data = Vec::new();
 
