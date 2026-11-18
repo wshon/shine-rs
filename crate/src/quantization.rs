@@ -436,8 +436,8 @@ fn calc_scfsi(l3_xmin: &mut ShinePsyXmin, ch: i32, gr: i32, config: &mut ShineGl
                 }
             }
         } else {
-            for scfsi_band in 0..4 {
-                l3_side.scfsi[ch as usize][scfsi_band] = 0;
+            for scfsi in l3_side.scfsi[ch as usize].iter_mut() {
+                *scfsi = 0;
             }
         }
     }
