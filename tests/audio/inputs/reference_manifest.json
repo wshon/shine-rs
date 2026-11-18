@@ -53,7 +53,7 @@
       "input_file": "basic/voice-recorder-testing-1-2-3-sound-file.wav",
       "file_path": "reference/voice-recorder-testing-1-2-3-sound-file.mp3",
       "size_bytes": 61824,
-      "sha256": "3fd8f8aad848b83b6704b71574b63208e597125d51b07981fbc83d307d3fee7c",
+      "sha256": "fadbbf5371b1554a9cb317df4a9dcd2a504cd4ae841f3eb99a21e384a0d60295",
       "encoding_parameters": {
         "encoder": "Rust shine-rs",
         "bitrate": 128,

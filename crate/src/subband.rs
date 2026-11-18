@@ -9,7 +9,12 @@
 
 use crate::tables::SHINE_ENWINDOW;
 use crate::types::{Subband, HAN_SIZE, MAX_CHANNELS, SBLIMIT};
-use std::f64::consts::PI;
+
+/// Shine's truncated PI/64 constant (types.h: `#define PI64 0.049087385212`).
+/// Using the full-precision `std::f64::consts::PI / 64.0` here shifts the
+/// filterbank coefficients by up to 3 LSB after the `modf` rounding step,
+/// which cascades into the MDCT and changes the encoded bitstream.
+const PI64: f64 = 0.049087385212;
 
 /// Multiplication macros matching shine's mult_noarch_gcc.h
 /// These implement fixed-point arithmetic operations
@@ -65,7 +70,7 @@ pub fn shine_subband_initialise(subband: &mut Subband) {
             // matches shine: for (j = 64; j--;)
             // Calculate filter coefficient using the same formula as shine
             // filter = 1e9 * cos((double)((2 * i + 1) * (16 - j) * PI64))
-            let angle = (2 * i + 1) as f64 * (16 - j as i32) as f64 * (PI / 64.0);
+            let angle = ((2 * i + 1) as i32 * (16i32 - j as i32)) as f64 * PI64;
             let mut filter = 1e9 * angle.cos();
 
             // Apply rounding (matches shine's modf logic)
