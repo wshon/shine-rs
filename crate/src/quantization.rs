@@ -38,7 +38,9 @@ pub fn mulr(a: i32, b: i32) -> i32 {
 /// Absolute value function (matches shine labs)
 #[inline]
 pub fn labs(x: i32) -> i32 {
-    x.saturating_abs()
+    // Matches shine's labs(). Debug builds have overflow-checks=true and will
+    // panic if xr[i] is ever i32::MIN, so validity is verified in tests.
+    x.abs()
 }
 
 /// Inner loop: find optimal quantization step size for given scalefactors
@@ -86,19 +88,11 @@ pub fn shine_inner_loop(
             cod_info.quantizer_step_size = quantizer_step_size;
         }
 
-        // Process with current step size
+        // Process with current step size: rzero/count1/big_values + count1 table selection
         {
             let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
-            calc_runlen(ix, cod_info); // rzero,count1,big_values
-            bits = count1_bitcount(ix, cod_info); // count1_table selection
-            _c1bits = bits;
-        }
-
-        // Subdivide and select tables - avoid borrowing conflicts by separating operations
-        {
-            let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
-            calc_runlen(ix, cod_info); // rzero,count1,big_values
-            bits = count1_bitcount(ix, cod_info); // count1_table selection
+            calc_runlen(ix, cod_info);
+            bits = count1_bitcount(ix, cod_info);
             _c1bits = bits;
         }
 
