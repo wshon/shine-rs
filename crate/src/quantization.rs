@@ -56,7 +56,6 @@ pub fn shine_inner_loop(
     config: &mut ShineGlobalConfig,
 ) -> i32 {
     let mut bits: i32;
-    let mut _c1bits: i32;
     let mut bvbits: i32;
 
     // Following shine's logic exactly:
@@ -93,7 +92,6 @@ pub fn shine_inner_loop(
             let cod_info = &mut config.side_info.gr[gr as usize].ch[ch as usize].tt;
             calc_runlen(ix, cod_info);
             bits = count1_bitcount(ix, cod_info);
-            _c1bits = bits;
         }
 
         // Subdivide and select tables - use temporary variables to avoid borrowing conflicts
