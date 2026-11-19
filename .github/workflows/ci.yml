@@ -9,6 +9,11 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  # .cargo/config.toml sets target-cpu=native for local performance, but that
+  # produces CPU-specific code. GitHub runners share a cached target/ across
+  # machines with different CPUs, so loading cached proc-macros can SIGILL.
+  # Override with an empty RUSTFLAGS here to use cargo's portable default in CI.
+  RUSTFLAGS: ""
 
 jobs:
   test:
