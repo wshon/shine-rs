@@ -42,8 +42,8 @@ Use the exact truncated constants from the C source (`PI64 = 0.049087385212`, `L
 
 ### Fixed-Point Arithmetic
 
-- Use saturating arithmetic for all intermediate calculations
-- `i32::MIN.abs()` overflows — always use `saturating_abs()`
+- Hot-loop fixed-point arithmetic uses plain C semantics (`+`, `abs`) — matching Shine C exactly
+- `i32::MIN` edge cases are verified by debug builds (`overflow-checks = true`); never add saturating checks to hot loops without profiling, they compiled to a branch on every MDCT multiply
 - Multiplication rounding: `mulr` uses `+0x80000000 >> 32`, `mulsr` uses `+0x40000000 >> 31`
 - Test edge cases: all-zeros, i32::MIN values, max amplitude
 
@@ -106,7 +106,7 @@ git push -u origin feat/my-feature
 
 ## Known Pitfalls
 
-1. **i32::MIN overflow**: `x.abs()` when `x == i32::MIN` → use `x.saturating_abs()`
+1. **i32::MIN overflow**: hot loops use plain `abs()`/addition to match C; validity is enforced by debug `overflow-checks = true`, not by saturating ops
 2. **Reservoir state**: `resv_drain` must reset to 0 every frame
 3. **Bitstream padding**: fill bits must be written when reservoir reaches capacity
 4. **Truncated constants**: use C's literal values, not full-precision `std::f64::consts`
@@ -114,4 +114,4 @@ git push -u origin feat/my-feature
 
 ## Performance
 
-The pure-encode speed is on par with Shine C (80%+ of its speed in most configurations, essentially tied at high bitrates). Profile before optimizing — MDCT and subband filter are the hot paths. Do not sacrifice correctness for performance. Use `scripts/bench/build_and_run.sh` for reproducible benchmarks.
+Pure-encode speed exceeds Shine C by 1.15–1.41x across all tested configurations (2026-11-19 benchmark, see README). The gap comes from eliminating saturating-arithmetic branches in the MDCT/quantization hot loops. Profile before optimizing — MDCT and subband filter are the hot paths. Never sacrifice byte-identical output for performance; verify with `encoder_validation_cicd` and debug overflow checks. Use `scripts/bench/build_and_run.sh` for reproducible benchmarks.
