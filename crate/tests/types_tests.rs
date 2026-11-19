@@ -21,7 +21,7 @@ mod tests {
         assert_eq!(BLKSIZE, 1024, "Block size should match shine");
         assert_eq!(SCALE, 32768, "Scale factor should match shine");
 
-        // Verify mathematical constants (now using std constants)
+        // PI and SQRT2 use full-precision std constants.
         assert!(
             (PI - std::f64::consts::PI).abs() < 1e-15,
             "PI should match std::f64::consts::PI"
@@ -30,9 +30,25 @@ mod tests {
             (SQRT2 - std::f64::consts::SQRT_2).abs() < 1e-15,
             "SQRT2 should match std::f64::consts::SQRT_2"
         );
-        assert!(
-            (LN2 - std::f64::consts::LN_2).abs() < 1e-15,
-            "LN2 should match std::f64::consts::LN_2"
+
+        // These constants use C's truncated literals from shine types.h.
+        // Full-precision values would round differently and break byte-exact output.
+        assert_eq!(
+            PI12, 0.26179938779915,
+            "PI12 must match C's truncated literal"
+        );
+        assert_eq!(
+            PI36, 0.087266462599717,
+            "PI36 must match C's truncated literal"
+        );
+        assert_eq!(
+            PI64, 0.049087385212,
+            "PI64 must match C's truncated literal"
+        );
+        assert_eq!(LN2, 0.69314718, "LN2 must match C's truncated literal");
+        assert_eq!(
+            LN_TO_LOG10, 0.2302585093,
+            "LN_TO_LOG10 must match C's truncated literal"
         );
     }
 

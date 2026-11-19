@@ -42,8 +42,9 @@ Use the exact truncated constants from the C source (`PI64 = 0.049087385212`, `L
 
 ### Fixed-Point Arithmetic
 
-- Hot-loop fixed-point arithmetic uses plain C semantics (`+`, `abs`) — matching Shine C exactly
-- `i32::MIN` edge cases are verified by debug builds (`overflow-checks = true`); never add saturating checks to hot loops without profiling, they compiled to a branch on every MDCT multiply
+- MDCT hot loops use `wrapping_add` to match C's `+=` — one instruction, no saturating branch
+- `labs` keeps `saturating_abs`: `i32::MIN` would otherwise produce a negative value and index out of bounds in `quantize_with_l3loop`
+- Edge cases are verified by debug builds (`overflow-checks = true`) plus `encoder_boundaries` tests
 - Multiplication rounding: `mulr` uses `+0x80000000 >> 32`, `mulsr` uses `+0x40000000 >> 31`
 - Test edge cases: all-zeros, i32::MIN values, max amplitude
 
