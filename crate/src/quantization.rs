@@ -511,6 +511,10 @@ pub fn quantize(ix: &mut [i32], stepsize: i32, config: &mut ShineGlobalConfig) -
 }
 
 /// Helper function to avoid borrowing conflicts
+///
+/// Preconditions: `l3loop.xrmax` and `l3loop.xrabs` must hold the maximum and
+/// per-element `labs(xr[i])` values precomputed by `shine_iteration_loop`
+/// (the float fallback path already relies on `xrabs`).
 pub fn quantize_with_l3loop(
     ix: &mut [i32],
     stepsize: i32,
@@ -531,7 +535,11 @@ pub fn quantize_with_l3loop(
         for (i, ix_val) in ix.iter_mut().enumerate().take(GRANULE_SIZE) {
             // This calculation is very sensitive. The multiply must round its
             // result or bad things happen to the quality.
-            let ln = mulr(labs(unsafe { *l3loop.xr.add(i) }), scalei);
+            // xrabs[i] == labs(xr[i]), precomputed once per granule in
+            // shine_iteration_loop (xr is never modified afterwards). Reusing
+            // it removes the per-call abs from this hot loop; the value is
+            // identical, including the saturating i32::MIN case.
+            let ln = mulr(l3loop.xrabs[i], scalei);
 
             if ln < 10000 {
                 // ln < 10000 catches most values
