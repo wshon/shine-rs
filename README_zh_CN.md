@@ -14,7 +14,7 @@
 - 🦀 **纯 Rust 实现** - 利用 Rust 的内存安全和性能优势
 - 🎯 **严格遵循 Shine** - 算法与 Shine C 实现完全一致，确保输出质量
 - 🎵 **完整的 MP3 Layer III 支持** - 实现完整的 MP3 编码流水线
-- ⚡ **卓越性能** - 所有测试配置均快于 Shine C 1.15–1.41 倍
+- ⚡ **卓越性能** - 所有测试配置均快于 Shine C 1.14–1.35 倍
 - 🔧 **灵活配置** - 支持多种采样率、比特率和声道模式
 - 📊 **标准兼容** - 符合 ISO/IEC 11172-3 标准
 - 🧪 **全面测试** - 包含单元测试、集成测试和与 Shine 的对比验证
@@ -147,7 +147,7 @@ PCM 输入 → 子带滤波 → MDCT 变换 → 量化循环 → Huffman 编码 
 - [x] Huffman 编码器
 - [x] 主编码器集成
 - [x] 与 Shine 输出完全一致验证
-- [x] **性能优化** - 所有测试配置均快于 Shine C 1.15–1.41 倍
+- [x] **性能优化** - 所有测试配置均快于 Shine C 1.14–1.35 倍
 - [x] **代码质量** - 零编译警告，通过所有静态检查
 - [x] **性能基准测试** - 完整的 Shine-RS vs Shine 性能对比系统
 
@@ -170,7 +170,7 @@ cargo build --release
 cargo test
 
 # 运行性能基准测试（纯编码口径，需 shine-ref 源码）
-SHINE_REF=../shine-ref bash scripts/bench/build_and_run.sh
+SHINE_REF=ref/shine bash scripts/bench/build_and_run.sh
 
 # 运行集成测试
 cargo test --test integration_full_pipeline_validation
@@ -185,7 +185,7 @@ cargo run --release tests/audio/inputs/basic/sample-3s.wav output.mp3
 ### 性能基准测试
 
 ```bash
-SHINE_REF=../shine-ref bash scripts/bench/build_and_run.sh
+SHINE_REF=ref/shine bash scripts/bench/build_and_run.sh
 ```
 
 对比结果见下方「性能和兼容性」。
@@ -200,7 +200,7 @@ RUST_LOG=debug cargo run --release input.wav output.mp3
 cargo run --release input.wav output.mp3 --max-frames 5
 
 # 运行性能基准测试（纯编码口径，需 shine-ref 源码）
-SHINE_REF=../shine-ref bash scripts/bench/build_and_run.sh
+SHINE_REF=ref/shine bash scripts/bench/build_and_run.sh
 
 # 详细输出模式
 cargo run --release input.wav output.mp3 --verbose
@@ -219,39 +219,40 @@ cargo run --release input.wav output.mp3 --verbose
 复现方式（需 shine-ref 源码）：
 
 ```bash
-SHINE_REF=../shine-ref bash scripts/bench/build_and_run.sh
+SHINE_REF=ref/shine bash scripts/bench/build_and_run.sh
 ```
 
-Linux 纯编码倍率（2026-11-19，每组 11 次取最快值；不含文件 I/O）：
+Linux 纯编码倍率（2026-11-19，每组 5 次取中位；不含文件 I/O）：
 
 | 测试音频 | 码率 | Shine-RS | Shine C |
 |---|---|---|---|
-| 15s 立体声 | 128k | 164.3x | 131.4x |
-| 15s 立体声 | 192k | 157.9x | 125.7x |
-| 15s 立体声 | 320k | 141.7x | 110.4x |
-| 3s 立体声 | 128k | 138.9x | 120.2x |
-| 3s 立体声 | 192k | 131.6x | 104.6x |
-| 3s 立体声 | 320k | 124.5x | 98.8x |
-| 500KB 音频 | 128k | 126.9x | 107.3x |
-| 500KB 音频 | 192k | 136.5x | 108.4x |
-| 500KB 音频 | 320k | 119.6x | 87.2x |
-| 语音录音 | 128k | 263.1x | 227.8x |
-| 语音录音 | 192k | 224.2x | 184.1x |
-| 语音录音 | 320k | 225.9x | 160.5x |
+| 15s 立体声 | 128k | 149.0x | 119.2x |
+| 15s 立体声 | 192k | 133.2x | 116.4x |
+| 15s 立体声 | 320k | 140.1x | 113.6x |
+| 3s 立体声 | 128k | 146.6x | 110.4x |
+| 3s 立体声 | 192k | 136.7x | 108.0x |
+| 3s 立体声 | 320k | 132.5x | 105.3x |
+| 500KB 音频 | 128k | 144.6x | 121.3x |
+| 500KB 音频 | 192k | 136.8x | 115.2x |
+| 500KB 音频 | 320k | 129.5x | 105.5x |
+| 语音录音 | 128k | 287.5x | 218.4x |
+| 语音录音 | 192k | 257.3x | 208.6x |
+| 语音录音 | 320k | 259.2x | 192.0x |
 
-所有配置下 Shine-RS 均更快，幅度 1.15–1.41 倍（平均 1.25 倍）。差距来自 MDCT 热循环中用回绕运算替代饱和加法。
+所有配置下 Shine-RS 均更快，幅度 1.14–1.35 倍。差距来自 MDCT 热循环中用回绕运算替代饱和加法，以及量化器直接复用预计算的绝对值数组（`xrabs`），不再每次调用都重算 `labs`。
 
 
 #### 技术优势
 
 - **算法保真**: 所有参考配置下与 Shine C 输出逐字节一致
 - **MDCT 热循环无溢出分支**: 回绕加法与 C 的 `+=` 一致，经 debug 溢出检查验证
+- **量化热循环无逐次 abs**: 直接复用每 granule 预计算一次的 `xrabs` 绝对值数组（值完全一致，含 `i32::MIN` 的饱和情形）
 - **LLVM LTO**: 全链接时优化，`codegen-units=1`，native CPU 调优
 
 ### 算法特征
 
 - **算法优化**: 基于 Shine 的定点 C 实现移植
-- **编码速度**: 快于 Shine C（1.15–1.41 倍，见上表）
+- **编码速度**: 快于 Shine C（1.14–1.35 倍，见上表）
 - **输出**: 与 Shine C 逐字节一致，经 SHA256 对照参考文件验证
 
 ### 兼容性
