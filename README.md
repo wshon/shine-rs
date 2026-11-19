@@ -14,7 +14,7 @@ A pure Rust MP3 encoder implementation based on the Shine library. This project 
 - 🦀 **Pure Rust** — memory-safe and performant
 - 🎯 **Shine-compatible** — algorithms match Shine C exactly for identical output
 - 🎵 **Full MP3 Layer III** — complete encoding pipeline
-- ⚡ **Great performance** — outperforms Shine C by 1.15–1.41x across all tested configurations
+- ⚡ **Great performance** — outperforms Shine C by 1.14–1.35x across all tested configurations
 - 🔧 **Flexible** — multiple sample rates, bitrates, and channel modes
 - 📊 **Standard-compliant** — ISO/IEC 11172-3
 - 🧪 **Well-tested** — unit tests, integration tests, and reference validation
@@ -147,7 +147,7 @@ Each step strictly follows the Shine C implementation to ensure correctness and 
 - [x] Huffman encoder
 - [x] Main encoder integration
 - [x] Output verified against Shine (SHA256 match)
-- [x] **Performance** — outperforms Shine C by 1.15–1.41x across all tested configurations
+- [x] **Performance** — outperforms Shine C by 1.14–1.35x across all tested configurations
 - [x] **Code quality** — zero compiler warnings, all clippy checks pass
 - [x] **Benchmark suite** — complete Shine-RS vs Shine performance comparison
 
@@ -170,7 +170,7 @@ cargo build --release
 cargo test
 
 # Run performance benchmark (pure-encode, needs shine-ref source)
-SHINE_REF=../shine-ref bash scripts/bench/build_and_run.sh
+SHINE_REF=ref/shine bash scripts/bench/build_and_run.sh
 
 # Run integration tests
 cargo test --test integration_full_pipeline_validation
@@ -185,7 +185,7 @@ cargo run --release tests/audio/inputs/basic/sample-3s.wav output.mp3
 ### Performance Benchmark
 
 ```bash
-SHINE_REF=../shine-ref bash scripts/bench/build_and_run.sh
+SHINE_REF=ref/shine bash scripts/bench/build_and_run.sh
 ```
 
 Results are shown under [Performance and Compatibility](#performance-and-compatibility).
@@ -200,7 +200,7 @@ RUST_LOG=debug cargo run --release input.wav output.mp3
 cargo run --release input.wav output.mp3 --max-frames 5
 
 # Run performance benchmark (pure-encode, needs shine-ref source)
-SHINE_REF=../shine-ref bash scripts/bench/build_and_run.sh
+SHINE_REF=ref/shine bash scripts/bench/build_and_run.sh
 
 # Verbose mode
 cargo run --release input.wav output.mp3 --verbose
@@ -219,38 +219,39 @@ Compares the **pure encoding speed** of Shine-RS and Shine C: both decode audio 
 Reproduce (needs shine-ref source):
 
 ```bash
-SHINE_REF=../shine-ref bash scripts/bench/build_and_run.sh
+SHINE_REF=ref/shine bash scripts/bench/build_and_run.sh
 ```
 
-Linux pure-encode speedup (2026-11-19, fastest of 11 runs; excludes file I/O):
+Linux pure-encode speedup (2026-11-19, median of 5 runs per config; excludes file I/O):
 
 | Audio | Bitrate | Shine-RS | Shine C |
 |---|---|---|---|
-| 15s stereo | 128k | 164.3x | 131.4x |
-| 15s stereo | 192k | 157.9x | 125.7x |
-| 15s stereo | 320k | 141.7x | 110.4x |
-| 3s stereo | 128k | 138.9x | 120.2x |
-| 3s stereo | 192k | 131.6x | 104.6x |
-| 3s stereo | 320k | 124.5x | 98.8x |
-| 500KB audio | 128k | 126.9x | 107.3x |
-| 500KB audio | 192k | 136.5x | 108.4x |
-| 500KB audio | 320k | 119.6x | 87.2x |
-| Voice recording | 128k | 263.1x | 227.8x |
-| Voice recording | 192k | 224.2x | 184.1x |
-| Voice recording | 320k | 225.9x | 160.5x |
+| 15s stereo | 128k | 149.0x | 119.2x |
+| 15s stereo | 192k | 133.2x | 116.4x |
+| 15s stereo | 320k | 140.1x | 113.6x |
+| 3s stereo | 128k | 146.6x | 110.4x |
+| 3s stereo | 192k | 136.7x | 108.0x |
+| 3s stereo | 320k | 132.5x | 105.3x |
+| 500KB audio | 128k | 144.6x | 121.3x |
+| 500KB audio | 192k | 136.8x | 115.2x |
+| 500KB audio | 320k | 129.5x | 105.5x |
+| Voice recording | 128k | 287.5x | 218.4x |
+| Voice recording | 192k | 257.3x | 208.6x |
+| Voice recording | 320k | 259.2x | 192.0x |
 
-Shine-RS is faster in every configuration, by 1.15–1.41x (average 1.25x). The gap comes from replacing a saturating add with wrapping arithmetic in the MDCT hot loop.
+Shine-RS is faster in every configuration, by 1.14–1.35x. The gap comes from replacing a saturating add with wrapping arithmetic in the MDCT hot loop, and from reusing the precomputed absolute values (`xrabs`) in the quantizer instead of recomputing `labs` on every call.
 
 #### Technical Advantages
 
 - **Algorithm fidelity**: byte-identical output to Shine C across all reference configurations
 - **No overflow branch in the MDCT hot loop**: wrapping add matches C's `+=`, verified under debug overflow checks
+- **No per-call abs in the quantizer hot loop**: reuses the `xrabs` values precomputed once per granule (identical values, including the saturating `i32::MIN` case)
 - **LLVM LTO**: full link-time optimization, `codegen-units=1`, native CPU tuning
 
 ### Algorithm Characteristics
 
 - **Optimized algorithms**: ported from Shine's fixed-point C implementation
-- **Encoding speed**: faster than Shine C (1.15–1.41x, see benchmark above)
+- **Encoding speed**: faster than Shine C (1.14–1.35x, see benchmark above)
 - **Output**: byte-identical to Shine C, verified by SHA256 against reference files
 
 ### Compatibility
