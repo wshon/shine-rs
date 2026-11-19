@@ -142,7 +142,9 @@ jobs:
       uses: codecov/codecov-action@v3
       with:
         files: lcov.info
-        fail_ci_if_error: true
+        # Coverage is informational; anonymous uploads hit Codecov rate limits
+        # on public repos. Never fail the build over a coverage upload.
+        fail_ci_if_error: false
 
   performance:
     name: Performance Check
