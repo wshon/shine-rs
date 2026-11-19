@@ -68,10 +68,10 @@ fn mul0(a: i32, b: i32) -> i32 {
 /// In shine: #define muladd(hi, lo, a, b) ((hi) += mul((a), (b)))
 #[inline]
 fn muladd(acc: i32, a: i32, b: i32) -> i32 {
-    // Matches shine's `muladd` macro: plain += (C semantics).
-    // Fixed-point values stay in range for valid audio; debug builds have
-    // overflow-checks=true and will panic if any input ever violates this.
-    acc + mul(a, b)
+    // Matches shine's `muladd` macro: C's += wraps on overflow.
+    // `wrapping_add` is one instruction (no saturating branch) and never
+    // panics in debug builds — unlike plain `+` under overflow-checks.
+    acc.wrapping_add(mul(a, b))
 }
 
 /// Finalize multiplication (matches shine mulz macro - no-op)

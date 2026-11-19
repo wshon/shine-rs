@@ -239,12 +239,12 @@ Linux pure-encode speedup (2026-11-19, fastest of 11 runs; excludes file I/O):
 | Voice recording | 192k | 224.2x | 184.1x |
 | Voice recording | 320k | 225.9x | 160.5x |
 
-Shine-RS is faster in every configuration, by 1.15–1.41x (average 1.25x). The gap comes from eliminating saturating-arithmetic branches in the MDCT and quantization hot loops.
+Shine-RS is faster in every configuration, by 1.15–1.41x (average 1.25x). The gap comes from replacing a saturating add with wrapping arithmetic in the MDCT hot loop.
 
 #### Technical Advantages
 
 - **Algorithm fidelity**: byte-identical output to Shine C across all reference configurations
-- **No overflow branches in hot loops**: fixed-point arithmetic uses C semantics, verified under debug overflow checks
+- **No overflow branch in the MDCT hot loop**: wrapping add matches C's `+=`, verified under debug overflow checks
 - **LLVM LTO**: full link-time optimization, `codegen-units=1`, native CPU tuning
 
 ### Algorithm Characteristics

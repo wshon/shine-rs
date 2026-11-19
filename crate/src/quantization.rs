@@ -38,9 +38,9 @@ pub fn mulr(a: i32, b: i32) -> i32 {
 /// Absolute value function (matches shine labs)
 #[inline]
 pub fn labs(x: i32) -> i32 {
-    // Matches shine's labs(). Debug builds have overflow-checks=true and will
-    // panic if xr[i] is ever i32::MIN, so validity is verified in tests.
-    x.abs()
+    // shine's labs() on i32::MIN is UB in C; saturating avoids a negative
+    // result that would index out of bounds in quantize_with_l3loop.
+    x.saturating_abs()
 }
 
 /// Inner loop: find optimal quantization step size for given scalefactors
