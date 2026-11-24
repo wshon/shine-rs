@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6] - 2026-11-24
+
+### Fixed
+
+- Match the Shine C reference output byte-for-byte across all supported configurations.
+- Restore encoder robustness for boundary inputs and repair the long-broken main CI.
+- Use the correct samples-per-frame value (576, not 1152) at 24 kHz in the CLI.
+
+### Changed
+
+- Reuse precomputed `xrabs` in the quantizer hot loop and replace saturating adds with `wrapping_add` in the MDCT hot loop for faster pure-encode speed; output remains byte-identical to the C reference.
+- Remove redundant `[profile.release]` from the library manifest (the workspace root already defines it).
+
 ## [0.1.5] - 2026-09-23
 
 ### Fixed
@@ -44,6 +57,7 @@ Both bugs exist in the original C reference implementation (`toots/shine` `l3loo
 
 - Initial release: pure Rust MP3 encoder based on the Shine library, providing complete MPEG Layer III encoding functionality.
 
+[0.1.6]: https://github.com/wshon/shine-rs/compare/v0.1.5...v0.1.6
 [0.1.5]: https://github.com/wshon/shine-rs/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/wshon/shine-rs/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/wshon/shine-rs/compare/v0.1.2...v0.1.3
